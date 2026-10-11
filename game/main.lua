@@ -9,6 +9,7 @@ local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
 local traffic = require "systems.traffic"
 local police = require "systems.police"
+local peds = require "systems.peds"
 local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
@@ -23,6 +24,7 @@ engine.on("init", function()
   prefabs.build()
   sfx.build()
   police.build()
+  peds.build()
   G.city = city.build()
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
@@ -33,6 +35,7 @@ engine.on("init", function()
   G.cam_yaw = 0.3
 
   traffic.start(18)
+  peds.start()
   mission.load_all("missions")
   engine.grab_mouse(true)
 end)

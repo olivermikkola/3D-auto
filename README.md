@@ -6,8 +6,8 @@ into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
-ambient traffic, a wanted level with police pursuits, synthesized sound, a minimap, cash, and
-four missions. Edit any `.lua` file while it runs and it hot-reloads.
+ambient traffic, pedestrians, a wanted level with police pursuits, synthesized sound, a minimap,
+cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Driving downtown](docs/driving.png)
 
@@ -63,7 +63,7 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
 
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
-own events. The demo's own events include `vehicle_enter`, `carjacked`, `wanted_changed`,
+own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `wanted_changed`,
 `busted`, `mission_passed`, `stunt`, and `minimap` (other systems draw blips with it). A handler that
 throws is reported on screen with a traceback, and the other handlers still run.
 
@@ -129,6 +129,25 @@ changes**, which is the point of the kernel:
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
   Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
+
+## Pedestrians
+
+`systems/peds.lua` (~270 lines, again no engine changes) keeps about 40 people near the player:
+
+- **Walking:** they circle their block's sidewalk and sometimes cross at a corner, waiting at
+  the curb while a car is coming. Traffic brakes for them.
+- **Fleeing:** a fast car heading at them, the horn (`H`), or a nearby crash makes them run
+  away screaming.
+- **Hit by a car:** the upright walker (`lock_rotation`) is swapped for a free rigid body, so
+  they tumble. If you were driving, it's a crime: `ped_down` raises your wanted level.
+- **Population:** people far from the player are recycled 70–140 m away, out of view.
+
+Adding them pushed physics past a millisecond per tick, so this PR also has the only engine
+changes: a bounding-sphere reject in raycasts (raycasts were ~24% of the profile), building
+rotation matrices directly from the quaternion, and skipping angular work for bodies that
+can't rotate. A tick is back under 1 ms with 40 pedestrians, 18 cars and the police.
+
+![A car about to mount the curb; pedestrians on both sidewalks](docs/peds.png)
 
 ## Adding a mission
 

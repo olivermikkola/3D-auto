@@ -9,7 +9,10 @@ local held = {}
 engine.key = function(k) return held[k] == true end
 local function press(k) engine.emit("key", k, true) end
 local function check(cond, what)
-  if not cond then error("AUTOPLAY FAILED: " .. what, 0) end
+  if not cond then
+    engine.quit()
+    error("AUTOPLAY FAILED: " .. what, 0)
+  end
   print("  ok  " .. what)
 end
 
@@ -96,6 +99,74 @@ at(13.5, function()
     if math.sqrt(vx * vx + vz * vz) > 3 then moving = moving + 1 end
   end
   check(moving >= n // 2, string.format("traffic is flowing (%d of %d moving)", moving, n))
+end)
+
+-- ---- pedestrians ------------------------------------------------------------
+local peds = require "systems.peds"
+local downed, victim = 0, nil
+engine.on("ped_down", function(body) downed = downed + 1; victim = body end)
+local function walking_peds()
+  local n = 0
+  for id in pairs(peds.peds) do
+    local vx, _, vz = engine.vel(id)
+    if vx * vx + vz * vz > 0.5 then n = n + 1 end
+  end
+  return n
+end
+-- Nearest ped in `state`, optionally only mid-block (away from corner lamps).
+local function nearest_ped(state, mid_block)
+  local px, _, pz = engine.pos(G.vehicle or G.player)
+  local best, bid = math.huge
+  for id, p in pairs(peds.peds) do
+    local x, _, z = engine.pos(id)
+    local bx, bz = city.block_center(p.i, p.j)
+    local ok = not mid_block or math.min(math.abs(x - bx), math.abs(z - bz)) < G.city.block / 2 - 7
+    local d = (x - px) ^ 2 + (z - pz) ^ 2
+    if p.state == state and ok and d < best then best, bid = d, id end
+  end
+  return bid
+end
+local scared
+after(0.2, function()
+  check(peds.count() >= 35, "pedestrians spawned (" .. peds.count() .. ")")
+  check(walking_peds() >= 20, "pedestrians are walking (" .. walking_peds() .. " moving)")
+  -- Back in the car, parked next to someone, lean on the horn.
+  press("e")
+  check(G.vehicle == car, "back in the car")
+  scared = nearest_ped("walk")
+  local x, _, z = engine.pos(scared)
+  engine.set_pos(car, x + 6, 0.8, z)
+  engine.set_vel(car, 0, 0, 0)
+end)
+after(0.3, function() press("h") end)
+until_(function() return peds.peds[scared] and peds.peds[scared].state == "flee" end, 1, "the horn makes a pedestrian run")
+after(5.0, function()
+  -- Line up behind a walker and drive straight through them.
+  require("lib.wanted").clear()
+  -- Start out on the road and drive across the curb at them.
+  local id = nearest_ped("walk", true)
+  local x, _, z = engine.pos(id)
+  local p = peds.peds[id]
+  local bx, bz = city.block_center(p.i, p.j)
+  local nx, nz = 0, 0
+  if math.abs(x - bx) > math.abs(z - bz) then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
+  engine.set_pos(car, x + nx * 9, 0.8, z + nz * 9)
+  engine.orient(car, math.atan(-nx, -nz))
+  engine.set_angvel(car, 0, 0, 0)
+  engine.set_vel(car, -nx * 16, 0, -nz * 16)
+end)
+until_(function() return downed >= 1 end, 3, "running someone over knocks them down", function()
+  check(require("lib.wanted").stars() >= 1, "hitting a pedestrian is a crime (" .. require("lib.wanted").stars() .. " star)")
+end)
+until_(function()
+  local _, uy = engine.up(victim)
+  return uy < 0.7
+end, 3, "the victim tumbles (rigid body, no longer upright)", function()
+  require("lib.wanted").clear()
+  require("systems.police").clear()
+  engine.set_vel(car, 0, 0, 0)
+  press("e")
+  check(G.player and not G.vehicle, "on foot again")
 end)
 
 -- ---- police -----------------------------------------------------------------
