@@ -261,3 +261,7 @@ all of this on Linux, Windows and macOS.
 Push a tag (`git tag v0.1.0 && git push origin v0.1.0`). The release workflow builds and smoke
 tests each platform, then publishes `auto-v0.1.0-{linux-x86_64,windows-x86_64,macos-arm64}`
 archives with the binary, `game/`, and the docs.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
