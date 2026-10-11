@@ -42,6 +42,111 @@ function engine.emit(ev, ...)
     if not ok then engine._error(ev, tostring(err)) end
   end
 end
+
+-- ---- mods ------------------------------------------------------------------
+-- A mod is a folder with an init.lua. It runs in its own environment with the
+-- safe standard library and the engine API: no os/io/debug, no bytecode, and
+-- every path it passes to the engine is rooted in its own folder.
+local ROOT = __ROOT
+__ROOT = nil
+local G, trusted_require, loadfile, load, print, package = _G, require, loadfile, load, print, package
+local mod_roots = {} -- folders whose files may only ever run sandboxed
+getmetatable("").__metatable = false
+
+local function under_mod(rel)
+  rel = rel .. "/"
+  for _, prefix in ipairs(mod_roots) do
+    if rel:sub(1, #prefix) == prefix then return true end
+  end
+end
+
+local function check_module(m)
+  if type(m) ~= "string" or not m:match("^[%w_][%w_%.]*$") then error("bad module name: " .. tostring(m), 3) end
+  return (m:gsub("%.", "/"))
+end
+
+-- The game's own require, refusing to run mod files with full privileges.
+require = function(m)
+  if under_mod(check_module(m)) then error("mod code cannot be loaded outside its sandbox: " .. m, 2) end
+  return trusted_require(m)
+end
+
+local function copy(t)
+  local c = {}
+  for k, v in pairs(t) do c[k] = v end
+  return c
+end
+local BASE = {}
+for _, k in ipairs{"assert", "error", "ipairs", "next", "pairs", "pcall", "rawequal", "rawget", "rawlen", "rawset",
+                   "select", "setmetatable", "getmetatable", "tonumber", "tostring", "type", "xpcall", "_VERSION"} do
+  BASE[k] = G[k]
+end
+local LIBS = {math = math, string = string, table = table, coroutine = coroutine, utf8 = utf8}
+local OS = {time = os.time, clock = os.clock, date = os.date}
+
+function engine.load_mod(dir)
+  dir = tostring(dir):gsub("\\", "/"):gsub("/+$", "")
+  if dir:find("%.%.") or dir:find("^/") or dir:find(":") then error("bad mod folder: " .. dir, 2) end
+  local name = dir:match("([^/]+)$")
+  mod_roots[#mod_roots + 1] = dir .. "/"
+
+  local env = copy(BASE)
+  for k, lib in pairs(LIBS) do env[k] = copy(lib) end
+  env.os = copy(OS)
+  env.print = function(...) print("[" .. name .. "]", ...) end
+  env.load = function(chunk, cname, _, e) return load(chunk, cname, "t", e or env) end
+  env._G = env
+
+  -- engine, with file access rooted in the mod's folder
+  local api = setmetatable({}, {__index = engine})
+  for _, f in ipairs{"load_obj", "load_wav"} do
+    api[f] = function(n, path, ...) return engine[f](n, dir .. "/" .. path, ...) end
+  end
+  for _, f in ipairs{"files", "dirs"} do
+    api[f] = function(path) return engine[f](dir .. "/" .. (path or ".")) end
+  end
+  api.mod_name = name
+  env.engine = api
+
+  -- require: the mod's own modules first (sandboxed), then the game's.
+  local loaded = {}
+  env.require = function(m)
+    local rel = check_module(m)
+    if loaded[m] ~= nil then return loaded[m] end
+    local chunk = loadfile(ROOT .. "/" .. dir .. "/" .. rel .. ".lua", "t", env)
+    if chunk then
+      local r = chunk(m)
+      loaded[m] = r == nil and true or r
+      return loaded[m]
+    end
+    -- Only the game's own script files; never built-in libraries like os/io.
+    if not package.searchpath(m, package.path) then error("module '" .. m .. "' not found", 2) end
+    return require(m)
+  end
+
+  local main, err = loadfile(ROOT .. "/" .. dir .. "/init.lua", "t", env)
+  if not main then error(err, 2) end
+  main()
+  return env
+end
+
+-- Load every mod folder in `container` (default "mods"), in name order.
+-- A broken mod is reported and skipped; the others still load.
+function engine.load_mods(container)
+  container = container or "mods"
+  mod_roots[#mod_roots + 1] = container .. "/"
+  local names = {}
+  for _, d in ipairs(engine.dirs(container)) do
+    local ok, err = xpcall(engine.load_mod, traceback, container .. "/" .. d)
+    if ok then
+      names[#names + 1] = d
+    else
+      engine._error("mod " .. d, tostring(err))
+    end
+  end
+  if #names > 0 then print("mods: " .. table.concat(names, ", ")) end
+  return names
+end
 "#;
 
 pub struct Script {
@@ -57,6 +162,7 @@ impl Script {
         let root = eng.borrow().root.clone();
         let api = bind(&lua, eng)?;
         lua.globals().set("engine", api)?;
+        lua.globals().set("__ROOT", root.to_string_lossy().replace('\\', "/"))?;
         lua.load(KERNEL).set_name("=kernel").exec()?;
         let pkg: Table = lua.globals().get("package")?;
         let r = root.display();
@@ -116,6 +222,18 @@ fn color(v: &Value) -> Result<[f32; 4]> {
 /// Several return values, or none at all (Lua sees nil).
 fn multi(lua: &Lua, v: Option<impl IntoLuaMulti>) -> Result<MultiValue> {
     v.map_or(Ok(MultiValue::new()), |v| v.into_lua_multi(lua))
+}
+
+/// Resolve a script-supplied path under the game root. Absolute paths and
+/// `..` are refused, so neither the game nor a mod can reach outside it.
+pub fn game_path(root: &std::path::Path, rel: &str) -> Result<std::path::PathBuf> {
+    use std::path::Component;
+    let p = std::path::Path::new(rel);
+    if p.components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) {
+        Ok(root.join(p))
+    } else {
+        Err(mlua::Error::runtime(format!("path '{rel}' must be relative and stay inside the game folder")))
+    }
 }
 
 fn mesh_id(e: &Engine, name: &str) -> Result<usize> {
@@ -310,7 +428,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(tris)
     });
     f!("load_obj", |e, _lua, (name, path): (String, String)| {
-        let m = mesh::load_obj(&e.root.join(&path)).map_err(mlua::Error::runtime)?;
+        let m = mesh::load_obj(&game_path(&e.root, &path)?).map_err(mlua::Error::runtime)?;
         let tris = m.tri_count();
         e.add_mesh(&name, m);
         Ok(tris)
@@ -351,7 +469,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(secs)
     });
     f!("load_wav", |e, _lua, (name, path): (String, String)| {
-        let full = e.root.join(&path);
+        let full = game_path(&e.root, &path)?;
         let bytes = std::fs::read(&full).map_err(|err| mlua::Error::runtime(format!("{}: {err}", full.display())))?;
         let buf = audio::load_wav(&bytes).map_err(|err| mlua::Error::runtime(format!("{path}: {err}")))?;
         let secs = buf.len() as f32 / audio::RATE as f32;
@@ -507,13 +625,27 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         t.set("voices", e.mixer.lock().unwrap().voice_count())?;
         Ok(t)
     });
-    f!("files", |e, _lua, dir: String| {
-        let mut names: Vec<String> = std::fs::read_dir(e.root.join(&dir))
-            .map(|rd| rd.filter_map(|d| d.ok()?.file_name().into_string().ok()).collect())
-            .unwrap_or_default();
-        names.sort();
-        Ok(names)
-    });
+    // Directory listings (sorted names), files and subfolders separately.
+    for (name, want_dir) in [("files", false), ("dirs", true)] {
+        let eng = eng.clone();
+        api.set(
+            name,
+            lua.create_function(move |_lua, dir: String| {
+                let path = game_path(&eng.borrow().root, &dir)?;
+                let mut names: Vec<String> = std::fs::read_dir(path)
+                    .map(|rd| {
+                        rd.filter_map(|d| {
+                            let d = d.ok()?;
+                            (d.file_type().ok()?.is_dir() == want_dir).then(|| d.file_name().into_string().ok())?
+                        })
+                        .collect()
+                    })
+                    .unwrap_or_default();
+                names.sort();
+                Ok(names)
+            })?,
+        )?;
+    }
     f!("_error", |e, _lua, (ev, msg): (String, String)| {
         eprintln!("[lua:{ev}] {msg}");
         e.error = Some(format!("{ev}: {msg}"));

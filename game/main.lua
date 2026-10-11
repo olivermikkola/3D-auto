@@ -59,3 +59,6 @@ engine.on("contact", function(a, b)
     end
   end
 end)
+
+-- Mods last, so their "init" handlers run after the city exists.
+engine.load_mods("mods")

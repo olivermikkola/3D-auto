@@ -124,6 +124,7 @@ engine.on("tick", function()
 end)
 
 function M.show_start_markers()
+  M.hide_start_markers()
   for _, def in ipairs(M.defs) do
     local c = def.passed and {0.3, 1, 0.3} or {1, 0.85, 0.1}
     def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5, def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
@@ -139,6 +140,14 @@ function M.hide_start_markers()
   prune_markers()
 end
 
+-- Add a mission. Mods call this; the game's own missions come from load_all.
+function M.register(def)
+  assert(type(def) == "table" and def.title and def.start and def.run, "a mission needs title, start and run")
+  def.id = def.id or def.title
+  M.defs[#M.defs + 1] = def
+  if M.ready then M.show_start_markers() end
+end
+
 -- Every .lua file in the directory is a mission. Drop one in, press F5.
 function M.load_all(dir)
   -- A unit cylinder that glows at night.
@@ -148,9 +157,10 @@ function M.load_all(dir)
     if name then
       local def = require(dir .. "." .. name)
       def.id = name
-      M.defs[#M.defs + 1] = def
+      M.register(def)
     end
   end
+  M.ready = true
   M.show_start_markers()
   print(string.format("loaded %d missions", #M.defs))
 end

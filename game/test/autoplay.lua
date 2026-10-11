@@ -53,7 +53,8 @@ at(7.0, function()
   held.s = false
   check(math.abs(vehicle.speed(car)) < 12, "car brakes")
   -- Teleport onto the Joyride start marker.
-  local def = mission.defs[1]
+  local def
+  for _, d in ipairs(mission.defs) do if d.title == "Joyride" then def = d end end
   engine.set_pos(car, def.start[1], 0.8, def.start[2])
   engine.set_vel(car, 0, 0, 0)
 end)
@@ -210,6 +211,21 @@ until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 
   engine.set_pos(G.player, bx, 1.2, bz)
 end)
 until_(function() return wanted.stars() == 0 end, 10, "lost the cops by leaving the search circle unseen")
+-- ---- mods -------------------------------------------------------------------
+local sandbox
+engine.on("sandbox_report", function(r) sandbox = r end)
+after(0.2, function()
+  local mission = require "lib.mission"
+  local taxi
+  for _, d in ipairs(mission.defs) do if d.title == "Taxi Driver" then taxi = d end end
+  check(taxi ~= nil, "the taxi mod registered its mission")
+  engine.load_mod("test/sandbox_probe")
+  check(sandbox ~= nil, "hostile probe mod ran")
+  for _, r in ipairs(sandbox) do
+    check(not r.blocked == (r.expect_ok == true), (r.expect_ok and "mods can use " or "sandbox blocks ") .. r.name)
+  end
+end)
+
 -- ---- day and night ------------------------------------------------------------
 after(0.5, function()
   check(busts == 1, "no extra busts while escaping")
