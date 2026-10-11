@@ -128,7 +128,7 @@ The renderer draws, per frame:
 - **Lit pass:** sun with 3×3 PCF shadows, hemisphere ambient, the 16 nearest point/spot lights,
   emissive surfaces, and fog.
 
-All of it is driven from Lua. `lib/daynight.lua` (~80 lines) moves the sun, blends day, dusk
+All of it is driven from Lua. `lib/daynight.lua` (~60 lines) moves the sun, blends day, dusk
 and night palettes, and sets `glow`. Glow turns on emissive mesh parts (headlights, taillights,
 lamp bulbs, a third of the office floors) and scales every light. Street lamps and headlights
 are ordinary `engine.light`s that follow their entity, so the engine moves them; Lua never
