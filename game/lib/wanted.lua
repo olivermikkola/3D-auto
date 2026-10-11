@@ -1,0 +1,65 @@
+-- Wanted level: 0-5 stars. Crimes raise it; systems.police enforces it.
+-- Missions and mods can call wanted.set/add directly.
+local G = require "lib.state"
+local U = require "lib.util"
+
+local W = {level = 0, heat = 0, seen = true, center = {0, 0}, unseen_for = 0}
+
+local function changed(old)
+  if W.level ~= old then engine.emit("wanted_changed", W.level, old) end
+end
+
+function W.stars() return W.level end
+
+function W.set(n)
+  local old = W.level
+  W.level = U.clamp(math.floor(n), 0, 5)
+  W.heat = math.max(W.heat, W.level)
+  if W.level > 0 and old == 0 then
+    -- Fresh pursuit starts where the player is.
+    local x, _, z = U.player_pos()
+    if x then W.center = {x, z} end
+    W.seen, W.unseen_for = true, 0
+  end
+  changed(old)
+end
+
+function W.add(n) W.set(math.min(5, W.level + n)) end
+
+function W.clear()
+  local old = W.level
+  W.level, W.heat, W.unseen_for = 0, 0, 0
+  changed(old)
+end
+
+-- Fractional heat for small crimes; every whole point is a star.
+function W.heat_up(amount)
+  W.heat = math.min(5, W.heat + amount)
+  if math.floor(W.heat) > W.level then W.set(W.heat) end
+end
+
+-- Radius of the search area the player must escape, in meters.
+function W.radius() return 40 + 25 * W.level end
+
+-- ---- crimes ------------------------------------------------------------
+
+engine.on("carjacked", function() if W.level < 1 then W.set(1) end end)
+
+local recent = {}
+engine.on("contact", function(a, b, speed)
+  local me = G.vehicle
+  -- Only crashes the player causes: their car has to be the one moving.
+  if not me or (a ~= me and b ~= me) or speed < 6 then return end
+  if math.abs(require("lib.vehicle").speed(me)) < 5 then return end
+  local other = a == me and b or a
+  local now = engine.time()
+  if (recent[other] or 0) > now then return end
+  recent[other] = now + 1.5
+  if engine.tag(other) == "cop" then
+    W.add(1)
+  elseif engine.tag(other) == "car" and speed > 10 then
+    W.heat_up(0.4)
+  end
+end)
+
+return W

@@ -34,7 +34,11 @@ end
 
 function M.enter_nearest()
   local x, y, z = engine.pos(G.player)
-  local car = engine.nearest(x, y, z, 4.5, "car")
+  local car, best = nil, math.huge
+  for tag in pairs(vehicle.tags) do
+    local id, d = engine.nearest(x, y, z, 4.5, tag)
+    if id and d < best then car, best = id, d end
+  end
   if not car then return end
   engine.despawn(G.player)
   G.player = nil

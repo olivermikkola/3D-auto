@@ -42,6 +42,7 @@ local function minimap(sw, sh)
       engine.rect(px - 3, py - 3, 6, 6, m.color[1], m.color[2], m.color[3], 1)
     end
   end
+  engine.emit("minimap", map) -- other systems add blips
   local x, _, z = U.player_pos()
   if x then
     local px, py = map(x, z)
@@ -54,6 +55,17 @@ engine.on("key", function(k, down) if k == "f1" and down then show_help = not sh
 engine.on("frame", function(dt)
   local w, h = engine.screen()
   shadow_text(string.format("$%d", G.cash), w - 20 - engine.text_width(string.format("$%d", G.cash), 28), 20, 28, 0.4, 0.9, 0.4)
+
+  -- Wanted stars; they blink while the cops can't see you.
+  local stars = require("lib.wanted")
+  if stars.stars() > 0 then
+    local show = stars.seen or math.floor(engine.time() * 3) % 2 == 0
+    for k = 1, 5 do
+      local lit = k <= stars.stars() and show
+      local x = w - 20 - (6 - k) * 26
+      shadow_text("*", x, 58, 28, lit and 1 or 0.3, lit and 0.85 or 0.3, lit and 0.2 or 0.3)
+    end
+  end
 
   if G.vehicle and engine.exists(G.vehicle) then
     local kmh = math.abs(require("lib.vehicle").speed(G.vehicle)) * 3.6

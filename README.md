@@ -6,7 +6,8 @@ into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
-ambient traffic, synthesized sound, a minimap, cash, and three missions. Edit any `.lua` file while it runs and it hot-reloads.
+ambient traffic, a wanted level with police pursuits, synthesized sound, a minimap, cash, and
+four missions. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Driving downtown](docs/driving.png)
 
@@ -62,7 +63,8 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
 
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
-own events (the demo uses `vehicle_enter`, `mission_passed`, `stunt`, and so on). A handler that
+own events. The demo's own events include `vehicle_enter`, `carjacked`, `wanted_changed`,
+`busted`, `mission_passed`, `stunt`, and `minimap` (other systems draw blips with it). A handler that
 throws is reported on screen with a traceback, and the other handlers still run.
 
 ## Lua API
@@ -110,6 +112,24 @@ engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engin
 engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.quit()
 ```
 
+## Wanted level and police
+
+![Two units boxing the player in at two stars; the red search circle is on the minimap](docs/busted.png)
+
+`lib/wanted.lua` and `systems/police.lua` are about 350 lines of Lua and needed **no engine
+changes**, which is the point of the kernel:
+
+- **Crimes:** carjacking a traffic car, hard crashes into civilian cars, ramming or stealing a
+  cop car. Missions can call `m:wanted(3)`.
+- **Police:** 1/2/3/5/7 cop cars for 1–5 stars, spawned out of sight around the search area.
+  They follow the street grid toward you (or your last known position), switch to direct pursuit
+  once they can see you (a raycast), and search nearby streets once they lose you. Light bars and
+  sirens follow each car.
+- **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
+  any active mission fails, and you're released on foot.
+- **Escape:** the red circle on the minimap is the search area around where you were last seen.
+  Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
+
 ## Adding a mission
 
 ![The demolition mission: physics crates and OBJ traffic cones](docs/mission.png)
@@ -137,6 +157,7 @@ return {
 auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]
 ```
 
-`AUTO_TEST=1 auto game --headless 3000` plays the demo by itself (drives, finishes a mission,
-launches off the stunt ramp) and exits non-zero on any failure. `SOAK=1` runs a traffic soak
+`AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
+launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
+any failure. `SOAK=1` runs a traffic soak
 test. Headless runs mix audio into a discarded buffer, so the mixer is exercised too.

@@ -27,6 +27,8 @@ function Mission:timer(seconds) self.deadline = engine.time() + seconds end
 function Mission:clear_timer() self.deadline = nil end
 function Mission:fail(reason) coroutine.yield("fail", reason) end
 function Mission:in_car() return G.vehicle ~= nil end
+function Mission:wanted(stars) require("lib.wanted").set(stars) end
+function Mission:stars() return require("lib.wanted").stars() end
 
 function Mission:spawn(t)
   local id = engine.spawn(t)
@@ -84,6 +86,11 @@ local function finish(m, passed, reason)
   end
   M.show_start_markers()
 end
+
+-- Getting busted ends whatever you were doing.
+engine.on("busted", function()
+  if G.mission then finish(G.mission, false, "BUSTED") end
+end)
 
 function M.start(def)
   M.hide_start_markers()

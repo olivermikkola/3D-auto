@@ -8,6 +8,7 @@ local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
 local traffic = require "systems.traffic"
+local police = require "systems.police"
 local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
@@ -21,12 +22,14 @@ engine.on("init", function()
 
   prefabs.build()
   sfx.build()
+  police.build()
   G.city = city.build()
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
   local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
   for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0) end
-  player.spawn(lx - 6, 1.2, lz - 15, 0)
+  G.spawn = {lx - 6, 1.2, lz - 15}
+  player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
   G.cam_yaw = 0.3
 
   traffic.start(18)
