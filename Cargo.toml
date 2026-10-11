@@ -15,4 +15,5 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
+# No panic = "abort": on Windows, Lua errors unwind through Rust frames
+# (MSVC longjmp is an SEH unwind), which abort-on-panic turns into a crash.
