@@ -19,6 +19,7 @@ local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
 require "lib.hud"
+require "systems.garage"
 
 engine.on("init", function()
   math.randomseed(1337)
@@ -47,12 +48,14 @@ engine.on("init", function()
   local hx, hz = city.block_center(3, 3)
   G.hospital = {hx + G.city.block / 2 - 1.5, 1.2, hz}
   mission.load_all("missions")
+  require("systems.garage").build()
   engine.grab_mouse(true)
 end)
 
 -- AUTO_TEST=1 plays the game by itself and quits (used by CI in headless mode).
 if os.getenv("AUTO_TEST") then require "test.autoplay" end
 if os.getenv("SOAK") then require "test.soak" end
+if os.getenv("GARAGE_TEST") then require "test.garage" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)

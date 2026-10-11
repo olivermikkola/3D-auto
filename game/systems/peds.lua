@@ -116,6 +116,8 @@ end
 
 -- Make every ped within `radius` of (x, z) run away from it.
 function Ped.scare(x, z, radius)
+  -- Earlier contact/kill handlers may already have despawned the source.
+  if not x or not z then return end
   for id, p in pairs(Ped.peds) do
     local px, _, pz = engine.pos(id)
     if U.dist2d(x, z, px, pz) < radius then

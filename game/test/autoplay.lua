@@ -232,6 +232,14 @@ after(0.5, function()
   local dx, dz = p.tx - x, p.tz - z
   local l = math.sqrt(dx * dx + dz * dz) + 1e-3
   engine.set_pos(G.player, x + dx / l * 6, 1.2, z + dz / l * 6)
+  -- Arrange an actual witness: new scenery changes entity ids and the
+  -- ambient population's iteration order, so proximity isn't guaranteed.
+  for id in pairs(peds.peds) do
+    if id ~= target then
+      engine.set_pos(id, x + 8, 1.2, z)
+      break
+    end
+  end
 end)
 until_(function()
   if not peds.peds[target] then return true end
@@ -320,8 +328,8 @@ after(0.5, function()
   check(math.abs(daynight.hour - 18.1) < 1e-6 and h0 ~= nil, "clock reads " .. daynight.clock())
 end)
 after(0.5, function()
-  print("AUTOPLAY PASSED")
-  engine.quit()
+  print("AUTOPLAY PASSED; running garage checks")
+  require "test.garage"
 end)
 
 engine.on("tick", function()

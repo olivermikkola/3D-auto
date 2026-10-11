@@ -165,6 +165,15 @@ changes**, which is the point of the kernel:
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
   Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
 
+## Repair garage
+
+The cyan repair bay in the starting parking lot gives mission and stunt cash a use.
+Drive under its canopy, stop upright, and press **R** to pay **$100** for a full repair.
+The cyan `R` on the minimap marks its location, and the bay shows the price or why
+service is unavailable. Repairs restore vehicle health and stop smoke/fire, including
+cancelling a burning car's pending explosion. Already healthy cars aren't charged;
+wanted drivers must lose the cops first. Repairs don't restore player health or wrecks.
+
 ## Combat and health
 
 About 700 lines of Lua across `lib/health.lua`, `lib/fx.lua`, `lib/pickups.lua`,
