@@ -21,15 +21,18 @@ local function building_mesh(style, floors)
   local h = floors * 3.5
   local parts
   if style == "glass" then
-    parts = {{mesh = "cube", size = {1, h, 1}, color = {0.35, 0.45, 0.55}}}
+    parts = {{mesh = "cube", size = {1, h, 1}, color = {0.35, 0.45, 0.55}, emissive = 0.08}}
     for f = 1, floors - 1 do
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5, 0}, size = {1.01, 0.3, 1.01}, color = {0.85, 0.87, 0.9}}
     end
   else
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do
-      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {1.01, 1.4, 0.94}, color = {0.25, 0.3, 0.38}}
-      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {0.94, 1.4, 1.01}, color = {0.25, 0.3, 0.38}}
+      -- About a third of the floors have their lights on at night.
+      local lit = (f * 7 + floors * 3) % 3 == 0
+      local glass = lit and {0.34, 0.31, 0.25} or {0.25, 0.3, 0.38}
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {1.01, 1.4, 0.94}, color = glass, emissive = lit and 1 or 0}
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {0.94, 1.4, 1.01}, color = glass, emissive = lit and 1 or 0}
     end
   end
   parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.3, 0}, size = {1.02, 0.6, 1.02}, color = {0.6, 0.6, 0.6}}

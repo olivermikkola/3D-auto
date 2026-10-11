@@ -32,6 +32,20 @@ impl Entity {
     }
 }
 
+/// A point or spot light. With `follow`, `pos` and `dir` are in that
+/// entity's local space and the light rides along (headlights, lamps).
+#[derive(Clone, Debug)]
+pub struct Light {
+    pub pos: Vec3,
+    pub dir: Vec3,
+    pub color: [f32; 3],
+    pub intensity: f32,
+    pub radius: f32,
+    /// Cosine of the spot half-angle; -1 makes it a point light.
+    pub cone: f32,
+    pub follow: Option<u32>,
+}
+
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
@@ -39,7 +53,16 @@ pub struct Camera {
 }
 
 pub struct Env {
+    /// Horizon color; also the fog color.
     pub sky: [f32; 3],
+    pub sky_top: [f32; 3],
+    pub sun_color: [f32; 3],
+    /// Hemisphere ambient: light from above and bounce from below.
+    pub ambient: [f32; 3],
+    pub ground: [f32; 3],
+    /// 0 by day, 1 at night: scales emissive surfaces and all lights.
+    pub glow: f32,
+    pub shadows: bool,
     pub fog_start: f32,
     pub fog_end: f32,
     pub sun: Vec3,
@@ -50,6 +73,7 @@ pub struct Engine {
     pub root: PathBuf,
     pub ents: Vec<Option<Entity>>,
     pub live: usize,
+    pub lights: Vec<Option<Light>>,
     warm: WarmCache,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
@@ -89,7 +113,20 @@ impl Engine {
             mesh_revs: Vec::new(),
             epoch: EPOCH.fetch_add(1, Ordering::Relaxed),
             camera: Camera { eye: v3(0., 10., -20.), target: Vec3::ZERO, fov: 70f32.to_radians() },
-            env: Env { sky: [0.55, 0.7, 0.85], fog_start: 80.0, fog_end: 260.0, sun: v3(0.4, 0.8, 0.3).norm(), gravity: -20.0 },
+            env: Env {
+                sky: [0.55, 0.7, 0.85],
+                sky_top: [0.32, 0.52, 0.85],
+                sun_color: [0.9, 0.84, 0.72],
+                ambient: [0.42, 0.45, 0.52],
+                ground: [0.12, 0.12, 0.12],
+                glow: 0.0,
+                shadows: true,
+                fog_start: 80.0,
+                fog_end: 260.0,
+                sun: v3(0.4, 0.8, 0.3).norm(),
+                gravity: -20.0,
+            },
+            lights: Vec::new(),
             keys: HashSet::new(),
             mouse_delta: (0.0, 0.0),
             mouse_grab: false,
@@ -142,6 +179,14 @@ impl Engine {
 
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Entity> {
         self.ents.get_mut(id as usize)?.as_mut()
+    }
+
+    /// World-space position and direction of a light, if its anchor exists.
+    pub fn light_world(&self, l: &Light) -> Option<(Vec3, Vec3)> {
+        match l.follow {
+            None => Some((l.pos, l.dir)),
+            Some(id) => self.get(id).map(|e| (e.pos + e.rot.rotate(l.pos), e.rot.rotate(l.dir))),
+        }
     }
 
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {

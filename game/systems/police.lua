@@ -17,7 +17,7 @@ function P.build()
   parts[#parts + 1] = {mesh = "cube", pos = {0, -0.2, 0.2}, size = {2.03, 0.3, 2.6}, color = {0.08, 0.08, 0.1}}
   parts[#parts + 1] = {mesh = "cube", pos = {0, 0.71, -0.3}, size = {1.2, 0.06, 0.35}, color = {0.2, 0.2, 0.2}}
   engine.mesh("cop", parts)
-  engine.mesh("beacon", {{mesh = "cube", size = {0.5, 0.16, 0.3}, color = {1, 1, 1}}})
+  engine.mesh("beacon", {{mesh = "cube", size = {0.5, 0.16, 0.3}, color = {1, 1, 1}, emissive = 1}})
 end
 
 function P.count()
@@ -52,6 +52,7 @@ local function spawn_cop()
   local x, z, yaw = spawn_point()
   if not x then return end
   local id = vehicle.spawn(x, z, yaw, nil, "cop", "cop")
+  vehicle.headlights(id)
   local c = {id = id, stuck = 0, reverse = 0}
   c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
   c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}

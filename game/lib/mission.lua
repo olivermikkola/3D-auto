@@ -39,7 +39,7 @@ end
 -- A glowing column; returns its entity id.
 function Mission:marker(x, z, color)
   color = color or {1, 0.85, 0.1}
-  local id = self:spawn{mesh = "cylinder", pos = {x, 2.5, z}, size = {5, 5, 5}, color = {color[1], color[2], color[3], 0.35}}
+  local id = self:spawn{mesh = "marker", pos = {x, 2.5, z}, scale = 5, color = {color[1], color[2], color[3], 0.35}}
   G.markers[#G.markers + 1] = {id = id, color = color}
   return id
 end
@@ -126,7 +126,7 @@ end)
 function M.show_start_markers()
   for _, def in ipairs(M.defs) do
     local c = def.passed and {0.3, 1, 0.3} or {1, 0.85, 0.1}
-    def.marker = engine.spawn{mesh = "cylinder", pos = {def.start[1], 1.5, def.start[2]}, size = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
+    def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5, def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
     G.markers[#G.markers + 1] = {id = def.marker, color = c}
   end
 end
@@ -141,6 +141,8 @@ end
 
 -- Every .lua file in the directory is a mission. Drop one in, press F5.
 function M.load_all(dir)
+  -- A unit cylinder that glows at night.
+  engine.mesh("marker", {{mesh = "cylinder", emissive = 1}})
   for _, f in ipairs(engine.files(dir)) do
     local name = f:match("^(.+)%.lua$")
     if name then

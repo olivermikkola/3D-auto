@@ -194,6 +194,27 @@ impl Mat4 {
         Mat4([f / aspect, 0., 0., 0., 0., f, 0., 0., 0., 0., (far + near) * nf, -1., 0., 0., 2. * far * near * nf, 0.])
     }
 
+    pub fn ortho(l: f32, r: f32, b: f32, t: f32, n: f32, f: f32) -> Mat4 {
+        Mat4([
+            2. / (r - l),
+            0.,
+            0.,
+            0.,
+            0.,
+            2. / (t - b),
+            0.,
+            0.,
+            0.,
+            0.,
+            -2. / (f - n),
+            0.,
+            -(r + l) / (r - l),
+            -(t + b) / (t - b),
+            -(f + n) / (f - n),
+            1.,
+        ])
+    }
+
     pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
         let f = (target - eye).norm();
         let mut s = f.cross(up).norm();

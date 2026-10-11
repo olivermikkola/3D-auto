@@ -12,6 +12,8 @@ pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub color: [f32; 3],
+    /// 0 = lit normally, 1 = glows at night (headlights, windows, bulbs).
+    pub emissive: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -22,10 +24,14 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn tri(&mut self, a: Vec3, b: Vec3, c: Vec3, col: Vec3) {
+        self.tri_e(a, b, c, col, 0.0);
+    }
+
+    pub fn tri_e(&mut self, a: Vec3, b: Vec3, c: Vec3, col: Vec3, emissive: f32) {
         let n = (b - a).cross(c - a).norm();
         let base = self.verts.len() as u32;
         for p in [a, b, c] {
-            self.verts.push(Vertex { pos: [p.x, p.y, p.z], normal: [n.x, n.y, n.z], color: [col.x, col.y, col.z] });
+            self.verts.push(Vertex { pos: [p.x, p.y, p.z], normal: [n.x, n.y, n.z], color: [col.x, col.y, col.z], emissive });
         }
         self.indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
@@ -56,7 +62,7 @@ impl Mesh {
     }
 
     /// Append `src` transformed by translate * rotY(yaw) * scale, tinted by `col`.
-    pub fn append(&mut self, src: &Mesh, offset: Vec3, yaw: f32, scale: Vec3, col: Vec3) {
+    pub fn append(&mut self, src: &Mesh, offset: Vec3, yaw: f32, scale: Vec3, col: Vec3, emissive: f32) {
         let base = self.verts.len() as u32;
         let inv = v3(1.0 / scale.x, 1.0 / scale.y, 1.0 / scale.z);
         for v in &src.verts {
@@ -66,6 +72,7 @@ impl Mesh {
                 pos: [p.x, p.y, p.z],
                 normal: [n.x, n.y, n.z],
                 color: [v.color[0] * col.x, v.color[1] * col.y, v.color[2] * col.z],
+                emissive: v.emissive.max(emissive),
             });
         }
         self.indices.extend(src.indices.iter().map(|i| i + base));
@@ -165,8 +172,8 @@ pub fn load_obj(path: &Path) -> Result<Mesh, String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut pos: Vec<Vec3> = Vec::new();
-    let mut mats: HashMap<String, Vec3> = HashMap::new();
-    let mut col = Vec3::ONE;
+    let mut mats: HashMap<String, (Vec3, f32)> = HashMap::new();
+    let (mut col, mut glow) = (Vec3::ONE, 0.0);
     let mut m = Mesh::default();
     let num = |s: Option<&str>| s.and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
     for (ln, line) in src.lines().enumerate() {
@@ -180,7 +187,7 @@ pub fn load_obj(path: &Path) -> Result<Mesh, String> {
                     parse_mtl(&txt, &mut mats);
                 }
             }
-            Some("usemtl") => col = it.next().and_then(|n| mats.get(n).copied()).unwrap_or(Vec3::ONE),
+            Some("usemtl") => (col, glow) = it.next().and_then(|n| mats.get(n).copied()).unwrap_or((Vec3::ONE, 0.0)),
             Some("f") => {
                 let idx: Result<Vec<Vec3>, String> = it
                     .map(|tok| {
@@ -191,7 +198,7 @@ pub fn load_obj(path: &Path) -> Result<Mesh, String> {
                     .collect();
                 let p = idx?;
                 for k in 1..p.len().saturating_sub(1) {
-                    m.tri(p[0], p[k], p[k + 1], col);
+                    m.tri_e(p[0], p[k], p[k + 1], col, glow);
                 }
             }
             _ => {}
@@ -200,18 +207,20 @@ pub fn load_obj(path: &Path) -> Result<Mesh, String> {
     Ok(m)
 }
 
-fn parse_mtl(txt: &str, out: &mut HashMap<String, Vec3>) {
+/// Kd is the color; Ke (emission) marks the material as glowing at night.
+fn parse_mtl(txt: &str, out: &mut HashMap<String, (Vec3, f32)>) {
     let mut cur = String::new();
     for line in txt.lines() {
         let mut it = line.split_whitespace();
-        match it.next() {
-            Some("newmtl") => cur = it.next().unwrap_or("").to_string(),
-            Some("Kd") => {
-                let c: Vec<f32> = it.filter_map(|s| s.parse().ok()).collect();
-                if c.len() >= 3 {
-                    out.insert(cur.clone(), v3(c[0], c[1], c[2]));
-                }
+        let key = it.next();
+        let c: Vec<f32> = it.filter_map(|s| s.parse().ok()).collect();
+        match key {
+            Some("newmtl") => {
+                cur = line.split_whitespace().nth(1).unwrap_or("").to_string();
+                out.insert(cur.clone(), (Vec3::ONE, 0.0));
             }
+            Some("Kd") if c.len() >= 3 => out.entry(cur.clone()).or_insert((Vec3::ONE, 0.0)).0 = v3(c[0], c[1], c[2]),
+            Some("Ke") if c.len() >= 3 => out.entry(cur.clone()).or_insert((Vec3::ONE, 0.0)).1 = c[0].max(c[1]).max(c[2]).min(1.0),
             _ => {}
         }
     }
@@ -232,6 +241,14 @@ mod tests {
     }
 
     #[test]
+    fn mtl_colors_and_emission() {
+        let mut m = HashMap::new();
+        parse_mtl("newmtl lamp\nKd 1 0.9 0.5\nKe 1 1 1\nnewmtl body\nKd 0.2 0.2 0.2\n", &mut m);
+        assert_eq!(m["lamp"], (v3(1.0, 0.9, 0.5), 1.0));
+        assert_eq!(m["body"], (v3(0.2, 0.2, 0.2), 0.0));
+    }
+
+    #[test]
     fn primitives_face_outward() {
         outward(&cube());
         outward(&cylinder(8));
@@ -242,7 +259,7 @@ mod tests {
     // The origin lies on the wedge's slope; shift so the convexity test applies.
     fn wedge_centered() -> Mesh {
         let mut w = Mesh::default();
-        w.append(&wedge(), v3(0.0, 0.25, -0.25), 0.0, Vec3::ONE, Vec3::ONE);
+        w.append(&wedge(), v3(0.0, 0.25, -0.25), 0.0, Vec3::ONE, Vec3::ONE, 0.0);
         w
     }
 }

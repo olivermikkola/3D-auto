@@ -301,7 +301,9 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             if let Some(axis) = p.get::<Option<String>>("axis")? {
                 src.reorient(&axis).map_err(mlua::Error::runtime)?;
             }
-            out.append(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, p.get::<Option<f32>>("yaw")?.unwrap_or(0.0), size, v3(c[0], c[1], c[2]));
+            let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
+            let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
+            out.append(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, yaw, size, v3(c[0], c[1], c[2]), glow);
         }
         let tris = out.tri_count();
         e.add_mesh(&name, out);
@@ -387,6 +389,74 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("playing", |e, _lua, id: u32| Ok(e.mixer.lock().unwrap().playing(id)));
     f!("volume", |e, _lua, v: f32| Ok(e.mixer.lock().unwrap().master = v));
 
+    // ---- lights -------------------------------------------------------------
+    fn apply_light(l: &mut crate::engine::Light, t: &Table) -> Result<()> {
+        l.pos = vec3(&t.get("pos")?, l.pos)?;
+        l.dir = vec3(&t.get("dir")?, l.dir)?.norm();
+        if let Value::Table(_) = t.get::<Value>("color")? {
+            let c = color(&t.get("color")?)?;
+            l.color = [c[0], c[1], c[2]];
+        }
+        l.intensity = t.get::<Option<f32>>("intensity")?.unwrap_or(l.intensity);
+        l.radius = t.get::<Option<f32>>("radius")?.unwrap_or(l.radius);
+        if let Some(deg) = t.get::<Option<f32>>("cone")? {
+            l.cone = if deg >= 180.0 { -1.0 } else { deg.to_radians().cos() };
+        }
+        if let Some(f) = t.get::<Option<u32>>("follow")? {
+            l.follow = Some(f);
+        }
+        Ok(())
+    }
+    f!("light", |e, _lua, t: Table| {
+        let mut l = crate::engine::Light {
+            pos: Vec3::ZERO,
+            dir: v3(0., -1., 0.),
+            color: [1.0, 0.9, 0.7],
+            intensity: 1.0,
+            radius: 12.0,
+            cone: -1.0,
+            follow: None,
+        };
+        apply_light(&mut l, &t)?;
+        e.lights.push(Some(l));
+        Ok(e.lights.len() as u32 - 1)
+    });
+    f!("set_light", |e, _lua, (id, t): (u32, Table)| {
+        if let Some(Some(l)) = e.lights.get_mut(id as usize) {
+            apply_light(l, &t)?;
+        }
+        Ok(())
+    });
+    f!("remove_light", |e, _lua, id: u32| {
+        if let Some(l) = e.lights.get_mut(id as usize) {
+            *l = None;
+        }
+        Ok(())
+    });
+    f!("lighting", |e, _lua, t: Table| {
+        let rgb = |k: &str, cur: [f32; 3]| -> Result<[f32; 3]> {
+            Ok(match t.get::<Value>(k)? {
+                Value::Table(_) => {
+                    let c = color(&t.get(k)?)?;
+                    [c[0], c[1], c[2]]
+                }
+                _ => cur,
+            })
+        };
+        let env = &mut e.env;
+        env.sky = rgb("sky", env.sky)?;
+        env.sky_top = rgb("sky_top", env.sky_top)?;
+        env.sun_color = rgb("sun_color", env.sun_color)?;
+        env.ambient = rgb("ambient", env.ambient)?;
+        env.ground = rgb("ground", env.ground)?;
+        if let Value::Table(_) = t.get::<Value>("sun")? {
+            env.sun = vec3(&t.get("sun")?, env.sun)?.norm();
+        }
+        env.glow = t.get::<Option<f32>>("glow")?.unwrap_or(env.glow).clamp(0.0, 1.0);
+        env.shadows = t.get::<Option<bool>>("shadows")?.unwrap_or(env.shadows);
+        Ok(())
+    });
+
     // ---- camera & environment ------------------------------------------
     f!("camera", |e, _lua, (ex, ey, ez, tx, ty, tz, fov): (f32, f32, f32, f32, f32, f32, Option<f32>)| {
         e.camera.eye = v3(ex, ey, ez);
@@ -433,6 +503,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let t = lua.create_table()?;
         t.set("entities", e.live)?;
         t.set("meshes", e.meshes.len())?;
+        t.set("lights", e.lights.iter().flatten().count())?;
         t.set("voices", e.mixer.lock().unwrap().voice_count())?;
         Ok(t)
     });

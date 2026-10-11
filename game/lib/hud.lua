@@ -56,6 +56,10 @@ engine.on("frame", function(dt)
   local w, h = engine.screen()
   shadow_text(string.format("$%d", G.cash), w - 20 - engine.text_width(string.format("$%d", G.cash), 28), 20, 28, 0.4, 0.9, 0.4)
 
+  -- Clock, under the cash.
+  local clock = require("lib.daynight").clock()
+  shadow_text(clock, w - 20 - engine.text_width(clock, 14), 92, 14, 0.85, 0.85, 0.85)
+
   -- Wanted stars; they blink while the cops can't see you.
   local stars = require("lib.wanted")
   if stars.stars() > 0 then
@@ -95,7 +99,7 @@ engine.on("frame", function(dt)
   minimap(w, h)
 
   if show_help then
-    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nF5 RELOAD SCRIPTS  F1 HIDE HELP  ESC FREE MOUSE"
+    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nN SKIP 3 HOURS  F5 RELOAD SCRIPTS  F1 HIDE HELP  ESC FREE MOUSE"
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 76, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
   end
