@@ -71,6 +71,9 @@ impl Body {
     }
 
     fn inv_inertia_world(&self, q: Quat, v: Vec3) -> Vec3 {
+        if self.inv_inertia == Vec3::ZERO {
+            return Vec3::ZERO; // static, kinematic or rotation-locked
+        }
         q.rotate(q.conj().rotate(v).mul(self.inv_inertia))
     }
 }
@@ -422,6 +425,13 @@ pub fn raycast(ents: &[Option<Entity>], o: Vec3, dir: Vec3, max: f32, ignore: Op
         let Some(e) = e else { continue };
         let Some(b) = &e.body else { continue };
         if b.sensor || Some(i as u32) == ignore {
+            continue;
+        }
+        // Bounding-sphere reject before the exact test; rejects nearly everything.
+        let oc = e.pos - o;
+        let (r, t) = (b.half.len(), oc.dot(dir));
+        let reach = best.as_ref().map_or(max, |h| h.dist);
+        if t + r < 0.0 || t - r > reach || oc.dot(oc) - t * t > r * r {
             continue;
         }
         let inv = e.rot.conj();

@@ -131,8 +131,16 @@ impl Quat {
     }
 
     /// Local axes in world space: (right-handed x, y, z).
+    /// (The columns of the rotation matrix, computed directly.)
     pub fn axes(self) -> [Vec3; 3] {
-        [self.rotate(v3(1., 0., 0.)), self.rotate(Vec3::UP), self.rotate(v3(0., 0., 1.))]
+        let Quat { x, y, z, w } = self;
+        let (xx, yy, zz) = (x * x, y * y, z * z);
+        let (xy, xz, yz, wx, wy, wz) = (x * y, x * z, y * z, w * x, w * y, w * z);
+        [
+            v3(1. - 2. * (yy + zz), 2. * (xy + wz), 2. * (xz - wy)),
+            v3(2. * (xy - wz), 1. - 2. * (xx + zz), 2. * (yz + wx)),
+            v3(2. * (xz + wy), 2. * (yz - wx), 1. - 2. * (xx + yy)),
+        ]
     }
 
     /// Advance by angular velocity `w` (world space, rad/s) over `dt`.
@@ -241,6 +249,12 @@ mod tests {
         let r = Quat::euler(yaw, -0.3, 0.0);
         assert!(r.rotate(v3(0., 0., 1.)).y > 0.2);
         assert!((r.yaw() - yaw).abs() < 1e-5);
+        // The direct matrix form agrees with rotating the basis vectors.
+        let q = Quat::euler(0.3, -0.7, 1.1);
+        let ax = q.axes();
+        for (a, b) in ax.iter().zip([v3(1., 0., 0.), Vec3::UP, v3(0., 0., 1.)]) {
+            assert!((*a - q.rotate(b)).len() < 1e-5);
+        }
         // Spinning at 1 rad/s about Y for 1s turns the heading by 1 rad.
         let mut q = Quat::IDENTITY;
         for _ in 0..1000 {

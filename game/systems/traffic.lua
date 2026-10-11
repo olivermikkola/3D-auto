@@ -85,7 +85,7 @@ local function update(id, c, dt, N)
       -- Queue behind cars going our way; ignore cross traffic unless it's in our face.
       local vehicle_ahead = tag == "car" or tag == "cop"
       local same_way = vehicle_ahead and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5
-      if tag == "player" or same_way or (vehicle_ahead and d < 3) then
+      if tag == "player" or tag == "ped" or same_way or (vehicle_ahead and d < 3) then
         want = d < 5 and 0 or want * (d - 5) / 7
       end
     end

@@ -28,19 +28,23 @@ function P.car_parts(c)
   return parts
 end
 
+-- Person collider is 0.7 x 1.8 x 0.7.
+function P.person(name, shirt, pants, skin, hair)
+  engine.mesh(name, {
+    {mesh = "cube", pos = {0.14, -0.5, 0}, size = {0.22, 0.8, 0.28}, color = pants},
+    {mesh = "cube", pos = {-0.14, -0.5, 0}, size = {0.22, 0.8, 0.28}, color = pants},
+    {mesh = "cube", pos = {0, 0.25, 0}, size = {0.62, 0.72, 0.36}, color = shirt},
+    {mesh = "cube", pos = {0.4, 0.2, 0}, size = {0.16, 0.65, 0.2}, color = skin},
+    {mesh = "cube", pos = {-0.4, 0.2, 0}, size = {0.16, 0.65, 0.2}, color = skin},
+    {mesh = "sphere", pos = {0, 0.78, 0}, size = 0.36, color = skin},
+    {mesh = "cube", pos = {0, 0.88, -0.03}, size = {0.38, 0.12, 0.38}, color = hair},
+  })
+end
+
 function P.build()
   for i, c in ipairs(P.car_colors) do engine.mesh("car" .. i, P.car_parts(c)) end
 
-  -- Person collider is 0.7 x 1.8 x 0.7.
-  engine.mesh("person", {
-    {mesh = "cube", pos = {0.14, -0.5, 0}, size = {0.22, 0.8, 0.28}, color = {0.2, 0.25, 0.45}},
-    {mesh = "cube", pos = {-0.14, -0.5, 0}, size = {0.22, 0.8, 0.28}, color = {0.2, 0.25, 0.45}},
-    {mesh = "cube", pos = {0, 0.25, 0}, size = {0.62, 0.72, 0.36}, color = {0.85, 0.85, 0.82}},
-    {mesh = "cube", pos = {0.4, 0.2, 0}, size = {0.16, 0.65, 0.2}, color = {0.85, 0.7, 0.55}},
-    {mesh = "cube", pos = {-0.4, 0.2, 0}, size = {0.16, 0.65, 0.2}, color = {0.85, 0.7, 0.55}},
-    {mesh = "sphere", pos = {0, 0.78, 0}, size = 0.36, color = {0.85, 0.7, 0.55}},
-    {mesh = "cube", pos = {0, 0.88, -0.03}, size = {0.38, 0.12, 0.38}, color = {0.15, 0.1, 0.05}},
-  })
+  P.person("person", {0.85, 0.85, 0.82}, {0.2, 0.25, 0.45}, {0.85, 0.7, 0.55}, {0.15, 0.1, 0.05})
 
   engine.mesh("tree", {
     {mesh = "cylinder", pos = {0, 1.0, 0}, size = {0.35, 2.0, 0.35}, color = {0.4, 0.27, 0.15}},
