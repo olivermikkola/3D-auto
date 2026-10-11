@@ -30,7 +30,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release
       - name: Smoke test
-        run: AUTO_TEST=1 ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} game --headless 9000
+        run: AUTO_TEST=1 ./target/release/auto game --headless 9000
       - name: Package
         run: |
           dir="auto-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"

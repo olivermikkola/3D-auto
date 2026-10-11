@@ -12,8 +12,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      EXE: ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,7 +23,7 @@ jobs:
       - run: cargo test --release
       - run: cargo build --release
       - name: Headless autoplay (scripted playthrough, mods, sandbox)
-        run: AUTO_TEST=1 $EXE game --headless 9000
+        run: AUTO_TEST=1 ./target/release/auto game --headless 9000
       - name: Soak (5 simulated minutes)
         if: runner.os == 'Linux'
-        run: SOAK=1 $EXE game --headless 18000
+        run: SOAK=1 ./target/release/auto game --headless 18000
