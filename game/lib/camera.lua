@@ -41,6 +41,7 @@ engine.on("frame", function(dt)
   local k = math.min(1, dt * 12)
   for i = 1, 3 do eye[i] = eye[i] + (want[i] - eye[i]) * k end
   engine.camera(eye[1], eye[2], eye[3], tx, ty, tz, G.vehicle and 75 or 68)
+  G.cam_eye, G.cam_target = {eye[1], eye[2], eye[3]}, {tx, ty, tz}
 end)
 
 return M

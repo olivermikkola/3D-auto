@@ -5,6 +5,7 @@ local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
 local prefabs = require "lib.prefabs"
+local H = require "lib.health"
 
 local Ped = {peds = {}, down = {}}
 local COUNT, WALK, RUN = 40, 1.4, 6.5
@@ -90,6 +91,7 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
     if dist >= min_d and dist <= max_d and not engine.nearest(x, 1, z, 1.5) then
       local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15, z}, size = {0.7, 1.8, 0.7},
                               body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
+      H.set(id, 30)
       local p = {id = id, i = i, j = j, k = n, dir = 1, speed = WALK * (0.8 + math.random() * 0.4), state = "walk", stuck = 0}
       if math.random() < 0.5 then p.dir, p.k = -1, k end
       set_target(p, corner(i, j, p.k))
@@ -190,8 +192,17 @@ engine.on("contact", function(a, b, speed)
   if (tag == "car" or tag == "cop") and speed > 4 then knock(ped, other, speed) end
 end)
 
+-- Shot, punched or blown up.
+engine.on("killed", function(id, by, dx, dy, dz)
+  if not Ped.peds[id] then return end
+  Ped.peds[id] = nil
+  local body = H.ragdoll(id, "ped" .. math.random(VARIANTS), dx, dy, dz, 5)
+  Ped.down[body] = engine.time() + 12
+  engine.emit("ped_down", body, by)
+end)
+
 engine.on("ped_down", function(_, by)
-  if by == G.vehicle then require("lib.wanted").heat_up(1) end
+  if by and (by == G.vehicle or by == G.player) then require("lib.wanted").heat_up(1) end
   local x, _, z = engine.pos(by)
   Ped.scare(x, z, 20)
 end)

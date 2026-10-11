@@ -44,6 +44,7 @@ varying vec3 v_world;
 varying float v_emissive;
 uniform mat4 light_vp;
 uniform vec4 tint;
+uniform vec4 extra; // x = entity glow
 uniform vec4 eye;
 uniform vec4 fog;
 uniform vec4 fog_color;
@@ -87,7 +88,7 @@ void main() {
         float spot = ldir[i].w < -0.5 ? 1.0 : smoothstep(ldir[i].w, ldir[i].w + 0.08, dot(-l, ldir[i].xyz));
         light += lcol[i].rgb * (lcol[i].w * att * att * spot * (0.25 + 0.75 * max(dot(n, l), 0.0)));
     }
-    float glow = v_emissive * params.x;
+    float glow = v_emissive * params.x + extra.x;
     vec3 col = base * light + base * glow * 1.8;
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
@@ -154,6 +155,7 @@ struct Uniforms {
     light_vp: [f32; 16],
     inv_scale2: [f32; 4],
     tint: [f32; 4],
+    extra: [f32; 4],
     eye: [f32; 4],
     fog: [f32; 4],
     fog_color: [f32; 4],
@@ -238,6 +240,7 @@ impl Renderer {
                 ("light_vp", Mat4, 1),
                 ("inv_scale2", Float4, 1),
                 ("tint", Float4, 1),
+                ("extra", Float4, 1),
                 ("eye", Float4, 1),
                 ("fog", Float4, 1),
                 ("fog_color", Float4, 1),
@@ -470,6 +473,7 @@ impl Renderer {
             light_vp: light_vp.0,
             inv_scale2: [1.0; 4],
             tint: [1.0; 4],
+            extra: [0.0; 4],
             eye: v4(cam.eye, 0.),
             fog: [env.fog_start, env.fog_end, 0.0, 0.0],
             fog_color: c4(env.sky, 1.),
@@ -514,6 +518,7 @@ impl Renderer {
                 let s = e.scale;
                 uni.inv_scale2 = [1.0 / (s.x * s.x), 1.0 / (s.y * s.y), 1.0 / (s.z * s.z), 0.0];
                 uni.tint = e.color;
+                uni.extra[0] = e.glow;
                 self.ctx.apply_bindings(&g.bind);
                 self.ctx.apply_uniforms(UniformsSource::table(&uni));
                 self.ctx.draw(0, g.count, 1);

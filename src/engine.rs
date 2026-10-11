@@ -24,11 +24,23 @@ pub struct Entity {
     pub body: Option<Body>,
     pub tag: String,
     pub visible: bool,
+    /// Self-illumination that ignores time of day (muzzle flashes, fire, pickups).
+    pub glow: f32,
 }
 
 impl Entity {
     pub fn new(pos: Vec3) -> Entity {
-        Entity { pos, rot: Quat::IDENTITY, scale: Vec3::ONE, mesh: None, color: [1.0; 4], body: None, tag: String::new(), visible: true }
+        Entity {
+            pos,
+            rot: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            mesh: None,
+            color: [1.0; 4],
+            body: None,
+            tag: String::new(),
+            visible: true,
+            glow: 0.0,
+        }
     }
 }
 

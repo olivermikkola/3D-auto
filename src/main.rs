@@ -26,11 +26,12 @@ struct Opts {
     headless: Option<u64>,
     screenshot: Option<String>,
     frames: Option<u64>,
+    ticks_per_frame: u32,
     size: (i32, i32),
 }
 
 fn parse_args() -> Result<Opts, String> {
-    let mut o = Opts { root: PathBuf::from("game"), headless: None, screenshot: None, frames: None, size: (1280, 720) };
+    let mut o = Opts { root: PathBuf::from("game"), headless: None, screenshot: None, frames: None, ticks_per_frame: 1, size: (1280, 720) };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut val = |name: &str| args.next().ok_or(format!("{name} needs a value"));
@@ -38,6 +39,7 @@ fn parse_args() -> Result<Opts, String> {
             "--headless" => o.headless = Some(val("--headless")?.parse().map_err(|_| "bad tick count")?),
             "--screenshot" => o.screenshot = Some(val("--screenshot")?),
             "--frames" => o.frames = Some(val("--frames")?.parse().map_err(|_| "bad frame count")?),
+            "--ticks-per-frame" => o.ticks_per_frame = val("--ticks-per-frame")?.parse().map_err(|_| "bad tick count")?,
             "--size" => {
                 let v = val("--size")?;
                 let (w, h) = v.split_once('x').ok_or("size is WxH")?;
@@ -48,7 +50,9 @@ fn parse_args() -> Result<Opts, String> {
                 std::process::exit(0);
             }
             "-h" | "--help" => {
-                println!("usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]");
+                println!(
+                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH]"
+                );
                 std::process::exit(0);
             }
             s if s.starts_with('-') => return Err(format!("unknown flag {s}")),
@@ -151,6 +155,7 @@ struct App {
     grabbed: bool,
     shot: Option<(String, u64)>,
     quit_after: Option<u64>,
+    ticks_per_frame: u32,
 }
 
 impl App {
@@ -187,7 +192,7 @@ impl EventHandler for App {
         }
         let Some(script) = &self.script else { return };
         // Fixed timestep; in screenshot mode advance exactly one tick per frame.
-        self.acc += if self.shot.is_some() || self.quit_after.is_some() { 1.0 / TICK_HZ } else { dt };
+        self.acc += if self.shot.is_some() || self.quit_after.is_some() { self.ticks_per_frame as f64 / TICK_HZ } else { dt };
         while self.acc >= 1.0 / TICK_HZ {
             self.acc -= 1.0 / TICK_HZ;
             tick(&self.eng, script);
@@ -378,7 +383,7 @@ fn main() {
         window_resizable: true,
         ..Default::default()
     };
-    let (root, shot, frames) = (o.root, o.screenshot, o.frames);
+    let (root, shot, frames, ticks_per_frame) = (o.root, o.screenshot, o.frames, o.ticks_per_frame.max(1));
     miniquad::start(conf, move || {
         let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
         let out = audio::start(mixer.clone());
@@ -399,6 +404,7 @@ fn main() {
             grabbed: false,
             quit_after: if shot.is_none() { frames } else { None },
             shot: shot.map(|p| (p, frames.unwrap_or(120))),
+            ticks_per_frame,
         })
     });
 }
