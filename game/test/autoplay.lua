@@ -210,8 +210,22 @@ until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 
   engine.set_pos(G.player, bx, 1.2, bz)
 end)
 until_(function() return wanted.stars() == 0 end, 10, "lost the cops by leaving the search circle unseen")
+-- ---- day and night ------------------------------------------------------------
 after(0.5, function()
   check(busts == 1, "no extra busts while escaping")
+  local daynight = require "lib.daynight"
+  local h0 = daynight.hour
+  daynight.set_hour(23)
+  check(daynight.glow == 1, "night: lights and windows on (glow = 1)")
+  local lamps = #engine.find("lamp")
+  check(engine.stats().lights >= lamps + 10, string.format("%d lights (lamps %d + headlights)", engine.stats().lights, lamps))
+  daynight.set_hour(12)
+  check(daynight.glow == 0, "noon: glow off")
+  daynight.set_hour(18.1)
+  check(daynight.glow > 0.2 and daynight.glow < 1, string.format("dusk blends (glow %.2f)", daynight.glow))
+  check(math.abs(daynight.hour - 18.1) < 1e-6 and h0 ~= nil, "clock reads " .. daynight.clock())
+end)
+after(0.5, function()
   print("AUTOPLAY PASSED")
   engine.quit()
 end)

@@ -10,6 +10,7 @@ local mission = require "lib.mission"
 local traffic = require "systems.traffic"
 local police = require "systems.police"
 local peds = require "systems.peds"
+local daynight = require "lib.daynight"
 local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
@@ -17,15 +18,15 @@ require "lib.hud"
 
 engine.on("init", function()
   math.randomseed(1337)
-  engine.sky(0.62, 0.74, 0.86)
   engine.fog(90, 320)
-  engine.sun(0.45, 0.8, 0.35)
 
   prefabs.build()
   sfx.build()
   police.build()
   peds.build()
   G.city = city.build()
+  daynight.light_lamps()
+  daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
   local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])

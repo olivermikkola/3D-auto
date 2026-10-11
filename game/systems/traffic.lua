@@ -55,6 +55,7 @@ function T.start(n)
     local c = {}
     local x, z, yaw = place(c, G.city.N, 0)
     c.id = vehicle.spawn(x, z, yaw)
+    vehicle.headlights(c.id)
     T.cars[c.id] = c
   end
 end

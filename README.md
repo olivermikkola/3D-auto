@@ -1,22 +1,22 @@
 # auto
 
-A minimal 3D sandbox kernel in Rust. One ~1 MB binary renders low-poly meshes, runs
-rigid-body physics, mixes sound, and forwards input. **The game is entirely Lua**: the binary emits events
+A minimal 3D sandbox kernel in Rust. One ~1 MB binary renders low-poly meshes with shadows
+and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **The game is entirely Lua**: the binary emits events
 into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
-ambient traffic, pedestrians, a wanted level with police pursuits, synthesized sound, a minimap,
-cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
+ambient traffic, pedestrians, a wanted level with police pursuits, a day/night cycle,
+synthesized sound, a minimap, cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
 
-![Driving downtown](docs/driving.png)
+![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
 ```
 cargo run --release              # runs ./game
 cargo run --release -- my_game   # any directory with a main.lua
 ```
 
-Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn ·
+Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · `N` skip 3 hours ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the mouse.
 
 ## Design
@@ -27,7 +27,7 @@ mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the
 | `src/mesh.rs` | ~250 | Flat-shaded unit primitives, OBJ+MTL loader, part baking. |
 | `src/physics.rs` | ~580 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses. |
 | `src/audio.rs` | ~510 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
-| `src/render.rs` | ~290 | miniquad/GL: lit + fogged opaque pass, sorted alpha pass, HUD quads. |
+| `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
 | `src/script.rs` | ~450 | The `engine` Lua table and the event bus. |
 | `src/main.rs` | ~380 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
 
@@ -89,8 +89,13 @@ engine.nearest(x,y,z, radius[, tag[, ignore]]) -> id, dist
 engine.raycast(ox,oy,oz, dx,dy,dz[, max[, ignore]]) -> id, dist, hx,hy,hz, nx,ny,nz
 
 -- meshes (builtin unit shapes: cube wedge cylinder sphere plane)
-engine.mesh(name, {{mesh="cube", pos=..., size=..., yaw=..., color=..., axis="x"}, ...})
-engine.load_obj(name, "assets/thing.obj")      -- usemtl/Kd become vertex colors
+engine.mesh(name, {{mesh="cube", pos=..., size=..., yaw=..., color=..., axis="x", emissive=0}, ...})
+engine.load_obj(name, "assets/thing.obj")      -- usemtl Kd = color, Ke = glows at night
+
+-- lighting (lights and emissive parts are scaled by glow: 0 by day, 1 at night)
+engine.lighting{sky={r,g,b}, sky_top=, sun={x,y,z}, sun_color=, ambient=, ground=, glow=0..1, shadows=true}
+id = engine.light{pos={x,y,z}, dir={x,y,z}, color=, intensity=1, radius=12, cone=180, follow=entity}
+engine.set_light(id, {...})  engine.remove_light(id)  -- cone = half-angle in degrees (180 = point)
 
 -- sound (mono, 44.1 kHz; voices with pos/follow are panned and attenuated from the camera)
 engine.synth(name, {wave="square"|"saw"|"sine"|"triangle"|"noise", freq=440, freq_end=,
@@ -102,7 +107,7 @@ engine.volume(master)
 
 -- world
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
-engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g)
+engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g)  -- shorthands
 
 -- input & HUD (pixels, origin top-left)
 engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.screen() -> w,h
@@ -111,6 +116,27 @@ engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engin
 -- misc
 engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.quit()
 ```
+
+## Lighting and day/night
+
+The renderer draws, per frame:
+
+- **Shadow map:** the sun's view of a 170 m box in front of the camera. Depth is packed into an
+  RGBA8 texture so it runs on any GL2/GLES2 driver, and the box is snapped to whole texels so
+  shadow edges don't shimmer.
+- **Sky:** a gradient with a sun or moon disc, and stars as it gets dark.
+- **Lit pass:** sun with 3×3 PCF shadows, hemisphere ambient, the 16 nearest point/spot lights,
+  emissive surfaces, and fog.
+
+All of it is driven from Lua. `lib/daynight.lua` (~60 lines) moves the sun, blends day, dusk
+and night palettes, and sets `glow`. Glow turns on emissive mesh parts (headlights, taillights,
+lamp bulbs, a third of the office floors) and scales every light. Street lamps and headlights
+are ordinary `engine.light`s that follow their entity, so the engine moves them; Lua never
+touches them per frame. A full day lasts 8 minutes. `HOUR=22 auto game` starts at night.
+
+| | |
+|---|---|
+| ![Noon](docs/noon.png) | ![Dusk](docs/dusk.png) |
 
 ## Wanted level and police
 

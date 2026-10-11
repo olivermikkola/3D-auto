@@ -15,10 +15,10 @@ function P.car_parts(c)
     {mesh = "cube", pos = {0, 0.42, -0.3}, size = {1.84, 0.42, 1.9}, color = glass},
     {mesh = "cube", pos = {0, 0.42, 0.82}, size = {1.6, 0.4, 0.06}, color = glass},
     {mesh = "cube", pos = {0, 0.42, -1.42}, size = {1.6, 0.4, 0.06}, color = glass},
-    {mesh = "cube", pos = {0.6, -0.05, 2.21}, size = {0.45, 0.18, 0.04}, color = {1, 0.95, 0.7}},
-    {mesh = "cube", pos = {-0.6, -0.05, 2.21}, size = {0.45, 0.18, 0.04}, color = {1, 0.95, 0.7}},
-    {mesh = "cube", pos = {0.65, -0.05, -2.21}, size = {0.4, 0.15, 0.04}, color = {0.9, 0.05, 0.05}},
-    {mesh = "cube", pos = {-0.65, -0.05, -2.21}, size = {0.4, 0.15, 0.04}, color = {0.9, 0.05, 0.05}},
+    {mesh = "cube", pos = {0.6, -0.05, 2.21}, size = {0.45, 0.18, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {-0.6, -0.05, 2.21}, size = {0.45, 0.18, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {0.65, -0.05, -2.21}, size = {0.4, 0.15, 0.04}, color = {0.9, 0.05, 0.05}, emissive = 1},
+    {mesh = "cube", pos = {-0.65, -0.05, -2.21}, size = {0.4, 0.15, 0.04}, color = {0.9, 0.05, 0.05}, emissive = 1},
     {mesh = "cube", pos = {0, -0.32, 2.22}, size = {1.9, 0.18, 0.08}, color = {0.2, 0.2, 0.2}},
   }
   for _, w in ipairs{{0.92, 1.4}, {-0.92, 1.4}, {0.92, -1.4}, {-0.92, -1.4}} do
@@ -55,7 +55,7 @@ function P.build()
   engine.mesh("lamp", {
     {mesh = "cylinder", pos = {0, 2.5, 0}, size = {0.15, 5.0, 0.15}, color = {0.25, 0.25, 0.27}},
     {mesh = "cube", pos = {0, 5.0, 0.6}, size = {0.15, 0.12, 1.3}, color = {0.25, 0.25, 0.27}},
-    {mesh = "cube", pos = {0, 4.92, 1.15}, size = {0.35, 0.1, 0.5}, color = {1.0, 0.95, 0.75}},
+    {mesh = "cube", pos = {0, 4.92, 1.15}, size = {0.35, 0.1, 0.5}, color = {1.0, 0.95, 0.75}, emissive = 1},
   })
 
   engine.mesh("crate", {

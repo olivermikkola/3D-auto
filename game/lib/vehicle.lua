@@ -11,9 +11,20 @@ M.tags = {car = true, cop = true}
 
 function M.spawn(x, z, yaw, color_index, mesh, tag)
   local n = color_index or math.random(8)
-  return engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75, z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
-                      body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = tag or "car"}
+  local id = engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75, z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
+                          body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = tag or "car"}
+  return id
 end
+
+-- Headlights: one spot riding on the car's nose (lights only show at night).
+-- Driven cars get them; parked ones stay dark until someone gets in.
+local lit = {}
+function M.headlights(id)
+  if lit[id] and engine.exists(id) then return end
+  lit[id] = engine.light{follow = id, pos = {0, -0.05, 2.3}, dir = {0, -0.12, 1}, cone = 30, radius = 30, intensity = 2.4, color = {1, 0.95, 0.8}}
+end
+
+engine.on("vehicle_enter", M.headlights)
 
 -- Forward speed (m/s) along the car's heading.
 function M.speed(id)
