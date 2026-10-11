@@ -1,18 +1,31 @@
 name: ci
 on: [push, pull_request]
+
 jobs:
+  # Build, lint and play the game headlessly on every platform we ship.
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXE: ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - run: cargo fmt --check
+      - if: runner.os == 'Linux'
+        run: cargo fmt --check
       - run: cargo clippy --release -- -D warnings
       - run: cargo test --release
       - run: cargo build --release
-      - name: Headless autoplay (scripted playthrough)
-        run: AUTO_TEST=1 ./target/release/auto game --headless 9000
-      - name: Traffic soak (5 simulated minutes)
-        run: SOAK=1 ./target/release/auto game --headless 18000
+      - name: Headless autoplay (scripted playthrough, mods, sandbox)
+        run: AUTO_TEST=1 $EXE game --headless 9000
+      - name: Soak (5 simulated minutes)
+        if: runner.os == 'Linux'
+        run: SOAK=1 $EXE game --headless 18000

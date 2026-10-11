@@ -1,0 +1,79 @@
+# Modding
+
+A mod is a folder in `game/mods/`. Its `init.lua` runs when the game starts, after
+`main.lua` has set things up, and again on every hot reload (save a file, or press F5).
+Two mods ship as examples:
+
+- `mods/taxi`: a side job with its own car model, sound effect and mission.
+- `mods/debug_tools`: an F3 overlay (FPS, entity and light counts, position) and an F4
+  crate tower.
+
+## A minimal mod
+
+```
+game/mods/hello/init.lua
+```
+```lua
+local U = require "lib.util"          -- the game's own modules are available
+
+engine.on("key", function(k, down)
+  if k == "g" and down then
+    local x, y, z = U.player_pos()
+    engine.spawn{mesh = "sphere", pos = {x, y + 5, z}, size = 1, color = {1, 0.3, 0.3},
+                 body = "dynamic", mass = 5, restitution = 0.6}
+  end
+end)
+```
+
+Press G in game. That's the whole mod.
+
+## What a mod can use
+
+- **The engine API:** everything in the README's "Lua API" section, plus `engine.mod_name`.
+  File paths (`load_obj`, `load_wav`, `files`, `dirs`) are relative to the mod's own folder,
+  so ship assets next to `init.lua`.
+- **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
+- **The game's modules:** `lib.state`, `lib.util`, `lib.city`, `lib.vehicle`, `lib.mission`,
+  `lib.wanted`, `lib.prefabs`, `systems.police`, `systems.peds`, `lib.daynight`, and so on.
+- **The event bus:** the engine's `init`, `tick`, `frame`, `key` and `contact` events, the
+  game's events (`vehicle_enter`, `carjacked`, `ped_down`, `wanted_changed`, `busted`,
+  `mission_passed`, `stunt`, `minimap`), and any you `engine.emit` yourself.
+- **Safe standard library:** `math`, `string`, `table`, `coroutine`, `utf8`, and `os.time`,
+  `os.clock` and `os.date`.
+
+## Adding a mission
+
+```lua
+require("lib.mission").register{
+  title = "Pizza Run", start = {city.node(2, 2)}, reward = 100,
+  run = function(m)
+    m:say("Get a car")
+    m:wait(function() return m:in_car() end)
+    local door = m:marker(city.node(6, 1))
+    m:timer(45)
+    m:wait(function() return m:near(door, 5) end)
+  end,
+}
+```
+
+The mission object has `say`, `wait`, `sleep`, `timer`, `clear_timer`, `marker`, `remove`,
+`spawn` (despawned when the mission ends), `near`, `in_car`, `fail`, `wanted` and `stars`.
+Returning from `run` passes the mission.
+
+## The sandbox
+
+Mods are other people's code, so they don't get the keys to your computer:
+
+- **Unavailable:** `os.execute`, `io`, `debug`, `package`, `dofile`/`loadfile`, and loading
+  bytecode.
+- **Paths:** anything given to the engine is relative to the game folder, and `..` or
+  absolute paths are refused.
+- **Isolation:** a mod's files only ever run inside its sandbox. Neither the game's `require`
+  nor another mod can load them as trusted code.
+- **Shared state:** mods share the game's Lua state, so they *can* break the game (replace a
+  game function, emit nonsense events). They just can't reach outside it.
+
+`game/test/sandbox_probe/` is a deliberately hostile mod that tries each of these escapes;
+CI fails if any of them works. If you find another one, please add it there.
+
+Errors in a mod are shown on screen with a traceback and don't stop other mods or the game.

@@ -1,0 +1,60 @@
+name: release
+# Push a tag like v0.1.0 to publish downloads for Linux, Windows and macOS.
+# Run it by hand (workflow_dispatch) to just build the archives as artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x86_64
+          - os: windows-latest
+            name: windows-x86_64
+          - os: macos-latest
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - name: Smoke test
+        run: AUTO_TEST=1 ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} game --headless 9000
+      - name: Package
+        run: |
+          dir="auto-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
+          mkdir "$dir"
+          cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md "$dir/"
+          cp -r game "$dir/game"
+          rm -rf "$dir/game/test"
+          if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
+          echo "ARCHIVE=$(ls auto-*.zip auto-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ARCHIVE }}
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

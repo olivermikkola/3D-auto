@@ -43,6 +43,10 @@ fn parse_args() -> Result<Opts, String> {
                 let (w, h) = v.split_once('x').ok_or("size is WxH")?;
                 o.size = (w.parse().map_err(|_| "bad width")?, h.parse().map_err(|_| "bad height")?);
             }
+            "-V" | "--version" => {
+                println!("auto {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
             "-h" | "--help" => {
                 println!("usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]");
                 std::process::exit(0);
@@ -51,11 +55,27 @@ fn parse_args() -> Result<Opts, String> {
             s => o.root = PathBuf::from(s),
         }
     }
+    // Released builds ship `game/` next to the executable; find it from anywhere.
+    if !o.root.join("main.lua").exists()
+        && o.root == Path::new("game")
+        && let Some(beside) = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("game")))
+    {
+        o.root = beside;
+    }
     if !o.root.join("main.lua").exists() {
         return Err(format!("no main.lua in {}", o.root.display()));
     }
-    o.root = o.root.canonicalize().map_err(|e| e.to_string())?;
+    o.root = plain_path(o.root.canonicalize().map_err(|e| e.to_string())?);
     Ok(o)
+}
+
+/// Windows canonicalizes to `\\?\C:\...`, which Lua's file functions don't
+/// understand; drop the prefix when it's a plain drive path.
+fn plain_path(p: PathBuf) -> PathBuf {
+    match p.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+        _ => p,
+    }
 }
 
 /// Newest modification time of any file under `dir`.

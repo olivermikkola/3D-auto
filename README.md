@@ -11,6 +11,12 @@ synthesized sound, a minimap, cash, and four missions. Edit any `.lua` file whil
 
 ![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
+**Download:** builds for Linux, Windows and macOS are on the
+[Releases](https://github.com/olivermikkola/3D-auto/releases) page. Unzip and run `auto`. On
+macOS the build isn't signed, so right-click the binary and choose Open the first time.
+
+**From source:**
+
 ```
 cargo run --release              # runs ./game
 cargo run --release -- my_game   # any directory with a main.lua
@@ -114,7 +120,8 @@ engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.scree
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
 
 -- misc
-engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.quit()
+engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.dirs(dir)  engine.quit()
+engine.load_mods(folder)  engine.load_mod(folder)        -- sandboxed; see MODDING.md
 ```
 
 ## Lighting and day/night
@@ -175,6 +182,12 @@ can't rotate. A tick is back under 1 ms with 40 pedestrians, 18 cars and the pol
 
 ![A car about to mount the curb; pedestrians on both sidewalks](docs/peds.png)
 
+## Mods
+
+Drop a folder into `game/mods/` and it loads automatically, sandboxed (no `os`, `io` or
+`debug`, and no file access outside its own folder). Two example mods ship with the game:
+a taxi side job and a debug overlay (F3). See **[MODDING.md](MODDING.md)**.
+
 ## Adding a mission
 
 ![The demolition mission: physics crates and OBJ traffic cones](docs/mission.png)
@@ -205,4 +218,11 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size W
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
-test. Headless runs mix audio into a discarded buffer, so the mixer is exercised too.
+test. Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+all of this on Linux, Windows and macOS.
+
+## Releasing
+
+Push a tag (`git tag v0.1.0 && git push origin v0.1.0`). The release workflow builds and smoke
+tests each platform, then publishes `auto-v0.1.0-{linux-x86_64,windows-x86_64,macos-arm64}`
+archives with the binary, `game/`, and the docs.
