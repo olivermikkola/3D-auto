@@ -1,0 +1,18 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo test --release
+      - run: cargo build --release
+      - name: Headless autoplay (scripted playthrough)
+        run: AUTO_TEST=1 ./target/release/auto game --headless 3000
+      - name: Traffic soak (5 simulated minutes)
+        run: SOAK=1 ./target/release/auto game --headless 18000

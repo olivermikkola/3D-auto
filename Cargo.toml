@@ -1,0 +1,15 @@
+[package]
+name = "auto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+miniquad = "0.4"
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
