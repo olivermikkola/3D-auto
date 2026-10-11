@@ -6,8 +6,8 @@ into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
-ambient traffic, pedestrians, a wanted level with police pursuits, a day/night cycle,
-synthesized sound, a minimap, cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
+ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
+pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
@@ -22,7 +22,7 @@ cargo run --release              # runs ./game
 cargo run --release -- my_game   # any directory with a main.lua
 ```
 
-Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · `N` skip 3 hours ·
+Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the mouse.
 
 ## Design
@@ -69,7 +69,8 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
 
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
-own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `wanted_changed`,
+own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `damaged`,
+`killed`, `gunshot`, `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`,
 `busted`, `mission_passed`, `stunt`, and `minimap` (other systems draw blips with it). A handler that
 throws is reported on screen with a traceback, and the other handlers still run.
 
@@ -91,6 +92,7 @@ engine.angvel(id) -> x,y,z  engine.set_angvel(id, x,y,z)  -- rad/s, world space
 engine.push(id, ix,iy,iz[, px,py,pz])                     -- impulse, optionally at a point
 engine.grounded(id)         engine.tag(id)                engine.find(tag) -> {ids}
 engine.set_color(id, r,g,b[,a])   engine.set_visible(id, bool)   engine.set_scale(id, s)
+engine.set_glow(id, g)          -- self-illumination regardless of time of day (spawn{glow=} too)
 engine.nearest(x,y,z, radius[, tag[, ignore]]) -> id, dist
 engine.raycast(ox,oy,oz, dx,dy,dz[, max[, ignore]]) -> id, dist, hx,hy,hz, nx,ny,nz
 
@@ -163,6 +165,30 @@ changes**, which is the point of the kernel:
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
   Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
 
+## Combat and health
+
+About 700 lines of Lua across `lib/health.lua`, `lib/fx.lua`, `lib/pickups.lua`,
+`systems/weapons.lua` and `systems/carnage.lua`. The engine only gained a per-entity `glow`, so
+muzzle flashes and fireballs light up in daylight too.
+
+- **Weapons:** fists, a pistol and an SMG. You aim with the camera and shots trace from the
+  player's chest, so walls and cars are real cover. Tracers, muzzle flashes and hit sparks are
+  plain entities.
+- **Health:** the player, pedestrians, officers and cars all have it. At zero you're
+  **WASTED**: you ragdoll, the screen fades, and you wake up at the hospital minus a bill; stars
+  clear and the mission fails. Health and ammo pickups glow around town.
+- **Cars:** they take damage from bullets and hard crashes into solid things (not ramp landings,
+  and not AI fender-benders). Badly damaged cars smoke, then burn, then explode. Explosions throw
+  bodies, kill people nearby, chain to other cars and leave a wreck.
+- **Police:** at 2+ stars, cops that catch you get out and shoot, with accuracy that falls off
+  with distance and your speed, and cover blocks their line of sight. Driving away makes them get
+  back in. Killing one adds a star. At 1 star they still only try to arrest you.
+- **Crimes:** gunfire with witnesses gets you a star, and killing someone adds one.
+
+| | |
+|---|---|
+| ![A shot-up car explodes in the lot](docs/explosion.png) | ![Three stars: officers out of their cars](docs/firefight.png) |
+
 ## Pedestrians
 
 `systems/peds.lua` (~270 lines, again no engine changes) keeps about 40 people near the player:
@@ -212,7 +238,7 @@ return {
 ## Command line
 
 ```
-auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]
+auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH]
 ```
 
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,

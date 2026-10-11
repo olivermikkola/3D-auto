@@ -11,6 +11,10 @@ local traffic = require "systems.traffic"
 local police = require "systems.police"
 local peds = require "systems.peds"
 local daynight = require "lib.daynight"
+local pickups = require "lib.pickups"
+require "lib.health"
+require "systems.carnage"
+require "systems.weapons"
 local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
@@ -23,6 +27,7 @@ engine.on("init", function()
   prefabs.build()
   sfx.build()
   police.build()
+  pickups.build()
   peds.build()
   G.city = city.build()
   daynight.light_lamps()
@@ -37,6 +42,10 @@ engine.on("init", function()
 
   traffic.start(18)
   peds.start()
+  pickups.start()
+  -- The hospital: where you wake up after getting wasted.
+  local hx, hz = city.block_center(3, 3)
+  G.hospital = {hx + G.city.block / 2 - 1.5, 1.2, hz}
   mission.load_all("missions")
   engine.grab_mouse(true)
 end)

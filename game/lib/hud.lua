@@ -15,6 +15,11 @@ local function centered(s, y, size, r, g, b)
   shadow_text(s, (w - engine.text_width(s, size)) / 2, y, size, r, g, b)
 end
 
+local function bar(x, y, bw, bh, frac, r, g, b)
+  engine.rect(x - 2, y - 2, bw + 4, bh + 4, 0, 0, 0, 0.6)
+  engine.rect(x, y, bw * math.max(0, math.min(1, frac)), bh, r, g, b, 0.95)
+end
+
 local function minimap(sw, sh)
   local L = G.city
   if not L then return end
@@ -71,9 +76,34 @@ engine.on("frame", function(dt)
     end
   end
 
+  local H = require "lib.health"
   if G.vehicle and engine.exists(G.vehicle) then
     local kmh = math.abs(require("lib.vehicle").speed(G.vehicle)) * 3.6
     shadow_text(string.format("%3d KM/H", math.floor(kmh)), 20, h - 50, 28, 1, 1, 1)
+    -- Car condition.
+    local hp = H.get(G.vehicle) or H.VEHICLE_HP
+    bar(20, h - 92, 160, 8, hp / H.VEHICLE_HP, 1, 0.6, 0.1)
+  end
+
+  -- Health.
+  bar(20, h - 76, 160, 10, H.player.hp / H.player.max, 0.9, 0.15, 0.15)
+
+  -- Weapon, ammo and crosshair (on foot).
+  local W = require "systems.weapons"
+  local def = W.defs[G.weapon]
+  local label = def.name .. (def.melee and "" or string.format("  %d", G.ammo[G.weapon] or 0))
+  shadow_text(label, w - 20 - engine.text_width(label, 16), h - 230, 16, 1, 1, 1)
+  if G.player and not def.melee then
+    local cx, cy = w / 2, h / 2
+    for _, r in ipairs{{-9, -1, 6, 2}, {3, -1, 6, 2}, {-1, -9, 2, 6}, {-1, 3, 2, 6}} do
+      engine.rect(cx + r[1], cy + r[2], r[3], r[4], 1, 1, 1, 0.85)
+    end
+  end
+
+  -- Wasted: fade to dark red.
+  if G.dead then
+    local t = math.min(1, (engine.time() - G.dead) / 2)
+    engine.rect(0, 0, w, h, 0.25, 0, 0, 0.6 * t)
   end
 
   local m = G.mission
@@ -99,8 +129,8 @@ engine.on("frame", function(dt)
   minimap(w, h)
 
   if show_help then
-    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nN SKIP 3 HOURS  F5 RELOAD SCRIPTS  F1 HIDE HELP  ESC FREE MOUSE"
-    engine.rect(14, 14, engine.text_width(lines, 12) + 16, 76, 0, 0, 0, 0.45)
+    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nN SKIP 3 HOURS  F5 RELOAD SCRIPTS  F1 HIDE HELP  ESC FREE MOUSE"
+    engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
   end
   local st = engine.stats()

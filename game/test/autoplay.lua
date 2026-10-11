@@ -187,10 +187,10 @@ end
 
 after(0.5, function()
   cash_before = G.cash
-  wanted.set(2)
-  check(wanted.stars() == 2, "wanted level set to 2 stars")
+  wanted.set(1)
+  check(wanted.stars() == 1, "wanted level set to 1 star")
 end)
-until_(function() return police.count() == 2 end, 6, "2 cops dispatched for 2 stars")
+until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star")
 until_(function() return nearest_cop() < 25 end, 40, "cops chased the player down the grid")
 until_(function() return busts == 1 end, 30, "busted when caught standing next to a cop", function()
   check(wanted.stars() == 0 and police.count() == 0, "busting clears the wanted level and the cops")
@@ -211,6 +211,84 @@ until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 
   engine.set_pos(G.player, bx, 1.2, bz)
 end)
 until_(function() return wanted.stars() == 0 end, 10, "lost the cops by leaving the search circle unseen")
+-- ---- combat -----------------------------------------------------------------
+local H = require "lib.health"
+local W = require "systems.weapons"
+local pickups = require "lib.pickups"
+local kills, booms, wastes, respawned = 0, 0, 0, false
+engine.on("ped_down", function(_, by) if by == G.player then kills = kills + 1 end end)
+engine.on("explosion", function() booms = booms + 1 end)
+engine.on("wasted", function() wastes = wastes + 1 end)
+engine.on("respawned", function() respawned = true end)
+local target, victim
+after(0.5, function()
+  wanted.clear()
+  police.clear()
+  G.weapon, G.ammo.pistol = "pistol", 40
+  -- Stand on the sidewalk in front of someone walking toward us.
+  target = nearest_ped("walk", true)
+  local x, _, z = engine.pos(target)
+  local p = peds.peds[target]
+  local dx, dz = p.tx - x, p.tz - z
+  local l = math.sqrt(dx * dx + dz * dz) + 1e-3
+  engine.set_pos(G.player, x + dx / l * 6, 1.2, z + dz / l * 6)
+end)
+until_(function()
+  if not peds.peds[target] then return true end
+  local x, y, z = engine.pos(target)
+  W.fire_at(x, y + 0.3, z)
+end, 5, "shooting a pedestrian kills them", function()
+  check(kills >= 1, "the kill is credited to the player")
+  check(wanted.stars() >= 1, "murder raises the wanted level (" .. wanted.stars() .. " stars)")
+  local fleeing = 0
+  for _, p in pairs(peds.peds) do if p.state == "flee" then fleeing = fleeing + 1 end end
+  check(fleeing >= 1, fleeing .. " bystanders ran from the gunfire")
+end)
+
+after(0.3, function()
+  wanted.clear()
+  police.clear()
+  -- A parked car in the lot, from nine meters away.
+  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  victim = engine.nearest(lx, 1, lz, 30, "car")
+  local x, _, z = engine.pos(victim)
+  engine.set_pos(G.player, x, 1.4, z - 9)
+  G.ammo.pistol = 60
+end)
+until_(function()
+  if not engine.exists(victim) then return true end
+  local x, y, z = engine.pos(victim)
+  W.fire_at(x, y, z)
+end, 15, "a shot-up car catches fire and explodes", function()
+  check(booms >= 1 and #engine.find("wreck") >= 1, "it leaves a burnt-out wreck")
+end)
+
+after(1.0, function()
+  H.heal_player(100)
+  wanted.clear()
+  police.clear()
+  wanted.set(3)
+end)
+until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, officers get out of their cars")
+until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
+  H.player.hp = 12 -- skip ahead
+end)
+until_(function() return wastes == 1 end, 30, "out of health: WASTED")
+until_(function() return respawned end, 8, "respawned outside the hospital", function()
+  check(H.player.hp == H.player.max, "health restored")
+  check(wanted.stars() == 0 and police.count() == 0 and police.officer_count() == 0, "wanted cleared, police gone")
+  local x, _, z = engine.pos(G.player)
+  check(math.abs(x - G.hospital[1]) < 3 and math.abs(z - G.hospital[3]) < 3, "standing at the hospital")
+end)
+
+after(0.5, function()
+  H.player.hp = 40
+  local spot
+  for _, s in ipairs(pickups.spots) do if s.kind == "health" and s.id then spot = spot or s end end
+  engine.set_pos(G.player, spot.x, 1.2, spot.z)
+end)
+until_(function() return H.player.hp > 40 end, 2, "a health pickup heals (" .. "40 -> 90)")
+
 -- ---- mods -------------------------------------------------------------------
 local sandbox
 engine.on("sandbox_report", function(r) sandbox = r end)

@@ -34,9 +34,13 @@ Press G in game. That's the whole mod.
   so ship assets next to `init.lua`.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
 - **The game's modules:** `lib.state`, `lib.util`, `lib.city`, `lib.vehicle`, `lib.mission`,
-  `lib.wanted`, `lib.prefabs`, `systems.police`, `systems.peds`, `lib.daynight`, and so on.
+  `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`, `hurt_player`, `ragdoll`), `lib.fx`
+  (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups` (`place`), `systems.weapons`
+  (`defs`, add your own), `systems.carnage` (`explode`), `systems.police`, `systems.peds`,
+  `lib.daynight`, and so on.
 - **The event bus:** the engine's `init`, `tick`, `frame`, `key` and `contact` events, the
-  game's events (`vehicle_enter`, `carjacked`, `ped_down`, `wanted_changed`, `busted`,
+  game's events (`vehicle_enter`, `carjacked`, `ped_down`, `damaged`, `killed`, `gunshot`,
+  `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`, `busted`,
   `mission_passed`, `stunt`, `minimap`), and any you `engine.emit` yourself.
 - **Safe standard library:** `math`, `string`, `table`, `coroutine`, `utf8`, and `os.time`,
   `os.clock` and `os.date`.

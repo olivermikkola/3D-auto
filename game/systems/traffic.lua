@@ -50,15 +50,30 @@ local function place(c, N, min_dist)
   end
 end
 
-function T.start(n)
-  for _ = 1, n do
-    local c = {}
-    local x, z, yaw = place(c, G.city.N, 0)
-    c.id = vehicle.spawn(x, z, yaw)
-    vehicle.headlights(c.id)
-    T.cars[c.id] = c
-  end
+local function add_car(min_dist)
+  local c = {}
+  local x, z, yaw = place(c, G.city.N, min_dist)
+  if not x then return end
+  c.id = vehicle.spawn(x, z, yaw)
+  vehicle.headlights(c.id)
+  T.cars[c.id] = c
 end
+
+function T.start(n)
+  T.target = n
+  for _ = 1, n do add_car(0) end
+end
+
+-- Wrecked, stolen or blown-up cars are replaced, out of sight.
+local topup = 0
+engine.on("tick", function(dt)
+  topup = topup - dt
+  if topup > 0 or not T.target then return end
+  topup = 2
+  local n = 0
+  for _ in pairs(T.cars) do n = n + 1 end
+  if n < T.target then add_car(90) end
+end)
 
 -- The player stole it: it's not traffic any more, and that's a crime.
 engine.on("vehicle_enter", function(id)

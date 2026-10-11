@@ -273,6 +273,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         ent.color = color(&t.get("color")?)?;
         ent.tag = t.get::<Option<String>>("tag")?.unwrap_or_default();
         ent.visible = t.get::<Option<bool>>("visible")?.unwrap_or(true);
+        ent.glow = t.get::<Option<f32>>("glow")?.unwrap_or(0.0);
         if let Some(kind) = t.get::<Option<String>>("body")? {
             let k = match kind.as_str() {
                 "static" => Kind::Static,
@@ -366,6 +367,12 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("set_color", |e, _lua, (id, r, g, b, a): (u32, f32, f32, f32, Option<f32>)| {
         if let Some(en) = e.get_mut(id) {
             en.color = [r, g, b, a.unwrap_or(1.0)];
+        }
+        Ok(())
+    });
+    f!("set_glow", |e, _lua, (id, g): (u32, f32)| {
+        if let Some(en) = e.get_mut(id) {
+            en.glow = g;
         }
         Ok(())
     });

@@ -87,9 +87,12 @@ local function finish(m, passed, reason)
   M.show_start_markers()
 end
 
--- Getting busted ends whatever you were doing.
+-- Getting busted or wasted ends whatever you were doing.
 engine.on("busted", function()
   if G.mission then finish(G.mission, false, "BUSTED") end
+end)
+engine.on("wasted", function()
+  if G.mission then finish(G.mission, false, "WASTED") end
 end)
 
 function M.start(def)

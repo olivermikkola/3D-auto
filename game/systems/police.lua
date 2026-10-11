@@ -1,14 +1,18 @@
 -- Police: cop cars that hunt the player while the wanted level is up.
 -- They path along the street grid toward the player, switch to direct
 -- pursuit once they can see you, and bust you if you stop next to one.
+-- From two stars up, officers get out and shoot when they catch you.
 -- Escape by leaving the search circle unseen. Pure Lua, no engine help.
 local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local wanted = require "lib.wanted"
+local H = require "lib.health"
+local FX = require "lib.fx"
 
-local P = {cops = {}}
+local P = {cops = {}, officers = {}}
+local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
 
@@ -18,6 +22,7 @@ function P.build()
   parts[#parts + 1] = {mesh = "cube", pos = {0, 0.71, -0.3}, size = {1.2, 0.06, 0.35}, color = {0.2, 0.2, 0.2}}
   engine.mesh("cop", parts)
   engine.mesh("beacon", {{mesh = "cube", size = {0.5, 0.16, 0.3}, color = {1, 1, 1}, emissive = 1}})
+  require("lib.prefabs").person("officer", {0.12, 0.16, 0.36}, {0.07, 0.08, 0.16}, {0.8, 0.62, 0.48}, {0.05, 0.05, 0.08})
 end
 
 function P.count()
@@ -74,6 +79,14 @@ function P.clear()
     remove(id)
     engine.despawn(id)
   end
+  for id in pairs(P.officers) do engine.despawn(id) end
+  P.officers = {}
+end
+
+function P.officer_count()
+  local n = 0
+  for _ in pairs(P.officers) do n = n + 1 end
+  return n
 end
 
 -- ---- perception ----------------------------------------------------------
@@ -142,6 +155,101 @@ local function drive_cop(c, dt)
   vehicle.drive(id, dt, input)
 end
 
+-- ---- officers on foot ----------------------------------------------------------
+-- From two stars up, cops that catch up with you get out and shoot.
+
+local function deploy(c)
+  c.deployed = true
+  local x, y, z = engine.pos(c.id)
+  local rx, _, rz = engine.right(c.id)
+  for _, side in ipairs{-1, 1} do
+    local id = engine.spawn{mesh = "officer", pos = {x + rx * side * 2.2, y + 0.4, z + rz * side * 2.2}, size = {0.7, 1.8, 0.7},
+                            body = "dynamic", mass = 85, friction = 0, step = 0.45, lock_rotation = true, tag = "officer"}
+    H.set(id, 60)
+    P.officers[id] = {car = c.id, cool = 0.6 + math.random()}
+  end
+end
+
+local function recall(c)
+  c.deployed = false
+  for id, o in pairs(P.officers) do
+    if o.car == c.id then
+      engine.despawn(id)
+      P.officers[id] = nil
+    end
+  end
+end
+
+local function officer_shoot(id, o)
+  local target = G.vehicle or G.player
+  local x, y, z = engine.pos(id)
+  local tx, ty, tz = engine.pos(target)
+  local d = U.dist2d(x, z, tx, tz)
+  local vx, _, vz = engine.vel(target)
+  local chance = U.clamp(0.65 - d / 55 - math.sqrt(vx * vx + vz * vz) * 0.02, 0.08, 0.65)
+  local hit = math.random() < chance
+  local ex, ey, ez = tx, ty + 0.3, tz
+  if not hit then ex, ey, ez = tx + (math.random() - 0.5) * 3, ty + math.random() * 1.5, tz + (math.random() - 0.5) * 3 end
+  local mx, my, mz = x, y + 0.5, z
+  FX.flash(mx + (tx - x) / d * 0.6, my, mz + (tz - z) / d * 0.6, 0.25)
+  FX.tracer(mx, my, mz, ex, ey, ez)
+  engine.play("pistol", {pos = {x, y, z}, volume = 0.8})
+  if hit then
+    if G.vehicle then H.damage(G.vehicle, 5, id) else H.hurt_player(7, id) end
+  end
+end
+
+local function run_officers(dt, px, pz)
+  local seen, close = false, false
+  for id, o in pairs(P.officers) do
+    if not engine.exists(id) then
+      P.officers[id] = nil
+    else
+      local x, _, z = engine.pos(id)
+      local d = U.dist2d(x, z, px, pz)
+      local sees = sees_player(id)
+      seen = seen or sees
+      local _, vy = engine.vel(id)
+      local dx, dz = px - x, pz - z
+      engine.set_yaw(id, math.atan(dx, dz))
+      if sees and d < SHOOT_RANGE and d > 6 then
+        -- Stand and shoot.
+        engine.set_vel(id, 0, vy, 0)
+        o.cool = o.cool - dt
+        if o.cool <= 0 then
+          o.cool = 0.9 + math.random() * 0.5
+          officer_shoot(id, o)
+        end
+      else
+        -- Close in (or come around the corner).
+        local s = d > 2 and 5 or 0
+        engine.set_vel(id, dx / (d + 1e-3) * s, vy, dz / (d + 1e-3) * s)
+      end
+      if d < 2.5 then close = true end
+    end
+  end
+  return seen, close
+end
+
+engine.on("killed", function(id, by, dx, dy, dz)
+  if not P.officers[id] then return end
+  P.officers[id] = nil
+  local body = H.ragdoll(id, "officer", dx, dy, dz, 5)
+  require("systems.peds").down[body] = engine.time() + 12
+  if by == G.player or by == G.vehicle then wanted.add(1) end
+end)
+
+-- Run them over and they go down too.
+engine.on("contact", function(a, b, speed)
+  local o, other
+  if P.officers[a] then o, other = a, b elseif P.officers[b] then o, other = b, a else return end
+  local tag = engine.tag(other)
+  if (tag == "car" or tag == "cop") and speed > 4 then
+    local vx, vy, vz = engine.vel(other)
+    H.damage(o, 200, other, vx, vy, vz)
+  end
+end)
+
 -- ---- the loop ------------------------------------------------------------
 
 local spawn_timer, busted_for = 0, 0
@@ -181,6 +289,13 @@ engine.on("tick", function(dt)
 
   if wanted.stars() == 0 then
     -- Off duty: idle, and leave once out of sight.
+    for id, o in pairs(P.officers) do
+      local x, _, z = engine.pos(id)
+      if not x or U.dist2d(x, z, px, pz) > 50 then
+        if x then engine.despawn(id) end
+        P.officers[id] = nil
+      end
+    end
     for id, c in pairs(P.cops) do
       local x, _, z = engine.pos(id)
       vehicle.drive(id, dt, {throttle = 0})
@@ -199,14 +314,24 @@ engine.on("tick", function(dt)
     spawn_cop()
   end
 
-  local seen, close = false, false
+  local seen, close = run_officers(dt, px, pz)
+  -- An officer may just have killed the player; nothing more to chase this tick.
+  if not (G.player or G.vehicle) then return end
+  local slow_player = G.player ~= nil or math.abs(vehicle.speed(G.vehicle)) < 4
   for id, c in pairs(P.cops) do
     c.siren = c.siren or engine.play("siren", {loop = true, follow = id})
     c.sees = sees_player(id)
     seen = seen or c.sees
-    drive_cop(c, dt)
     local x, _, z = engine.pos(id)
-    if U.dist2d(x, z, px, pz) < 7 and math.abs(vehicle.speed(id)) < 6 then close = true end
+    local d = U.dist2d(x, z, px, pz)
+    if c.deployed then
+      vehicle.drive(id, dt, {throttle = 0, handbrake = true})
+      if d > 60 or wanted.stars() < DEPLOY_STARS then recall(c) end
+    else
+      drive_cop(c, dt)
+      if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c) end
+      if d < 7 and math.abs(vehicle.speed(id)) < 6 then close = true end
+    end
   end
 
   -- Evasion: unseen and outside the search circle for a few seconds.
