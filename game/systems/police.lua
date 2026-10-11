@@ -315,6 +315,8 @@ engine.on("tick", function(dt)
   end
 
   local seen, close = run_officers(dt, px, pz)
+  -- An officer may just have killed the player; nothing more to chase this tick.
+  if not (G.player or G.vehicle) then return end
   local slow_player = G.player ~= nil or math.abs(vehicle.speed(G.vehicle)) < 4
   for id, c in pairs(P.cops) do
     c.siren = c.siren or engine.play("siren", {loop = true, follow = id})
