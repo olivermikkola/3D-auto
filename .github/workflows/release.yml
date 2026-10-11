@@ -35,7 +35,7 @@ jobs:
         run: |
           dir="auto-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
           mkdir "$dir"
-          cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md "$dir/"
+          cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md LICENSE "$dir/"
           cp -r game "$dir/game"
           rm -rf "$dir/game/test"
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
