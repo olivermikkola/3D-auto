@@ -1,5 +1,5 @@
 -- Entry point. The engine calls nothing but the event bus:
---   init, tick(dt), frame(dt), key(name, down), contact(a, b)
+--   init, tick(dt), frame(dt), key(name, down), contact(a, b, speed)
 -- Everything below is ordinary game code; change it and it hot-reloads.
 local G = require "lib.state"
 local prefabs = require "lib.prefabs"
@@ -8,6 +8,8 @@ local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
 local traffic = require "systems.traffic"
+local sfx = require "lib.sfx"
+require "lib.stunts"
 require "lib.camera"
 require "lib.hud"
 
@@ -18,6 +20,7 @@ engine.on("init", function()
   engine.sun(0.45, 0.8, 0.35)
 
   prefabs.build()
+  sfx.build()
   G.city = city.build()
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.

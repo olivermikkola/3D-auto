@@ -8,7 +8,7 @@ local WALK, RUN, JUMP = 5, 10, 8
 
 function M.spawn(x, y, z, yaw)
   G.player = engine.spawn{mesh = "person", pos = {x, y, z}, yaw = yaw or 0, size = {0.7, 1.8, 0.7},
-                          body = "dynamic", mass = 80, friction = 0, step = 0.45, tag = "player"}
+                          body = "dynamic", mass = 80, friction = 0, step = 0.45, lock_rotation = true, tag = "player"}
   return G.player
 end
 
@@ -47,6 +47,7 @@ function M.exit()
   local x, y, z = engine.pos(car)
   local yaw = engine.yaw(car)
   local rx, rz = U.right(yaw)
+  engine.set_angvel(car, 0, 0, 0)
   -- Try the left door, then the right one, then the roof.
   for _, side in ipairs{-1, 1} do
     local px, pz = x + rx * side * 2.0, z + rz * side * 2.0

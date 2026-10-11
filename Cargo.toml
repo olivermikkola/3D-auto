@@ -7,6 +7,9 @@ edition = "2024"
 miniquad = "0.4"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+cpal = "0.15"
+
 [profile.release]
 opt-level = 3
 lto = true

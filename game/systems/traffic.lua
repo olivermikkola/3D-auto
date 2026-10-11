@@ -86,18 +86,25 @@ local function update(id, c, dt, N)
     c.speed = c.speed or 0
     c.speed = c.speed + U.clamp(want - c.speed, -25 * dt, 6 * dt)
     local nyaw = yaw + U.clamp(turn, -1.6 * dt, 1.6 * dt) * U.clamp(c.speed / 4, 0, 1)
-    engine.set_yaw(id, nyaw)
-    local _, vy = engine.vel(id)
-    fx, fz = U.forward(nyaw)
-    engine.set_vel(id, fx * c.speed, vy, fz * c.speed)
+    -- Knocked over or airborne: let physics have it until the stuck timer resets it.
+    if vehicle.on_wheels(id) then
+      engine.set_yaw(id, nyaw)
+      local _, vy = engine.vel(id)
+      fx, fz = U.forward(nyaw)
+      engine.set_vel(id, fx * c.speed, vy, fz * c.speed)
+      local wx, _, wz = engine.angvel(id)
+      engine.set_angvel(id, wx * 0.8, 0, wz * 0.8)
+    end
 
     -- Wedged somewhere for too long: quietly respawn it out of sight.
-    c.stuck = math.abs(vehicle.speed(id)) < 1 and (c.stuck or 0) + dt or 0
+    c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
     if c.stuck > 6 then
       local nx, nz, nyaw2 = place(c, N, 90)
       if nx then
         engine.set_pos(id, nx, 0.8, nz)
-        engine.set_yaw(id, nyaw2)
+        engine.orient(id, nyaw2)
+        engine.set_vel(id, 0, 0, 0)
+        engine.set_angvel(id, 0, 0, 0)
       end
     end
 end

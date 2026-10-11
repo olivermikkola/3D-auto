@@ -1,5 +1,6 @@
--- Arcade car model. The script owns the steering and speed; the physics
--- engine just moves the box and stops it when it hits things.
+-- Arcade car model on top of rigid-body physics. With wheels on the ground
+-- the script owns speed and steering along the car's real 3D axes (so it
+-- climbs ramps); in the air or on its roof, physics alone flies it.
 local U = require "lib.util"
 
 local M = {}
@@ -13,19 +14,33 @@ end
 
 -- Forward speed (m/s) along the car's heading.
 function M.speed(id)
-  local vx, _, vz = engine.vel(id)
-  local fx, fz = U.forward(engine.yaw(id))
-  return vx * fx + vz * fz
+  local vx, vy, vz = engine.vel(id)
+  local fx, fy, fz = engine.forward(id)
+  return vx * fx + vy * fy + vz * fz
+end
+
+-- Wheels down: touching something below and not tipped past ~60 degrees.
+function M.on_wheels(id)
+  local _, uy = engine.up(id)
+  return engine.grounded(id) and uy > 0.5
+end
+
+function M.upside_down(id)
+  local _, uy = engine.up(id)
+  return uy < 0.2
 end
 
 -- input: throttle -1..1, steer -1..1 (positive = left), handbrake bool.
+-- Returns false when the car can't be driven (airborne or flipped).
 function M.drive(id, dt, input)
+  if not M.on_wheels(id) then return false end
   local vx, vy, vz = engine.vel(id)
-  local yaw = engine.yaw(id)
-  local fx, fz = U.forward(yaw)
-  local rx, rz = U.right(yaw)
-  local v = vx * fx + vz * fz
-  local side = vx * rx + vz * rz
+  local fx, fy, fz = engine.forward(id)
+  local rx, ry, rz = engine.right(id)
+  local ux, uy, uz = engine.up(id)
+  local v = vx * fx + vy * fy + vz * fz
+  local side = vx * rx + vy * ry + vz * rz
+  local lift = vx * ux + vy * uy + vz * uz
 
   local t = input.throttle or 0
   if t > 0 then
@@ -40,14 +55,17 @@ function M.drive(id, dt, input)
   local steer = input.steer or 0
   local rate = steer * U.clamp(math.abs(v) / 6, 0, 1) * (1.9 - math.min(math.abs(v), 30) / 30) * (v >= 0 and 1 or -1)
   if input.handbrake then rate = rate * 1.6 end
-  yaw = yaw + rate * dt
-  engine.set_yaw(id, yaw)
+
+  -- Spin about the car's own up axis; damp pitch and roll like suspension.
+  local wx, wy, wz = engine.angvel(id)
+  local wu = wx * ux + wy * uy + wz * uz
+  local k = 0.8
+  engine.set_angvel(id, (wx - ux * wu) * k + ux * rate, (wy - uy * wu) * k + uy * rate, (wz - uz * wu) * k + uz * rate)
 
   -- Kill sideways slip (tyre grip), less with the handbrake on for drifts.
   side = side * (input.handbrake and 0.92 or 0.6)
-  fx, fz = U.forward(yaw)
-  rx, rz = U.right(yaw)
-  engine.set_vel(id, fx * v + rx * side, vy, fz * v + rz * side)
+  engine.set_vel(id, fx * v + rx * side + ux * lift, fy * v + ry * side + uy * lift, fz * v + rz * side + uz * lift)
+  return true
 end
 
 return M

@@ -224,7 +224,7 @@ impl Renderer {
             self.ctx.apply_pipeline(pipe);
             for (_, e, mi) in list.iter() {
                 let g = self.meshes[*mi].as_ref().unwrap();
-                let model = Mat4::trs(e.pos, e.yaw, e.scale);
+                let model = Mat4::trs_q(e.pos, e.rot, e.scale);
                 uni.mvp = (vp * model).0;
                 uni.model = model.0;
                 let s = e.scale;
