@@ -3,6 +3,7 @@
 //!
 //!   auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]
 
+mod audio;
 mod engine;
 mod font;
 mod math;
@@ -17,6 +18,7 @@ use script::{Script, Shared};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 struct Opts {
@@ -72,7 +74,7 @@ fn tick(eng: &Shared, script: &Script) {
     script.emit(eng, "tick", dt);
     let contacts = eng.borrow_mut().step(dt);
     for c in contacts {
-        script.emit(eng, "contact", (c.a, c.b));
+        script.emit(eng, "contact", (c.a, c.b, c.speed));
     }
 }
 
@@ -90,7 +92,10 @@ fn load(eng: &Shared) -> Option<Script> {
 }
 
 fn run_headless(root: PathBuf, ticks: u64) {
-    let eng: Shared = Rc::new(RefCell::new(Engine::new(root)));
+    let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
+    let eng: Shared = Rc::new(RefCell::new(Engine::new(root, mixer.clone())));
+    // Mix (and discard) audio in step with ticks so headless runs exercise it too.
+    let mut sink = vec![0.0f32; 2 * (audio::RATE as f64 / TICK_HZ) as usize];
     let script = load(&eng);
     let t0 = std::time::Instant::now();
     if let Some(s) = &script {
@@ -98,6 +103,8 @@ fn run_headless(root: PathBuf, ticks: u64) {
             tick(&eng, s);
             eng.borrow_mut().hud.clear();
             s.emit(&eng, "frame", (1.0 / TICK_HZ) as f32);
+            eng.borrow_mut().update_audio();
+            mixer.lock().unwrap().mix(&mut sink);
             if eng.borrow().quit {
                 break;
             }
@@ -112,6 +119,7 @@ fn run_headless(root: PathBuf, ticks: u64) {
 
 struct App {
     eng: Shared,
+    _audio: Option<audio::Output>,
     script: Option<Script>,
     gfx: render::Renderer,
     acc: f64,
@@ -127,13 +135,13 @@ struct App {
 
 impl App {
     fn reload(&mut self) {
-        let (root, screen) = {
+        let (root, screen, mixer) = {
             let e = self.eng.borrow();
-            (e.root.clone(), e.screen)
+            (e.root.clone(), e.screen, e.mixer.clone())
         };
         // Drop the old Lua state before building the new one.
         self.script = None;
-        *self.eng.borrow_mut() = Engine::new(root);
+        *self.eng.borrow_mut() = Engine::new(root, mixer);
         self.eng.borrow_mut().screen = screen;
         self.script = load(&self.eng);
         self.acc = 0.0;
@@ -176,6 +184,7 @@ impl EventHandler for App {
         if let Some(s) = &self.script {
             s.emit(&self.eng, "frame", (1.0 / TICK_HZ) as f32);
         }
+        self.eng.borrow_mut().update_audio();
         {
             let mut e = self.eng.borrow_mut();
             e.mouse_delta = (0.0, 0.0);
@@ -351,11 +360,14 @@ fn main() {
     };
     let (root, shot, frames) = (o.root, o.screenshot, o.frames);
     miniquad::start(conf, move || {
-        let eng: Shared = Rc::new(RefCell::new(Engine::new(root.clone())));
+        let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
+        let out = audio::start(mixer.clone());
+        let eng: Shared = Rc::new(RefCell::new(Engine::new(root.clone(), mixer)));
         let script = load(&eng);
         let mtime = newest_mtime(&root);
         Box::new(App {
             eng,
+            _audio: out,
             script,
             gfx: render::Renderer::new(),
             acc: 0.0,

@@ -21,6 +21,7 @@ return {
         return m:near(cp, 6)
       end)
       m:remove(cp)
+      engine.emit("checkpoint", i)
       U.message(string.format("%d/%d", i, #route), 1)
     end
   end,

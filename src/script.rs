@@ -4,8 +4,9 @@
 
 #![allow(clippy::unit_arg, clippy::type_complexity)] // binding one-liners mirror the Lua signatures
 
+use crate::audio::{self, Synth, Wave};
 use crate::engine::{Engine, Entity};
-use crate::math::{Vec3, v3};
+use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
 use crate::physics::{self, Body, Kind};
 use mlua::{Function, IntoLuaMulti, Lua, LuaOptions, MultiValue, Result, StdLib, Table, Value};
@@ -141,7 +142,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("spawn", |e, _lua, t: Table| {
         let size = vec3(&t.get("size")?, Vec3::ONE)?;
         let mut ent = Entity::new(vec3(&t.get("pos")?, Vec3::ZERO)?);
-        ent.yaw = t.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
+        let angle = |k: &str| -> Result<f32> { Ok(t.get::<Option<f32>>(k)?.unwrap_or(0.0)) };
+        ent.rot = Quat::euler(angle("yaw")?, angle("pitch")?, angle("roll")?);
         let mesh: Option<String> = t.get("mesh")?;
         ent.mesh = match &mesh {
             Some(m) => Some(mesh_id(&e, m)?),
@@ -161,9 +163,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 o => return Err(mlua::Error::runtime(format!("unknown body kind '{o}'"))),
             };
             let mut b = Body::new(k, size * 0.5);
-            if let Some(m) = t.get::<Option<f32>>("mass")? {
-                b.inv_mass = if m > 0.0 && k == Kind::Dynamic { 1.0 / m } else { 0.0 };
-            }
+            b.lock_rotation = t.get::<Option<bool>>("lock_rotation")?.unwrap_or(false);
+            b.set_mass(t.get::<Option<f32>>("mass")?.unwrap_or(1.0));
             b.friction = t.get::<Option<f32>>("friction")?.unwrap_or(b.friction);
             b.restitution = t.get::<Option<f32>>("restitution")?.unwrap_or(b.restitution);
             b.gravity = t.get::<Option<f32>>("gravity")?.unwrap_or(b.gravity);
@@ -182,13 +183,37 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(())
     });
-    f!("yaw", |e, _lua, id: u32| Ok(e.get(id).map(|x| x.yaw)));
+    f!("yaw", |e, _lua, id: u32| Ok(e.get(id).map(|x| x.rot.yaw())));
+    // Turns about the world up axis, keeping any pitch and roll.
     f!("set_yaw", |e, _lua, (id, y): (u32, f32)| {
         if let Some(en) = e.get_mut(id) {
-            en.yaw = y;
+            en.rot = (Quat::axis_angle(Vec3::UP, y - en.rot.yaw()) * en.rot).norm();
         }
         Ok(())
     });
+    f!("orient", |e, _lua, (id, yaw, pitch, roll): (u32, f32, Option<f32>, Option<f32>)| {
+        if let Some(en) = e.get_mut(id) {
+            en.rot = Quat::euler(yaw, pitch.unwrap_or(0.0), roll.unwrap_or(0.0));
+        }
+        Ok(())
+    });
+    f!("rot", |e, lua, id: u32| multi(lua, e.get(id).map(|x| (x.rot.x, x.rot.y, x.rot.z, x.rot.w))));
+    f!("set_rot", |e, _lua, (id, x, y, z, w): (u32, f32, f32, f32, f32)| {
+        if let Some(en) = e.get_mut(id) {
+            en.rot = Quat { x, y, z, w }.norm();
+        }
+        Ok(())
+    });
+    // Local axes in world space. Forward is +Z, up is +Y, right is -X.
+    for (name, local) in [("forward", v3(0., 0., 1.)), ("up", Vec3::UP), ("right", v3(-1., 0., 0.))] {
+        let eng = eng.clone();
+        api.set(
+            name,
+            lua.create_function(move |lua, id: u32| {
+                multi(lua, eng.borrow().get(id).map(|x| x.rot.rotate(local)).map(|v| (v.x, v.y, v.z)))
+            })?,
+        )?;
+    }
     f!("vel", |e, lua, id: u32| multi(lua, e.get(id).and_then(|x| x.body.as_ref()).map(|b| (b.vel.x, b.vel.y, b.vel.z))));
     f!("set_vel", |e, _lua, (id, x, y, z): (u32, f32, f32, f32)| {
         if let Some(b) = e.get_mut(id).and_then(|en| en.body.as_mut()) {
@@ -196,10 +221,26 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(())
     });
-    f!("push", |e, _lua, (id, x, y, z): (u32, f32, f32, f32)| {
+    f!("angvel", |e, lua, id: u32| multi(lua, e.get(id).and_then(|x| x.body.as_ref()).map(|b| (b.ang_vel.x, b.ang_vel.y, b.ang_vel.z))));
+    f!("set_angvel", |e, _lua, (id, x, y, z): (u32, f32, f32, f32)| {
         if let Some(b) = e.get_mut(id).and_then(|en| en.body.as_mut()) {
-            let im = b.inv_mass;
-            b.vel += v3(x, y, z) * im;
+            b.ang_vel = v3(x, y, z);
+        }
+        Ok(())
+    });
+    // Impulse, optionally at a world point (which also adds spin).
+    f!("push", |e, _lua, (id, x, y, z, px, py, pz): (u32, f32, f32, f32, Option<f32>, Option<f32>, Option<f32>)| {
+        if let Some(en) = e.get_mut(id) {
+            let (pos, rot) = (en.pos, en.rot);
+            if let Some(b) = en.body.as_mut() {
+                let imp = v3(x, y, z);
+                b.vel += imp * b.inv_mass;
+                if let (Some(px), Some(py), Some(pz)) = (px, py, pz) {
+                    let r = v3(px, py, pz) - pos;
+                    let local = rot.conj().rotate(r.cross(imp)).mul(b.inv_inertia);
+                    b.ang_vel += rot.rotate(local);
+                }
+            }
         }
         Ok(())
     });
@@ -273,6 +314,79 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(tris)
     });
 
+    // ---- audio ----------------------------------------------------------
+    f!("synth", |e, _lua, (name, t): (String, Table)| {
+        let d = Synth::default();
+        let num = |k: &str, def: f32| -> Result<f32> { Ok(t.get::<Option<f32>>(k)?.unwrap_or(def)) };
+        let wave = match t.get::<Option<String>>("wave")?.as_deref().unwrap_or("square") {
+            "sine" => Wave::Sine,
+            "square" => Wave::Square,
+            "saw" => Wave::Saw,
+            "triangle" => Wave::Triangle,
+            "noise" => Wave::Noise,
+            o => return Err(mlua::Error::runtime(format!("unknown wave '{o}'"))),
+        };
+        let notes = match t.get::<Option<Table>>("notes")? {
+            Some(n) => n.sequence_values::<f32>().collect::<Result<Vec<_>>>()?,
+            None => Vec::new(),
+        };
+        let s = Synth {
+            wave,
+            freq: num("freq", d.freq)?,
+            freq_end: num("freq_end", 0.0)?,
+            dur: num("dur", d.dur)?,
+            attack: num("attack", d.attack)?,
+            release: num("release", d.release)?,
+            volume: num("volume", d.volume)?,
+            lowpass: num("lowpass", 1.0)?,
+            notes,
+            note_len: num("note_len", d.note_len)?,
+            looped: t.get::<Option<bool>>("loop")?.unwrap_or(false),
+        };
+        let buf = s.render();
+        let secs = buf.len() as f32 / audio::RATE as f32;
+        e.sounds.insert(name, std::sync::Arc::new(buf));
+        Ok(secs)
+    });
+    f!("load_wav", |e, _lua, (name, path): (String, String)| {
+        let full = e.root.join(&path);
+        let bytes = std::fs::read(&full).map_err(|err| mlua::Error::runtime(format!("{}: {err}", full.display())))?;
+        let buf = audio::load_wav(&bytes).map_err(|err| mlua::Error::runtime(format!("{path}: {err}")))?;
+        let secs = buf.len() as f32 / audio::RATE as f32;
+        e.sounds.insert(name, std::sync::Arc::new(buf));
+        Ok(secs)
+    });
+    f!("play", |e, _lua, (name, t): (String, Option<Table>)| {
+        let data = e.sounds.get(&name).cloned().ok_or_else(|| mlua::Error::runtime(format!("unknown sound '{name}'")))?;
+        let get = |k: &str| -> Result<Option<f32>> { t.as_ref().map_or(Ok(None), |t| t.get::<Option<f32>>(k)) };
+        let (volume, pitch) = (get("volume")?.unwrap_or(1.0), get("pitch")?.unwrap_or(1.0));
+        let looped = t.as_ref().map_or(Ok(None), |t| t.get::<Option<bool>>("loop"))?.unwrap_or(false);
+        let follow = t.as_ref().map_or(Ok(None), |t| t.get::<Option<u32>>("follow"))?;
+        let mut world = match t.as_ref().map_or(Ok(Value::Nil), |t| t.get::<Value>("pos"))? {
+            Value::Nil => None,
+            v => Some(vec3(&v, Vec3::ZERO)?),
+        };
+        if let Some(f) = follow {
+            world = e.get(f).map(|x| x.pos);
+        }
+        let id = e.mixer.lock().unwrap().play(data, volume, pitch, looped, world);
+        if let Some(f) = follow {
+            e.follow.push((id, f));
+        }
+        Ok(id)
+    });
+    f!("set_voice", |e, _lua, (id, t): (u32, Table)| {
+        let world = match t.get::<Value>("pos")? {
+            Value::Nil => None,
+            v => Some(vec3(&v, Vec3::ZERO)?),
+        };
+        e.mixer.lock().unwrap().set(id, t.get("volume")?, t.get("pitch")?, world);
+        Ok(())
+    });
+    f!("stop", |e, _lua, id: u32| Ok(e.mixer.lock().unwrap().stop(id)));
+    f!("playing", |e, _lua, id: u32| Ok(e.mixer.lock().unwrap().playing(id)));
+    f!("volume", |e, _lua, v: f32| Ok(e.mixer.lock().unwrap().master = v));
+
     // ---- camera & environment ------------------------------------------
     f!("camera", |e, _lua, (ex, ey, ez, tx, ty, tz, fov): (f32, f32, f32, f32, f32, f32, Option<f32>)| {
         e.camera.eye = v3(ex, ey, ez);
@@ -282,6 +396,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(())
     });
+    f!("camera_pos", |e, _lua, (): ()| Ok((e.camera.eye.x, e.camera.eye.y, e.camera.eye.z)));
     f!("sky", |e, _lua, (r, g, b): (f32, f32, f32)| Ok(e.env.sky = [r, g, b]));
     f!("fog", |e, _lua, (s, en): (f32, f32)| {
         e.env.fog_start = s;
@@ -318,6 +433,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let t = lua.create_table()?;
         t.set("entities", e.live)?;
         t.set("meshes", e.meshes.len())?;
+        t.set("voices", e.mixer.lock().unwrap().voice_count())?;
         Ok(t)
     });
     f!("files", |e, _lua, dir: String| {

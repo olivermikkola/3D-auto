@@ -89,15 +89,95 @@ impl SubAssign for Vec3 {
     }
 }
 
+/// Unit quaternion for orientation. (x, y, z) is the vector part.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Quat {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
+impl Quat {
+    pub const IDENTITY: Quat = Quat { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+
+    pub fn axis_angle(axis: Vec3, angle: f32) -> Quat {
+        let a = axis.norm();
+        let (s, c) = (angle * 0.5).sin_cos();
+        Quat { x: a.x * s, y: a.y * s, z: a.z * s, w: c }
+    }
+
+    /// Yaw about +Y, then pitch about local +X, then roll about local +Z.
+    pub fn euler(yaw: f32, pitch: f32, roll: f32) -> Quat {
+        Quat::axis_angle(Vec3::UP, yaw) * Quat::axis_angle(v3(1., 0., 0.), pitch) * Quat::axis_angle(v3(0., 0., 1.), roll)
+    }
+
+    pub fn conj(self) -> Quat {
+        Quat { x: -self.x, y: -self.y, z: -self.z, w: self.w }
+    }
+
+    pub fn norm(self) -> Quat {
+        let l = (self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w).sqrt();
+        if l < 1e-8 {
+            return Quat::IDENTITY;
+        }
+        Quat { x: self.x / l, y: self.y / l, z: self.z / l, w: self.w / l }
+    }
+
+    pub fn rotate(self, v: Vec3) -> Vec3 {
+        let u = v3(self.x, self.y, self.z);
+        let t = u.cross(v) * 2.0;
+        v + t * self.w + u.cross(t)
+    }
+
+    /// Local axes in world space: (right-handed x, y, z).
+    pub fn axes(self) -> [Vec3; 3] {
+        [self.rotate(v3(1., 0., 0.)), self.rotate(Vec3::UP), self.rotate(v3(0., 0., 1.))]
+    }
+
+    /// Advance by angular velocity `w` (world space, rad/s) over `dt`.
+    pub fn integrate(self, w: Vec3, dt: f32) -> Quat {
+        let dq = Quat { x: w.x, y: w.y, z: w.z, w: 0.0 } * self;
+        let h = 0.5 * dt;
+        Quat { x: self.x + dq.x * h, y: self.y + dq.y * h, z: self.z + dq.z * h, w: self.w + dq.w * h }.norm()
+    }
+
+    /// Heading: the angle of the local +Z axis projected onto the ground.
+    pub fn yaw(self) -> f32 {
+        let f = self.rotate(v3(0., 0., 1.));
+        f.x.atan2(f.z)
+    }
+}
+
+impl Mul for Quat {
+    type Output = Quat;
+    fn mul(self, o: Quat) -> Quat {
+        Quat {
+            w: self.w * o.w - self.x * o.x - self.y * o.y - self.z * o.z,
+            x: self.w * o.x + self.x * o.w + self.y * o.z - self.z * o.y,
+            y: self.w * o.y - self.x * o.z + self.y * o.w + self.z * o.x,
+            z: self.w * o.z + self.x * o.y - self.y * o.x + self.z * o.w,
+        }
+    }
+}
+
 /// Column-major: m[col*4 + row].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mat4(pub [f32; 16]);
 
 impl Mat4 {
     /// translate * rotY(yaw) * scale
+    #[cfg(test)]
     pub fn trs(t: Vec3, yaw: f32, s: Vec3) -> Mat4 {
         let (sn, c) = yaw.sin_cos();
         Mat4([c * s.x, 0., -sn * s.x, 0., 0., s.y, 0., 0., sn * s.z, 0., c * s.z, 0., t.x, t.y, t.z, 1.])
+    }
+
+    /// translate * rotate(q) * scale
+    pub fn trs_q(t: Vec3, q: Quat, s: Vec3) -> Mat4 {
+        let [ax, ay, az] = q.axes();
+        let (ax, ay, az) = (ax * s.x, ay * s.y, az * s.z);
+        Mat4([ax.x, ax.y, ax.z, 0., ay.x, ay.y, ay.z, 0., az.x, az.y, az.z, 0., t.x, t.y, t.z, 1.])
     }
 
     pub fn perspective(fovy: f32, aspect: f32, near: f32, far: f32) -> Mat4 {
@@ -144,5 +224,28 @@ mod tests {
         assert!((mx - p.rot_y(yaw)).len() < 1e-5);
         // yaw 90deg turns +Z forward into +X
         assert!((v3(0., 0., 1.).rot_y(std::f32::consts::FRAC_PI_2) - v3(1., 0., 0.)).len() < 1e-5);
+    }
+
+    #[test]
+    fn quat_matches_yaw_conventions() {
+        let yaw = 0.7;
+        let q = Quat::axis_angle(Vec3::UP, yaw);
+        let p = v3(1.0, 2.0, 3.0);
+        assert!((q.rotate(p) - p.rot_y(yaw)).len() < 1e-5);
+        assert!((q.yaw() - yaw).abs() < 1e-5);
+        assert_eq!(
+            Mat4::trs_q(v3(1., 2., 3.), q, v3(2., 3., 4.)).0.map(|x| (x * 1e4).round()),
+            Mat4::trs(v3(1., 2., 3.), yaw, v3(2., 3., 4.)).0.map(|x| (x * 1e4).round())
+        );
+        // Pitching up tilts the nose (+Z) upward, and keeps the heading.
+        let r = Quat::euler(yaw, -0.3, 0.0);
+        assert!(r.rotate(v3(0., 0., 1.)).y > 0.2);
+        assert!((r.yaw() - yaw).abs() < 1e-5);
+        // Spinning at 1 rad/s about Y for 1s turns the heading by 1 rad.
+        let mut q = Quat::IDENTITY;
+        for _ in 0..1000 {
+            q = q.integrate(Vec3::UP, 0.001);
+        }
+        assert!((q.yaw() - 1.0).abs() < 1e-3);
     }
 }

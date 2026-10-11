@@ -74,6 +74,28 @@ local function park(cx, cz)
   end
 end
 
+-- A ramp is just a tilted static box, buried at the low end so cars roll on.
+-- yaw is the direction it launches you; pitch is the incline in radians.
+function C.ramp(x, z, yaw, width, length, incline)
+  local t = 0.6
+  local y = CURB - 0.03 + length / 2 * math.sin(incline) - t / 2 * math.cos(incline)
+  local name = string.format("ramp_%g_%g", width, length)
+  local parts = {{mesh = "cube", size = {width, t, length}, color = {0.95, 0.55, 0.1}}}
+  for k = 1, math.floor(length / 2.5) do
+    parts[#parts + 1] = {mesh = "cube", pos = {0, 0.01, -length / 2 + k * 2.5 - 0.6}, size = {width + 0.02, t, 0.6}, color = {0.15, 0.15, 0.15}}
+  end
+  engine.mesh(name, parts)
+  return engine.spawn{mesh = name, pos = {x, y, z}, yaw = yaw, pitch = -incline, size = {width, t, length}, scale = 1,
+                      body = "static", tag = "ramp"}
+end
+
+function C.stunt_park(cx, cz)
+  engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.36, 0.36, 0.38}}
+  C.ramp(cx, cz - 4, 0, 7, 16, 0.3)              -- big kicker, launches north
+  C.ramp(cx - 11, cz + 8, math.pi, 4, 8, 0.38)    -- small ones on the sides
+  C.ramp(cx + 11, cz + 8, math.pi, 4, 8, 0.38)
+end
+
 function C.node(k, l) return O + k * P, O + l * P end
 function C.block_center(i, j) return O + (i + 0.5) * P, O + (j + 0.5) * P end
 
@@ -103,6 +125,7 @@ function C.build()
 
   L.plaza = {3, 4}
   L.lot = {4, 3}
+  L.stunt = {5, 4}
   for i = 0, N - 1 do
     for j = 0, N - 1 do
       local cx, cz = C.block_center(i, j)
@@ -110,6 +133,7 @@ function C.build()
       local kind
       if i == L.plaza[1] and j == L.plaza[2] then kind = "plaza"
       elseif i == L.lot[1] and j == L.lot[2] then kind = "lot"
+      elseif i == L.stunt[1] and j == L.stunt[2] then kind = "stunt"
       elseif math.random() < 0.12 then kind = "park"
       else kind = "buildings" end
       L.kinds[i .. "," .. j] = kind
@@ -117,6 +141,7 @@ function C.build()
       elseif kind == "park" then park(cx, cz)
       elseif kind == "plaza" then
         engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.75, 0.68, 0.55}}
+      elseif kind == "stunt" then C.stunt_park(cx, cz)
       elseif kind == "lot" then
         engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.3, 0.3, 0.32}}
         for s = -3, 3 do

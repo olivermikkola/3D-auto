@@ -1,12 +1,14 @@
 //! The engine's whole state. Lua owns the game; this owns the facts.
 
+use crate::audio::{Mixer, Samples};
 use crate::font;
-use crate::math::{Vec3, v3};
+use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{self, Body, Contact};
+use crate::physics::{self, Body, Contact, WarmCache};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 static EPOCH: AtomicU64 = AtomicU64::new(1);
 
@@ -15,7 +17,7 @@ pub const TICK_HZ: f64 = 60.0;
 #[derive(Clone, Debug)]
 pub struct Entity {
     pub pos: Vec3,
-    pub yaw: f32,
+    pub rot: Quat,
     pub scale: Vec3,
     pub mesh: Option<usize>,
     pub color: [f32; 4],
@@ -26,7 +28,7 @@ pub struct Entity {
 
 impl Entity {
     pub fn new(pos: Vec3) -> Entity {
-        Entity { pos, yaw: 0.0, scale: Vec3::ONE, mesh: None, color: [1.0; 4], body: None, tag: String::new(), visible: true }
+        Entity { pos, rot: Quat::IDENTITY, scale: Vec3::ONE, mesh: None, color: [1.0; 4], body: None, tag: String::new(), visible: true }
     }
 }
 
@@ -48,6 +50,7 @@ pub struct Engine {
     pub root: PathBuf,
     pub ents: Vec<Option<Entity>>,
     pub live: usize,
+    warm: WarmCache,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -66,14 +69,21 @@ pub struct Engine {
     pub tick: u64,
     pub quit: bool,
     pub error: Option<String>,
+    /// Shared with the audio thread; survives script reloads.
+    pub mixer: Arc<Mutex<Mixer>>,
+    pub sounds: HashMap<String, Samples>,
+    /// Voices that track an entity: (voice, entity).
+    pub follow: Vec<(u32, u32)>,
 }
 
 impl Engine {
-    pub fn new(root: PathBuf) -> Engine {
+    pub fn new(root: PathBuf, mixer: Arc<Mutex<Mixer>>) -> Engine {
+        mixer.lock().unwrap().stop_all();
         let mut e = Engine {
             root,
             ents: Vec::new(),
             live: 0,
+            warm: WarmCache::new(),
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -89,6 +99,9 @@ impl Engine {
             tick: 0,
             quit: false,
             error: None,
+            mixer,
+            sounds: HashMap::new(),
+            follow: Vec::new(),
         };
         for (name, m) in mesh::builtins() {
             e.add_mesh(name, m);
@@ -134,7 +147,25 @@ impl Engine {
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {
         self.tick += 1;
         self.time += dt as f64;
-        physics::step(&mut self.ents, dt, self.env.gravity)
+        physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm)
+    }
+
+    /// Put the listener at the camera and move entity-following voices.
+    pub fn update_audio(&mut self) {
+        let mut m = self.mixer.lock().unwrap();
+        m.listener = self.camera.eye;
+        m.listener_right = (self.camera.target - self.camera.eye).cross(Vec3::UP).norm();
+        let ents = &self.ents;
+        self.follow.retain(|&(voice, ent)| match ents.get(ent as usize).and_then(|e| e.as_ref()) {
+            Some(e) if m.playing(voice) => {
+                m.set(voice, None, None, Some(e.pos));
+                true
+            }
+            _ => {
+                m.stop(voice);
+                false
+            }
+        });
     }
 
     pub fn hud_rect(&mut self, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]) {
