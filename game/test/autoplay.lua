@@ -13,8 +13,12 @@ local function check(cond, what)
   print("  ok  " .. what)
 end
 
-local steps, t0, step_i = {}, nil, 1
-local function at(sec, fn) steps[#steps + 1] = {sec, fn} end
+-- Steps run in order: at(t) fires at an absolute time, after(d) a delay
+-- after the previous step, and until(pred) as soon as pred() holds (or fails).
+local steps, t0, step_i, step_start = {}, nil, 1, nil
+local function at(sec, fn) steps[#steps + 1] = {at = sec, fn = fn} end
+local function after(sec, fn) steps[#steps + 1] = {after = sec, fn = fn} end
+local function until_(pred, timeout, what, fn) steps[#steps + 1] = {pred = pred, timeout = timeout, what = what, fn = fn} end
 
 local yaw0, car
 at(0.5, function()
@@ -92,15 +96,73 @@ at(13.5, function()
     if math.sqrt(vx * vx + vz * vz) > 3 then moving = moving + 1 end
   end
   check(moving >= n // 2, string.format("traffic is flowing (%d of %d moving)", moving, n))
+end)
+
+-- ---- police -----------------------------------------------------------------
+local wanted = require "lib.wanted"
+local police = require "systems.police"
+local busts, cash_before = 0, 0
+engine.on("busted", function() busts = busts + 1 end)
+local function nearest_cop()
+  local px, _, pz = engine.pos(G.vehicle or G.player)
+  local best = math.huge
+  for id in pairs(police.cops) do
+    local x, _, z = engine.pos(id)
+    best = math.min(best, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+  end
+  return best
+end
+
+after(0.5, function()
+  cash_before = G.cash
+  wanted.set(2)
+  check(wanted.stars() == 2, "wanted level set to 2 stars")
+end)
+until_(function() return police.count() == 2 end, 6, "2 cops dispatched for 2 stars")
+until_(function() return nearest_cop() < 25 end, 40, "cops chased the player down the grid")
+until_(function() return busts == 1 end, 30, "busted when caught standing next to a cop", function()
+  check(wanted.stars() == 0 and police.count() == 0, "busting clears the wanted level and the cops")
+  check(G.cash < cash_before, string.format("fined $%d", cash_before - G.cash))
+end)
+
+after(1.0, function() wanted.set(1) end)
+until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star", function()
+  -- Teleport to whichever corner of town is farthest from the cop.
+  local cop = next(police.cops)
+  local cx, _, cz = engine.pos(cop)
+  local best, bx, bz = -1
+  for _, n in ipairs{{0, 0}, {0, G.city.N}, {G.city.N, 0}, {G.city.N, G.city.N}} do
+    local x, z = city.node(n[1], n[2])
+    local d = (x - cx) ^ 2 + (z - cz) ^ 2
+    if d > best then best, bx, bz = d, x, z end
+  end
+  engine.set_pos(G.player, bx, 1.2, bz)
+end)
+until_(function() return wanted.stars() == 0 end, 10, "lost the cops by leaving the search circle unseen")
+after(0.5, function()
+  check(busts == 1, "no extra busts while escaping")
   print("AUTOPLAY PASSED")
   engine.quit()
 end)
 
 engine.on("tick", function()
-  t0 = t0 or engine.time()
+  local now = engine.time()
+  t0 = t0 or now
+  step_start = step_start or now
   local s = steps[step_i]
-  if s and engine.time() - t0 >= s[1] then
-    step_i = step_i + 1
-    s[2]()
+  if not s then return end
+  local fire = (s.at and now - t0 >= s.at) or (s.after and now - step_start >= s.after)
+  if s.pred then
+    if s.pred() then
+      check(true, s.what)
+      fire = true
+    elseif now - step_start > s.timeout then
+      step_i = step_i + 1
+      check(false, s.what .. string.format(" (timed out after %ds)", s.timeout))
+    end
+  end
+  if fire then
+    step_i, step_start = step_i + 1, now
+    if s.fn then s.fn() end
   end
 end)

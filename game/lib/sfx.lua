@@ -16,6 +16,8 @@ function S.build()
   engine.synth("ding", {wave = "sine", freq = 1320, dur = 0.35, release = 0.3, volume = 0.5})
   engine.synth("pass", {wave = "square", notes = {523, 659, 784, 1046, 784, 1046}, note_len = 0.11, volume = 0.25, lowpass = 0.5})
   engine.synth("fail", {wave = "square", notes = {392, 330, 262, 196}, note_len = 0.18, volume = 0.25, lowpass = 0.5})
+  engine.synth("siren", {wave = "square", notes = {740, 990}, note_len = 0.45, attack = 0.02, release = 0.02, volume = 0.12, lowpass = 0.35})
+  engine.synth("star", {wave = "square", freq = 880, freq_end = 1320, dur = 0.12, volume = 0.2, lowpass = 0.6})
   engine.synth("stunt", {wave = "triangle", notes = {659, 784, 988, 1319}, note_len = 0.07, volume = 0.4})
 end
 
@@ -24,7 +26,9 @@ local voices = {}
 
 local function update_engines()
   local px, py, pz = engine.camera_pos()
-  for _, id in ipairs(engine.find("car")) do
+  local cars = engine.find("car")
+  for _, id in ipairs(engine.find("cop")) do cars[#cars + 1] = id end
+  for _, id in ipairs(cars) do
     local x, y, z = engine.pos(id)
     local near = (x - px) ^ 2 + (z - pz) ^ 2 < 70 ^ 2
     local v = voices[id]
@@ -70,5 +74,7 @@ engine.on("mission_passed", function() engine.play("pass") end)
 engine.on("mission_failed", function() engine.play("fail") end)
 engine.on("checkpoint", function() engine.play("ding") end)
 engine.on("stunt", function() engine.play("stunt") end)
+engine.on("wanted_changed", function(new, old) if new > old then engine.play("star", {volume = 0.7}) end end)
+engine.on("busted", function() engine.play("fail") end)
 
 return S

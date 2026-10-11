@@ -6,10 +6,13 @@ local U = require "lib.util"
 local M = {}
 M.MAX_SPEED, M.REVERSE, M.ACCEL, M.BRAKE, M.DRAG = 38, 10, 18, 30, 0.12
 
-function M.spawn(x, z, yaw, color_index)
+-- Anything tagged "car" or "cop" can be driven.
+M.tags = {car = true, cop = true}
+
+function M.spawn(x, z, yaw, color_index, mesh, tag)
   local n = color_index or math.random(8)
-  return engine.spawn{mesh = "car" .. n, pos = {x, 0.75, z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
-                      body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = "car"}
+  return engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75, z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
+                      body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = tag or "car"}
 end
 
 -- Forward speed (m/s) along the car's heading.

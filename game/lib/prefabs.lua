@@ -7,7 +7,7 @@ P.car_colors = {
 }
 
 -- Car collider is 2.0 x 1.4 x 4.4 centered on the origin; +Z is the front.
-local function car_parts(c)
+function P.car_parts(c)
   local glass, tire, rim = {0.15, 0.2, 0.28}, {0.08, 0.08, 0.08}, {0.6, 0.6, 0.6}
   local parts = {
     {mesh = "cube", pos = {0, -0.2, 0}, size = {2.0, 0.6, 4.4}, color = c},
@@ -29,7 +29,7 @@ local function car_parts(c)
 end
 
 function P.build()
-  for i, c in ipairs(P.car_colors) do engine.mesh("car" .. i, car_parts(c)) end
+  for i, c in ipairs(P.car_colors) do engine.mesh("car" .. i, P.car_parts(c)) end
 
   -- Person collider is 0.7 x 1.8 x 0.7.
   engine.mesh("person", {

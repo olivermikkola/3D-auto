@@ -59,8 +59,13 @@ function T.start(n)
   end
 end
 
--- The player stole it: it's not traffic any more.
-engine.on("vehicle_enter", function(id) T.cars[id] = nil end)
+-- The player stole it: it's not traffic any more, and that's a crime.
+engine.on("vehicle_enter", function(id)
+  if T.cars[id] then
+    T.cars[id] = nil
+    engine.emit("carjacked", id)
+  end
+end)
 
 local function update(id, c, dt, N)
     local x, y, z = engine.pos(id)
@@ -78,8 +83,9 @@ local function update(id, c, dt, N)
     if hit then
       local tag = engine.tag(hit)
       -- Queue behind cars going our way; ignore cross traffic unless it's in our face.
-      local same_way = tag == "car" and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5
-      if tag == "player" or same_way or (tag == "car" and d < 3) then
+      local vehicle_ahead = tag == "car" or tag == "cop"
+      local same_way = vehicle_ahead and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5
+      if tag == "player" or same_way or (vehicle_ahead and d < 3) then
         want = d < 5 and 0 or want * (d - 5) / 7
       end
     end
