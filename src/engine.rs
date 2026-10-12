@@ -26,6 +26,9 @@ pub struct Entity {
     pub visible: bool,
     /// Self-illumination that ignores time of day (muzzle flashes, fire, pickups).
     pub glow: f32,
+    /// Pose before the last tick, so frames between ticks can be drawn in
+    /// between. None until the first tick, and after a teleport.
+    pub prev: Option<(Vec3, Quat)>,
 }
 
 impl Entity {
@@ -40,6 +43,7 @@ impl Entity {
             tag: String::new(),
             visible: true,
             glow: 0.0,
+            prev: None,
         }
     }
 }
@@ -125,6 +129,46 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Remember every pose before a tick.
+    pub fn snapshot(&mut self) {
+        for e in self.ents.iter_mut().flatten() {
+            e.prev = Some((e.pos, e.rot));
+        }
+    }
+
+    /// Move everything `t` (0..1) of the way from its pose before the last
+    /// tick to its pose now, for drawing a frame that falls between ticks.
+    /// Returns what `unblend` puts back.
+    pub fn blend(&mut self, t: f32) -> Vec<(usize, [Vec3; 2], [Quat; 2])> {
+        let mut saved = Vec::new();
+        for (i, e) in self.ents.iter_mut().enumerate() {
+            let Some(e) = e else { continue };
+            let Some((p, r)) = e.prev else { continue };
+            if p == e.pos && r == e.rot {
+                continue;
+            }
+            let (bp, br) = (p + (e.pos - p) * t, r.nlerp(e.rot, t));
+            saved.push((i, [e.pos, bp], [e.rot, br]));
+            e.pos = bp;
+            e.rot = br;
+        }
+        saved
+    }
+
+    /// Back to the ticked poses, except where the frame moved something itself.
+    pub fn unblend(&mut self, saved: Vec<(usize, [Vec3; 2], [Quat; 2])>) {
+        for (i, [p, bp], [r, br]) in saved {
+            if let Some(Some(e)) = self.ents.get_mut(i) {
+                if e.pos == bp {
+                    e.pos = p;
+                }
+                if e.rot == br {
+                    e.rot = r;
+                }
+            }
+        }
+    }
+
     pub fn new(root: PathBuf, mixer: Arc<Mutex<Mixer>>) -> Engine {
         mixer.lock().unwrap().stop_all();
         let mut e = Engine {
@@ -301,5 +345,21 @@ mod tests {
         e.keys.insert("down".into()); // menu navigation while paused
         assert!(e.set_paused(true).is_empty(), "pausing again releases nothing");
         assert!(e.set_paused(false).is_empty() && !e.paused && !e.mixer.lock().unwrap().paused);
+    }
+
+    #[test]
+    fn frames_between_ticks_blend_and_put_back() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        let (a, b) = (e.spawn(Entity::new(Vec3::ZERO)), e.spawn(Entity::new(Vec3::ZERO)));
+        assert!(e.blend(0.5).is_empty(), "nothing to blend before the first tick");
+        e.snapshot();
+        e.get_mut(a).unwrap().pos = v3(10.0, 0.0, 0.0);
+        e.get_mut(b).unwrap().pos = v3(0.0, 0.0, 4.0);
+        let saved = e.blend(0.25);
+        assert_eq!(e.get(a).unwrap().pos, v3(2.5, 0.0, 0.0));
+        e.get_mut(b).unwrap().pos = v3(7.0, 0.0, 0.0); // the frame moved b itself
+        e.unblend(saved);
+        assert_eq!(e.get(a).unwrap().pos, v3(10.0, 0.0, 0.0), "back to the ticked pose");
+        assert_eq!(e.get(b).unwrap().pos, v3(7.0, 0.0, 0.0), "a move made during the frame stays");
     }
 }

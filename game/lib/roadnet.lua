@@ -716,6 +716,11 @@ function R.build(map, kit)
     end
   end
   L.buildings, L.trees = count, trees
+  -- Which pavements are clear, worked out now rather than when the first
+  -- pedestrian asks (half a second on a big town).
+  for ei, e in ipairs(NET.edges) do
+    if e.kind ~= "highway" then R.pavement(ei, 1); R.pavement(ei, -1) end
+  end
   return L
 end
 
@@ -750,8 +755,41 @@ function R.wet(x, z)
   return false
 end
 
--- Pavement for pedestrians: the edges they can walk (not highways).
-function R.walkable(e) return NET.edges[e].kind ~= "highway" end
+-- Is the pavement on side `side` of edge e (+1: right of its first bend
+-- toward its last) clear to walk? Not where it lies on another road's
+-- asphalt, as between the two halves of a divided road. The ends, where
+-- every pavement crosses the side street, don't count.
+function R.pavement(e, side)
+  NET.pave = NET.pave or {}
+  local key = e * 2 + (side > 0 and 1 or 0)
+  if NET.pave[key] == nil then
+    local E, ed = NET.edges, NET.edges[e]
+    local n, bad = 0, 0
+    for i = 2, #ed.pts do
+      local a, b = ed.pts[i - 1], ed.pts[i]
+      local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+      if len > 0 then
+        local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
+        local o = (ed.width / 2 + SIDEWALK / 2) * side
+        local from, to = i == 2 and math.min(15, len / 2) or 2, i == #ed.pts and math.max(len - 15, len / 2) or len - 2
+        for t = from, to, 4 do
+          local x, z = a[1] + fx * t + fz * o, a[2] + fz * t - fx * o
+          local oe, _, _, _, d = R.nearest_edge(x, z)
+          n = n + 1
+          if oe ~= e and d < E[oe].width / 2 then bad = bad + 1 end
+        end
+      end
+    end
+    NET.pave[key] = n == 0 or bad <= n * 0.2
+  end
+  return NET.pave[key]
+end
+
+-- Pavement for pedestrians: the edges they can walk (not highways, and with
+-- a clear pavement on at least one side).
+function R.walkable(e)
+  return NET.edges[e].kind ~= "highway" and (R.pavement(e, 1) or R.pavement(e, -1))
+end
 R.SIDEWALK = SIDEWALK
 
 return R

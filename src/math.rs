@@ -112,6 +112,19 @@ impl Quat {
         Quat::axis_angle(Vec3::UP, yaw) * Quat::axis_angle(v3(1., 0., 0.), pitch) * Quat::axis_angle(v3(0., 0., 1.), roll)
     }
 
+    /// Normalized blend toward `b` (the short way round): close enough to a
+    /// slerp for the small turns between two ticks.
+    pub fn nlerp(self, b: Quat, t: f32) -> Quat {
+        let s = if self.x * b.x + self.y * b.y + self.z * b.z + self.w * b.w < 0.0 { -1.0 } else { 1.0 };
+        Quat {
+            x: self.x + (b.x * s - self.x) * t,
+            y: self.y + (b.y * s - self.y) * t,
+            z: self.z + (b.z * s - self.z) * t,
+            w: self.w + (b.w * s - self.w) * t,
+        }
+        .norm()
+    }
+
     pub fn conj(self) -> Quat {
         Quat { x: -self.x, y: -self.y, z: -self.z, w: self.w }
     }

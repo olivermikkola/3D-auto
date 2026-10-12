@@ -81,6 +81,12 @@ local net = {}
 
 local function edges() return roadnet.net().edges end
 
+-- Keep ped p on a clear pavement of its road: its side of the road is
+-- hand * dir; switch hands if that side's pavement isn't walkable.
+local function clear_side(p)
+  if not roadnet.pavement(p.e, p.hand * p.dir) then p.hand = -p.hand end
+end
+
 -- Walkable roads meeting at each junction.
 local function at_junction(j)
   if not net.inc then
@@ -124,10 +130,13 @@ function net.next_leg(p)
     local opts = {}
     for _, ei in ipairs(at_junction(j)) do if ei ~= p.e then opts[#opts + 1] = ei end end
     local ne = opts[math.random(math.max(1, #opts))] or p.e
-    if math.random() < 0.25 then p.hand, p.crossing = -p.hand, true end
+    local hand = p.hand
+    if math.random() < 0.25 then p.hand = -p.hand end
     p.e = ne
     local ed = edges()[ne]
     if ed.a == j then p.dir, p.wp = 1, 1 else p.dir, p.wp = -1, #ed.pts end
+    clear_side(p)
+    p.crossing = p.hand ~= hand
   end
   set_target(p, net.point(p, p.wp))
 end
@@ -141,6 +150,7 @@ function net.rejoin(p, x, z)
   p.e, p.dir = e, math.random() < 0.5 and 1 or -1
   p.wp = p.dir > 0 and i or i - 1
   p.hand = (side > 0) == (p.dir > 0) and -1 or 1
+  clear_side(p)
   set_target(p, net.point(p, p.wp))
 end
 
@@ -168,6 +178,7 @@ function net.spawn(near_x, near_z, min_d, max_d)
     local i = math.random(2, #pts)
     do
       local p = {e = ei, dir = math.random() < 0.5 and 1 or -1, hand = math.random() < 0.5 and 1 or -1}
+      clear_side(p)
       p.wp = p.dir > 0 and i or i - 1
       local ax, az = net.point(p, p.dir > 0 and i - 1 or i)
       local bx, bz = net.point(p, p.wp)

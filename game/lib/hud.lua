@@ -85,6 +85,7 @@ end
 -- CELL-meter squares so a frame only looks at the ones in view.
 local RADAR, CELL = 400, 100
 local radar_base, radar_city
+local stamp = 0
 local function radar_rects(L)
   if radar_city == L then return radar_base end
   local cells = {}
@@ -104,7 +105,7 @@ local function radar_rects(L)
     local w = math.max(8, e.width * 1.2)
     for i = 2, #e.pts do
       local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
-      local n = math.max(1, math.floor(U.dist2d(ax, az, bx, bz) / 5))
+      local n = math.max(1, math.floor(U.dist2d(ax, az, bx, bz) / (w * 0.6)))
       for k = 0, n do
         local x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
         add(x - w / 2, z - w / 2, x + w / 2, z + w / 2, COLORS.road)
@@ -129,12 +130,15 @@ local function radar(sw, sh, L)
   end
   engine.rect(x0 - 4, y0 - 4, S + 8, S + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, S, S, COLORS.land[1], COLORS.land[2], COLORS.land[3], 0.9)
-  local cells, seen = radar_rects(L), {}
+  -- Rects span several cells; each is drawn once a frame, marked with the
+  -- frame's stamp (no table a frame for the garbage collector).
+  local cells = radar_rects(L)
+  stamp = stamp + 1
   for i = math.floor((px - RADAR) / CELL), math.floor((px + RADAR) / CELL) do
     for j = math.floor((pz - RADAR) / CELL), math.floor((pz + RADAR) / CELL) do
       for _, r in ipairs(cells[i * 100003 + j] or {}) do
-        if not seen[r] then
-          seen[r] = true
+        if r[6] ~= stamp then
+          r[6] = stamp
           local a = math.max(r[1], px - RADAR)
           local b = math.max(r[2], pz - RADAR)
           local c = math.min(r[3], px + RADAR)
