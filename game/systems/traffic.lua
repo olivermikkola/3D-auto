@@ -64,6 +64,20 @@ local function add_car(min_dist)
   T.cars[c.id] = c
 end
 
+-- Hand a car to the traffic AI. It should stand on an intersection; it
+-- drives off down one of its roads. Missions use it for cars they want to see wander town:
+-- `keep` ones are never recycled out of sight, and `cruise` sets their pace.
+function T.adopt(id, opts)
+  local x, _, z = engine.pos(id)
+  local k, l = city.nearest_node(x, z)
+  local ways = city.neighbors(k, l)
+  local c = {from = {k, l}, to = ways[math.random(math.max(1, #ways))] or {k, l}, speed = 0, stuck = 0}
+  c.keep, c.cruise = opts and opts.keep, opts and opts.cruise
+  vehicle.headlights(id)
+  T.cars[id] = c
+  return c
+end
+
 function T.start(n)
   T.target = n
   for _ = 1, n do add_car(0) end
@@ -99,7 +113,7 @@ local function update(id, c, dt)
     local turn = U.angle_diff(yaw, math.atan(tx - x, tz - z))
     local fx, fz = U.forward(yaw)
     -- Brake for anything solid ahead that isn't scenery.
-    local want = CRUISE * (1 - math.min(math.abs(turn), 1) * 0.6)
+    local want = (c.cruise or CRUISE) * (1 - math.min(math.abs(turn), 1) * 0.6)
     local hit, d = engine.raycast(x + fx * 2.3, y, z + fz * 2.3, fx, 0, fz, 12, id)
     if hit then
       local tag = engine.tag(hit)
@@ -126,7 +140,7 @@ local function update(id, c, dt)
     -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
-    if c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR) then
+    if not c.keep and (c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
       local nx, nz, nyaw2 = place(c, 90)
       if nx then
         engine.set_pos(id, nx, 0.8, nz)

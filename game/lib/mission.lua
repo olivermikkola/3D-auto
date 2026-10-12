@@ -2,6 +2,7 @@
 --
 --   return {
 --     title = "Name", start = {x, z}, reward = 500,
+--     after = "04_getaway",   -- optional: locked until that mission is passed
 --     run = function(m)
 --       m:say("Get in a car")
 --       m:wait(function() return m:in_car() end)
@@ -12,7 +13,9 @@
 --   }
 --
 -- Returning from run() passes the mission; m:fail(reason) or running out of
--- time fails it. Everything spawned through m:spawn/m:marker is cleaned up.
+-- time fails it. Everything spawned through m:spawn/m:marker is cleaned up,
+-- handlers added with m:on are removed, and m:defer(fn) runs fn at the end
+-- whether the mission passed or failed.
 local G = require "lib.state"
 local U = require "lib.util"
 
@@ -29,6 +32,13 @@ function Mission:fail(reason) coroutine.yield("fail", reason) end
 function Mission:in_car() return G.vehicle ~= nil end
 function Mission:wanted(stars) require("lib.wanted").set(stars) end
 function Mission:stars() return require("lib.wanted").stars() end
+
+function Mission:on(ev, fn)
+  engine.on(ev, fn)
+  self:defer(function() engine.off(ev, fn) end)
+end
+
+function Mission:defer(fn) self.cleanup[#self.cleanup + 1] = fn end
 
 function Mission:spawn(t)
   local id = engine.spawn(t)
@@ -72,12 +82,16 @@ end
 
 local function finish(m, passed, reason)
   for _, id in ipairs(m.owned) do engine.despawn(id) end
+  for _, fn in ipairs(m.cleanup) do fn() end
   G.mission = nil
   if passed then
     G.cash = G.cash + (m.def.reward or 0)
     m.def.passed = true
     U.message("MISSION PASSED", 4)
     if m.def.reward then U.message(string.format("+$%d", m.def.reward), 4) end
+    for _, def in ipairs(M.defs) do
+      if def.after == m.def.id and not def.passed then U.message("NEW MISSION: " .. def.title:upper(), 5) end
+    end
     engine.emit("mission_passed", m.def)
   else
     U.message("MISSION FAILED", 4)
@@ -97,7 +111,7 @@ end)
 
 function M.start(def)
   M.hide_start_markers()
-  local m = setmetatable({def = def, owned = {}}, Mission)
+  local m = setmetatable({def = def, owned = {}, cleanup = {}}, Mission)
   m.co = coroutine.create(function() def.run(m) return "pass" end)
   G.mission = m
   U.message(def.title:upper(), 3)
@@ -126,12 +140,19 @@ engine.on("tick", function()
   prune_markers()
 end)
 
+-- A mission with `after` waits for that one to be passed.
+function M.unlocked(def)
+  return def.after == nil or (G.passed or {})[def.after] == true
+end
+
 function M.show_start_markers()
   M.hide_start_markers()
   for _, def in ipairs(M.defs) do
-    local c = def.passed and {0.3, 1, 0.3} or {1, 0.85, 0.1}
-    def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5, def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
-    G.markers[#G.markers + 1] = {id = def.marker, color = c}
+    if M.unlocked(def) then
+      local c = def.passed and {0.3, 1, 0.3} or {1, 0.85, 0.1}
+      def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5, def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
+      G.markers[#G.markers + 1] = {id = def.marker, color = c}
+    end
   end
 end
 
