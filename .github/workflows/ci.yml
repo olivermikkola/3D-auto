@@ -32,6 +32,9 @@ jobs:
       - name: Headless tests (all seeds, both maps)
         if: runner.os != 'macOS'
         run: python tools/headless_tests.py --output headless-results ${{ runner.os == 'Linux' && '--soak' || '' }}
+      - name: Headless tests (the starter map people copy for their own city)
+        if: runner.os == 'Linux'
+        run: python tools/headless_tests.py --output headless-results/starter --maps starter --seeds 1337
       - name: Headless tests (default seed, both maps)
         if: runner.os == 'macOS'
         run: python tools/headless_tests.py --output headless-results --seeds 1337

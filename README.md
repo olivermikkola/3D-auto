@@ -248,6 +248,24 @@ city test on both maps.
 
 ![Harbor Town: the docks on the bay, downtown, the TV tower](docs/harbor.png)
 
+### Make your own city
+
+`game/maps/starter.lua` is the smallest map that runs the whole game (every mission, the shops,
+traffic, police), with each field explained. It's MIT licensed, so start from it:
+
+1. Copy it to `game/maps/<yourtown>.lua` and change `name`.
+2. Play it with `MAP=<yourtown> auto game`. A place on an intersection without a road, or a
+   landmark in the water, stops the game with an error naming it.
+3. Reshape it: the grid size, where the land ends, districts, the skyline, and the named places
+   missions use. Leave a place out and the missions that need it simply aren't offered.
+4. Check it like CI does: `MAP=<yourtown> CITY_TEST=1 auto game --headless 2400` and
+   `MAP=<yourtown> MISSION_TEST=1 auto game --headless 6000`, or all of it with
+   `python tools/headless_tests.py --output results --maps <yourtown> --seeds 1337`.
+
+To ship your city as its own game, copy the `game/` folder (say to `raisio/`), change the default
+map in its `main.lua` (`city.use(os.getenv("MAP") or "manhattan")`), and run `auto raisio`. The
+engine runs whatever game folder it's given. Give it your own name too (see [License](#license)).
+
 The street network has gaps (the river, the park), so `lib.city` exposes it as a graph:
 `city.road(k, l, dk, dl)`, `city.neighbors`, `city.nodes`, `city.segments`, `city.nearest_node`,
 `city.random_node(x, z, min, max)` and `city.block_of(x, z)`. Traffic, police and pedestrians walk
@@ -489,4 +507,16 @@ archives with the binary, `game/`, and the docs.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+The engine and the game's code are free to use, change and sell. The two cities can be shared and
+remixed, but not sold.
+
+- **MIT** ([LICENSE](LICENSE)): everything except the two city maps. That's the engine (`src/`),
+  the game systems and missions (`game/lib`, `game/systems`, `game/missions`), the mods, tools,
+  tests and docs, and `game/maps/starter.lua`.
+- **CC BY-NC 4.0** ([game/maps/LICENSE](game/maps/LICENSE)): `game/maps/manhattan.lua` and
+  `game/maps/harbor.lua`. Share and adapt them with credit, but not commercially. Versions up to
+  and including v0.2.0 were released entirely under MIT, and those copies stay MIT.
+
+**The name.** Neither license covers the name "3D-auto". Fork it, build your own town on it, and
+release that, but under a name of your own, so nobody mistakes your game for this one (or this one
+for yours). "Built with the 3D-auto engine" is fine.
