@@ -248,9 +248,40 @@ port with a bay, docks along it, one modest downtown and no big park.
 Nothing outside the map file uses grid positions. Missions, the gun shop, pickups, the hospital
 and the taxi mod ask for places by name (`city.place("bank")`, `city.route("race")`), and a
 mission whose places a map doesn't have sits that map out. CI plays the scripted run and the
-city test on both maps.
+city test on every map.
 
 ![Harbor Town: the docks on the bay, downtown, the TV tower](docs/harbor.png)
+
+### Maps drawn as roads: Raisio
+
+A map can list its roads instead of a grid. `MAP=raisio auto game` plays Raisio, Finland, drawn
+from the real town at about half size: Raisiontie curving north-west out of the center, E18 and
+E8 crossing at the interchange, Kerttulantie up to Kerttula, the school and library campus on
+Opinpolku with its two roundabouts, the church and cemetery on Kirkkotie, Mylly to the east,
+and the Ruskonjoki winding down past it all.
+
+![Raisio from the air: the center, E8 and E18, the Ruskonjoki, forest all round](docs/raisio.png)
+
+`game/maps/raisio.lua` names junctions (points in meters, x east, z south) and lists each road as
+the junctions and bends it passes through:
+
+```lua
+junctions = {center = {0, 0}, kt0 = {-48, -50}, torni = {35, -48}},
+roads = {
+  {name = "Kerttulantie", kind = "main", "kt0", {-5, -52}, "torni", "keon_n", {95, -120}, "venheen"},
+},
+```
+
+Roads only meet at named junctions; one that crosses another anywhere else is an error naming
+both, and so is a hand-placed building standing on a road. `lib/roadnet.lua` builds the rest:
+asphalt, pavements, center lines and street lamps along every curve, then buildings lining the
+roads by district (detached houses with pitched roofs in the suburbs, apartment blocks, a
+downtown core, warehouses), spruce forest wherever there's room, rivers with railings where roads
+cross them, the game's features on 40 m pads, and landmarks placed by hand. Traffic and police
+follow the bends, pedestrians walk the pavements from junction to junction, and the minimap
+draws it all. Every test runs on it.
+
+![Raisio's center at street level: apartment blocks, the gun shop, the TV tower](docs/raisio-center.png)
 
 ### Make your own city
 
@@ -487,7 +518,7 @@ python tools/headless_tests.py --output headless-results --soak
 ```
 
 Use a new output directory each time. Both autoplay AND focused reliability consume the same
-explicit map/seed pairs: Manhattan and Harbor each use `0, 1–12, 13, 17, 42, 99, 1337, 2026`.
+explicit map/seed pairs: Manhattan, Harbor and Raisio each use `0, 1–12, 13, 17, 42, 99, 1337, 2026`.
 The runner deduplicates inputs, verifies each printed map/seed identity, and reconciles the exact
 pair set. Seed runs use three concurrent native processes by default (`--jobs 1` serializes).
 Focused checks cover police/attribution/corridor/chain-explosion regressions; the full suite also
@@ -495,7 +526,7 @@ runs city and pad checks, isolated save/menu/shop restarts (including exact corr
 and, with `--soak`, five simulated minutes per map.
 `MAP=harbor SEED=17 RELIABILITY_TEST=1 auto game --headless 4000` runs one focused pair.
 CI reuses one build per platform: Linux and Windows run the full maintained seed set on both
-suites; macOS explicitly checks both suites/maps at 1337. Only Linux runs the soak. Raw logs and
+suites; macOS explicitly checks both suites on every map at 1337. Only Linux runs the soak. Raw logs and
 a reconciled results matrix are uploaded as CI artifacts even when a check fails.
 
 `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
@@ -515,14 +546,14 @@ archives with the binary, `game/`, and the docs.
 
 ## License
 
-The engine and the game's code are free to use, change and sell. The two cities can be shared and
-remixed, but not sold.
+The engine and the game's code are free to use, change and sell. The three cities can be shared
+and remixed, but not sold.
 
-- **MIT** ([LICENSE](LICENSE)): everything except the two city maps. That's the engine (`src/`),
+- **MIT** ([LICENSE](LICENSE)): everything except the city maps. That's the engine (`src/`),
   the game systems and missions (`game/lib`, `game/systems`, `game/missions`), the mods, tools,
   tests and docs, and `game/maps/starter.lua`.
-- **CC BY-NC 4.0** ([game/maps/LICENSE](game/maps/LICENSE)): `game/maps/manhattan.lua` and
-  `game/maps/harbor.lua`. Share and adapt them with credit, but not commercially. Versions up to
+- **CC BY-NC 4.0** ([game/maps/LICENSE](game/maps/LICENSE)): `game/maps/manhattan.lua`,
+  `game/maps/harbor.lua` and `game/maps/raisio.lua`. Share and adapt them with credit, but not commercially. Versions up to
   and including v0.2.0 were released entirely under MIT, and those copies stay MIT.
 
 **The name.** Neither license covers the name "3D-auto". Fork it, build your own town on it, and

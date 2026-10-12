@@ -36,14 +36,29 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
--- A junction 70-130 m from where the cops think the player is.
+-- A junction 70-130 m from where the cops think the player is (further,
+-- in a town whose junctions are far apart).
 local function spawn_point()
   local px, pz = wanted.center[1], wanted.center[2]
   for _ = 1, 10 do
-    local j = city.random_near(px, pz, 70, 130)
+    local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
     local x, z = city.pos(j)
     if not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
+  end
+  -- A town's junctions can be few and far apart (and busy): anywhere
+  -- along a road in range will do, in the lane heading for the player.
+  if not city.network() then return end
+  local roads = city.roads()
+  for _ = 1, 20 do
+    local r = roads[math.random(#roads)]
+    local path = city.path(r[1], r[2])
+    local i = math.random(2, #path)
+    local a, b = path[i - 1], path[i]
+    local t = math.random()
+    local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+    local d = U.dist2d(x, z, px, pz)
+    if d >= 60 and d <= 200 and not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
   end
 end
 
@@ -104,6 +119,28 @@ end
 -- because it is 50-90m away sends cars searching away from it.
 function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
 
+-- On a map drawn as roads, a car out between junctions drives its own
+-- road to whichever end is fewer roads from the goal, rather than heading
+-- straight for the nearest junction (which may be across back gardens).
+local function road_route(x, z, goal)
+  local roadnet = require "lib.roadnet"
+  local hops, queue = {[goal] = 0}, {goal}
+  for _, q in ipairs(queue) do
+    for _, nb in ipairs(city.links(q)) do
+      if not hops[nb] then hops[nb] = hops[q] + 1; queue[#queue + 1] = nb end
+    end
+  end
+  local e, i = roadnet.nearest_edge(x, z)
+  local E = roadnet.net().edges[e]
+  local route = {}
+  if (hops[E.b] or math.huge) <= (hops[E.a] or math.huge) then
+    for k = i, #E.pts do route[#route + 1] = E.pts[k] end
+  else
+    for k = i - 1, 1, -1 do route[#route + 1] = E.pts[k] end
+  end
+  return route
+end
+
 local function drive_cop(c, dt)
   local id = c.id
   local x, _, z = engine.pos(id)
@@ -124,14 +161,29 @@ local function drive_cop(c, dt)
     -- A route may start out away from them, round water or a park.
     local at = city.nearest(x, z)
     local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
-    if not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
+    if c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
+      c.ri = c.ri + 1 -- round the next bend of this road
+      c.goal = c.route[c.ri]
+    elseif city.network() and (not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9)
+        and U.dist2d(x, z, city.pos(at)) > 15 then
+      c.route, c.ri = road_route(x, z, goal), 1
+      c.goal = c.route[1]
+    elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
+      local from = at
       if at == goal then
         local opts = city.links(at) -- there: search a street nearby
         at = opts[math.random(math.max(1, #opts))] or at
       else
         at = city.step_toward(at, goal)
       end
-      c.goal = {city.pos(at)}
+      -- Pick the road up at the bend after the stretch the car is on.
+      c.route, c.ri = city.path(from, at), 2
+      local best = math.huge
+      for i = 2, #c.route do
+        local d = U.dist2d(x, z, c.route[i][1], c.route[i][2]) + U.dist2d(x, z, c.route[i - 1][1], c.route[i - 1][2])
+        if d < best then best, c.ri = d, i end
+      end
+      c.goal = c.route[c.ri]
     end
     -- Drive in the right-hand lane, like traffic, so oncoming cars pass
     -- by; pull out into the other lane to overtake whatever's ahead in ours.
@@ -157,7 +209,26 @@ local function drive_cop(c, dt)
 
   -- Wedged against something: back up with opposite lock for a second.
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
-  if c.stuck > 1.2 then c.reverse, c.stuck = 1.0, 0 end
+  if c.stuck > 1.2 then
+    c.reverse, c.stuck = 1.0, 0
+    -- Wedged again and again on a road map (a U-turn on a narrow street):
+    -- back up further, a proper three-point turn, and think again about
+    -- the way.
+    if city.network() then
+      c.jams = (c.jams or 0) + 1
+      if c.jams >= 2 then c.reverse = 2.2 end
+      -- Swung wide round a corner into a wall: back to the middle of the
+      -- junction, where there's room, then on along the road.
+      if c.jams == 2 and c.route then
+        local jx, jz = city.pos(city.nearest(x, z))
+        if U.dist2d(x, z, jx, jz) < 25 then
+          table.insert(c.route, c.ri, {jx, jz})
+          c.goal = c.route[c.ri]
+        end
+      end
+      if c.jams >= 4 then c.goal, c.jams = nil, 0 end
+    end
+  end
   if c.reverse > 0 then
     c.reverse = c.reverse - dt
     input = {throttle = -1, steer = -input.steer}

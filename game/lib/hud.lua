@@ -25,7 +25,7 @@ end
 local base, base_city
 local COLORS = {
   downtown = {0.62, 0.62, 0.6}, residential = {0.7, 0.62, 0.52}, industrial = {0.62, 0.5, 0.38},
-  park = {0.36, 0.58, 0.3}, road = {0.25, 0.25, 0.27},
+  park = {0.36, 0.58, 0.3}, road = {0.25, 0.25, 0.27}, land = {0.3, 0.42, 0.26}, water = {0.18, 0.32, 0.55},
 }
 local function map_base(L)
   if base_city == L then return base end
@@ -33,6 +33,24 @@ local function map_base(L)
   local rects = {}
   local function add(x0, z0, x1, z1, c)
     rects[#rects + 1] = {(x0 + L.sx / 2) / L.sx, (z0 + L.sz / 2) / L.sz, (x1 - x0) / L.sx, (z1 - z0) / L.sz, c}
+  end
+  if L.network then
+    -- Land, then rivers and roads as chains of dots, so curves show.
+    add(-L.sx / 2, -L.sz / 2, L.sx / 2, L.sz / 2, COLORS.land)
+    local function dots(pts, w, c)
+      for i = 2, #pts do
+        local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
+        local n = math.max(1, math.floor(U.dist2d(ax, az, bx, bz) / 6))
+        for k = 0, n do
+          local x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
+          add(x - w / 2, z - w / 2, x + w / 2, z + w / 2, c)
+        end
+      end
+    end
+    for _, river in ipairs(city.map().rivers or {}) do dots(river, (river.width or 10) * 1.6, COLORS.water) end
+    for _, e in ipairs(require("lib.roadnet").net().edges) do dots(e.pts, math.max(9, e.width * 1.3), COLORS.road) end
+    base, base_city = rects, L
+    return rects
   end
   local A, S = L.avenue / 2, L.street / 2
   for _, j in ipairs(city.junctions()) do
@@ -87,6 +105,11 @@ local function minimap(sw, sh)
       local px, py = map(x, z)
       engine.rect(px - 3, py - 3, 6, 6, m.color[1], m.color[2], m.color[3], 1)
     end
+  end
+  for _, lm in ipairs(L.labels or {}) do
+    local px, py = map(lm.x, lm.z)
+    engine.rect(px - 4, py - 4, 8, 8, 1, 1, 1, 1)
+    engine.text(lm.letter, px + 6, py - 6, 10, 1, 1, 1, 1)
   end
   for _, lm in ipairs(L.landmarks or {}) do
     local px, py = map(lm.x, lm.z)

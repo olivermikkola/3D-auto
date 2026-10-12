@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--binary", default="target/release/auto" + (".exe" if os.name == "nt" else ""))
     parser.add_argument("--game", default="game")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--maps", nargs="+", default=["manhattan", "harbor"])
+    parser.add_argument("--maps", nargs="+", default=["manhattan", "harbor", "raisio"])
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--jobs", type=int, default=3, help="bounded concurrent seed runs (1-4)")
     parser.add_argument("--suite", choices=["full", "autoplay", "reliability"], default="full")

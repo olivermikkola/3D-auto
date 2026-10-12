@@ -23,15 +23,45 @@ local function at(sec, fn) steps[#steps + 1] = {at = sec, fn = fn} end
 local function after(sec, fn) steps[#steps + 1] = {after = sec, fn = fn} end
 local function until_(pred, timeout, what, fn) steps[#steps + 1] = {pred = pred, timeout = timeout, what = what, fn = fn} end
 
--- The intersection with the longest straight run of road south of it.
+-- The junction with the longest run of straight road due south of it.
 local function long_avenue()
-  local best, bk, bl = -1
-  for _, n in ipairs(city.nodes()) do
-    local run, l = 0, n[2]
-    while city.road(n[1], l, 0, 1) do run, l = run + 1, l + 1 end
-    if run >= best then best, bk, bl = run, n[1], n[2] end -- ties: the last (east-most)
+  local function south(j)
+    local x, z = city.pos(j)
+    for _, n in ipairs(city.links(j)) do
+      local nx, nz = city.pos(n)
+      if nx == x and nz > z then return n end
+    end
   end
-  return city.node(bk, bl)
+  local best, bj = -1
+  for _, j in ipairs(city.junctions()) do
+    local run, at = 0, south(j)
+    while at do run, at = run + 1, south(at) end
+    if run >= best then best, bj = run, j end -- ties: the last (east-most)
+  end
+  return city.pos(bj)
+end
+
+-- The nearest junction, to wait for the police at. On a grid that's the
+-- middle of the crossing; on a map drawn as roads it's live traffic, so
+-- stand on the pavement beside it, away from every road that meets there.
+local function beside_junction(x, z)
+  local j = city.nearest(x, z)
+  local jx, jz = city.pos(j)
+  if not city.network() then return jx, jz end
+  local best, bx, bz = -1, jx, jz
+  for k = 0, 15 do
+    local a = k * math.pi / 8
+    local dx, dz = math.sin(a), math.cos(a)
+    local worst = math.huge
+    for _, n in ipairs(city.links(j)) do
+      local path = city.path(j, n)
+      local ox, oz = path[2][1] - jx, path[2][2] - jz
+      local l = math.sqrt(ox * ox + oz * oz)
+      worst = math.min(worst, 1 - (dx * ox + dz * oz) / l)
+    end
+    if worst > best then best, bx, bz = worst, jx + dx * 11, jz + dz * 11 end
+  end
+  return bx, bz
 end
 
 local yaw0, car
@@ -83,7 +113,7 @@ at(8.5, function()
   -- Use a separate healthy stunt car and an offset approach: still inside
   -- the seven-meter kicker, but clear of the mid-side lamp at its entrance.
   -- The damaged driving/mission car keeps its normal carnage lifecycle.
-  local cx, cz = city.block_center(G.city.stunt[1], G.city.stunt[2])
+  local cx, cz = city.place("stunt")
   press("e")
   check(G.player and not G.vehicle, "exited the driving car before the independent stunt")
   car = vehicle.spawn(cx + 2, cz - 26, 0, 1)
@@ -141,14 +171,11 @@ local function nearest_ped(state, mid_block, away_from)
   local best, bid = math.huge
   for id, p in pairs(peds.peds) do
     local x, _, z = engine.pos(id)
-    local bx, bz = city.block_center(p.i, p.j)
-    local ex, ez = math.abs(x - bx) - (G.city.bx / 2 - 2.2), math.abs(z - bz) - (G.city.bz / 2 - 2.2)
-    local side = (math.abs(ex) < 1 and ez < -7) or (math.abs(ez) < 1 and ex < -7)
+    local nx, nz, side = peds.curb(id)
     local ok = not mid_block or side
     -- A car is two meters wide: a center ray misses mid-side lamps.
     -- Reserve the whole approach and the ped's flight along the sidewalk.
     if ok and mid_block then
-      local nx, nz = fixtures.outward(x, z, bx, bz)
       ok = fixtures.clear_approach(x, z, nx, nz, car)
     end
     local d = (x - px) ^ 2 + (z - pz) ^ 2
@@ -169,9 +196,7 @@ after(0.2, function()
   -- choose the horn fixture beyond its blast range and enter with real E.
   scared = nearest_ped("walk", true, car)
   local x, _, z = engine.pos(scared)
-  local p = peds.peds[scared]
-  local bx, bz = city.block_center(p.i, p.j)
-  local nx, nz = fixtures.outward(x, z, bx, bz)
+  local nx, nz = peds.curb(scared)
   check(G.player and not G.dead, "alive on foot before the pedestrian fixture")
   car = vehicle.spawn(x + nx * 6, z + nz * 6, math.atan(-nx, -nz), 1)
   local cx, cy, cz = engine.pos(car)
@@ -235,10 +260,9 @@ end
 
 after(0.5, function()
   -- The run-over left our own car beside the player, sometimes occluding
-  -- police sight. Start this independent chase on the nearest road node.
+  -- police sight. Start this independent chase on the nearest junction.
   local x, _, z = engine.pos(G.player)
-  local k, l = city.nearest_node(x, z)
-  x, z = city.node(k, l)
+  x, z = beside_junction(x, z)
   engine.set_pos(G.player, x, 1.2, z)
   cash_before = G.cash
   wanted.set(1)
@@ -253,12 +277,12 @@ end)
 
 after(1.0, function() wanted.set(1) end)
 until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star", function()
-  -- Teleport to whichever intersection in town is farthest from the cop.
+  -- Teleport to whichever junction in town is farthest from the cop.
   local cop = next(police.cops)
   local cx, _, cz = engine.pos(cop)
   local best, bx, bz = -1
-  for _, n in ipairs(city.nodes()) do
-    local x, z = city.node(n[1], n[2])
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
     local d = (x - cx) ^ 2 + (z - cz) ^ 2
     if d > best then best, bx, bz = d, x, z end
   end
@@ -274,6 +298,26 @@ engine.on("ped_down", function(_, by) if by == G.player then kills = kills + 1 e
 engine.on("explosion", function() booms = booms + 1 end)
 engine.on("wasted", function() wastes = wastes + 1 end)
 engine.on("respawned", function() respawned = true end)
+-- Stand six meters from ped `id`, ahead along (dx, dz) if that's clear;
+-- on a curving pavement that can be round a corner behind a building, so
+-- then behind them or along the pavement: wherever nothing (no wall, no
+-- passing car) is between us and there's room to stand.
+local function stand_by(id, dx, dz)
+  local x, _, z = engine.pos(id)
+  local l = math.sqrt(dx * dx + dz * dz) + 1e-3
+  dx, dz = dx / l, dz / l
+  local nx, nz = peds.curb(id)
+  local sx, sz = x + dx * 6, z + dz * 6
+  for _, d in ipairs{{dx, dz}, {-dx, -dz}, {nz, -nx}, {-nz, nx}} do
+    local cx, cz = x + d[1] * 6, z + d[2] * 6
+    local ok = not engine.raycast(x, 1.5, z, d[1], 0, d[2], 7, id)
+    for _, w in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
+      ok = ok and not engine.raycast(cx - w[1] * 1.2, 1.5, cz - w[2] * 1.2, w[1], 0, w[2], 2.4)
+    end
+    if ok then sx, sz = cx, cz break end
+  end
+  engine.set_pos(G.player, sx, 1.2, sz)
+end
 local target, victim
 after(0.5, function()
   wanted.clear()
@@ -283,9 +327,7 @@ after(0.5, function()
   target = nearest_ped("walk", true)
   local x, _, z = engine.pos(target)
   local p = peds.peds[target]
-  local dx, dz = p.tx - x, p.tz - z
-  local l = math.sqrt(dx * dx + dz * dz) + 1e-3
-  engine.set_pos(G.player, x + dx / l * 6, 1.2, z + dz / l * 6)
+  stand_by(target, p.tx - x, p.tz - z)
   -- Arrange an actual witness: new scenery changes entity ids and the
   -- ambient population's iteration order, so proximity isn't guaranteed.
   for id in pairs(peds.peds) do
@@ -296,9 +338,26 @@ after(0.5, function()
   end
 end)
 until_(function()
-  if not peds.peds[target] then return true end
+  if kills >= 1 then return true end
+  if not peds.peds[target] then
+    -- Knocked down by something else (a passing car): try someone new.
+    target = nearest_ped("walk", true)
+    local p = peds.peds[target]
+    local x, _, z = engine.pos(target)
+    stand_by(target, p.tx - x, p.tz - z)
+    return false
+  end
   local x, y, z = engine.pos(target)
-  W.fire_at(x, y + 0.3, z)
+  -- Shoot unless a wall or a car is in the way (they've walked round a
+  -- corner, or traffic is passing); then step somewhere clear.
+  local px, py, pz = engine.pos(G.player)
+  local hit = engine.raycast(px, py + 0.5, pz, x - px, y + 0.3 - py - 0.5, z - pz, 40, G.player)
+  if hit and hit ~= target and engine.tag(hit) ~= "ped" then
+    local vx, _, vz = engine.vel(target)
+    stand_by(target, vx, vz)
+  else
+    W.fire_at(x, y + 0.3, z)
+  end
 end, 5, "shooting a pedestrian kills them", function()
   check(kills >= 1, "the kill is credited to the player")
   check(wanted.stars() >= 1, "murder raises the wanted level (" .. wanted.stars() .. " stars)")
@@ -311,7 +370,7 @@ after(0.3, function()
   wanted.clear()
   police.clear()
   -- A parked car in the lot, from nine meters away.
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   victim = engine.nearest(lx, 1, lz, 30, "car")
   local x, _, z = engine.pos(victim)
   engine.set_pos(G.player, x, 1.4, z - 9)
@@ -329,8 +388,7 @@ after(1.0, function()
   -- Combat is independent of the exploded car's wreck and the lot canopy.
   -- Police still spawn at distance and have to drive here normally.
   local x, _, z = engine.pos(G.player)
-  local k, l = city.nearest_node(x, z)
-  x, z = city.node(k, l)
+  x, z = beside_junction(x, z)
   engine.set_pos(G.player, x, 1.2, z)
   H.heal_player(100)
   wanted.clear()
@@ -341,7 +399,42 @@ until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, office
 until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
   H.player.hp = 12 -- two more real officer hits must still kill the player
 end)
-until_(function() return wastes == 1 end, 30, "out of health: WASTED")
+local last_hp, last_hit
+until_(function()
+  -- This phase is about dying to gunfire, not being arrested: an officer
+  -- who walks right up (they stop shooting inside 6 m) is sent back.
+  local px, _, pz
+  if G.player and engine.exists(G.player) then px, _, pz = engine.pos(G.player) end
+  for id in pairs(police.officers) do
+    local x, _, z
+    if engine.exists(id) then x, _, z = engine.pos(id) end
+    if px and x and (x - px) ^ 2 + (z - pz) ^ 2 < 6 ^ 2 then
+      engine.despawn(id)
+      police.officers[id] = nil
+    end
+  end
+  -- Nor about hiding: if no officer has landed a shot for a while (out of
+  -- sight round a building), stand where one has a clear line of fire.
+  local now = engine.time()
+  if H.player.hp ~= last_hp then last_hp, last_hit = H.player.hp, now end
+  if px and now - last_hit > 8 then
+    for id in pairs(police.officers) do
+      if engine.exists(id) then
+        local ox, oy, oz = engine.pos(id)
+        for k = 0, 7 do
+          local a = k * math.pi / 4
+          local tx, tz = ox + math.sin(a) * 14, oz + math.cos(a) * 14
+          if not engine.raycast(ox, oy + 1, oz, tx - ox, 0, tz - oz, 14.5, id) and not engine.nearest(tx, 1, tz, 2) then
+            engine.set_pos(G.player, tx, 1.2, tz)
+            last_hit = now
+            return wastes == 1
+          end
+        end
+      end
+    end
+  end
+  return wastes == 1
+end, 30, "out of health: WASTED")
 until_(function() return respawned end, 8, "respawned outside the hospital", function()
   check(H.player.hp == H.player.max, "health restored")
   check(wanted.stars() == 0 and police.count() == 0 and police.officer_count() == 0, "wanted cleared, police gone")

@@ -27,19 +27,11 @@ end
 page.items[#page.items + 1] = {label = "LEAVE", act = function() menu.close() end}
 menu.add_page("gunshop", page)
 
--- The first ordinary downtown block of the map's candidates gets the shop
--- on its south face (the street wall is flush with the sidewalk), facing the
--- street. No candidate, no gun shop.
+-- The map says where (city.gunshop_spot): a building's street wall, the
+-- shop facing the street. No spot, no gun shop.
 function M.build()
-  local L = G.city
-  local bi, bj
-  for _, c in ipairs(city.map().gunshop or {}) do
-    if L.kinds[c[1] .. "," .. c[2]] == "buildings" and city.district(c[1], c[2]) == "downtown" then bi, bj = c[1], c[2] break end
-  end
-  if not bi then return end
-  local cx, cz = city.block_center(bi, bj)
-  local face = cz + L.bz / 2 - L.walk -- buildings' south wall
-  local x = cx
+  local x, face = city.gunshop_spot(G.city)
+  if not x then return end
   -- Storefront: door, window, a red awning and a glowing sign. Nothing solid,
   -- so pedestrians still walk the sidewalk.
   engine.spawn{mesh = "cube", pos = {x, 1.45, face + 0.08}, size = {1.6, 2.5, 0.12}, color = {0.25, 0.12, 0.08}, tag = "shop"}

@@ -10,12 +10,18 @@ local vehicle = require "lib.vehicle"
 local T = {cars = {}}
 local LANE, CRUISE = 3.2, 11
 
+-- A car drives the bends of its road from c.from to c.to, aiming at bend
+-- c.wp (a grid street has no bends: just its two ends).
+local function route(c)
+  c.path, c.wp = city.path(c.from, c.to), 2
+end
+
 local function lane_target(c)
-  local ax, az = city.pos(c.from)
-  local bx, bz = city.pos(c.to)
+  local a, b = c.path[c.wp - 1], c.path[c.wp]
+  local ax, az, bx, bz = a[1], a[2], b[1], b[2]
   local yaw = math.atan(bx - ax, bz - az)
   local rx, rz = U.right(yaw)
-  -- Aim a little before the intersection centre so turns cut the corner.
+  -- Aim a little before the junction (or bend) so turns cut the corner.
   local fx, fz = U.forward(yaw)
   return bx + rx * LANE - fx * LANE, bz + rz * LANE - fz * LANE
 end
@@ -29,6 +35,7 @@ local function pick_next(c)
     if n ~= c.from then opts[#opts + 1] = n end
   end
   c.from, c.to = c.to, opts[math.random(#opts)] or c.from
+  route(c)
 end
 
 -- Place car c on a random street segment between `min_dist` and NEAR from
@@ -40,11 +47,25 @@ local function place(c, min_dist)
     local r = roads[math.random(#roads)]
     c.from, c.to = r[1], r[2]
     if math.random() < 0.5 then c.from, c.to = c.to, c.from end
-    local ax, az = city.pos(c.from)
-    local bx, bz = city.pos(c.to)
+    route(c)
+    local t = 0.3 + math.random() * 0.4
+    -- Somewhere in the middle of the road: on a bendy one, the bend
+    -- that far along, by length.
+    if #c.path > 2 then
+      local len, segs = 0, {}
+      for i = 2, #c.path do
+        segs[i] = U.dist2d(c.path[i - 1][1], c.path[i - 1][2], c.path[i][1], c.path[i][2])
+        len = len + segs[i]
+      end
+      local want = t * len
+      c.wp = 2
+      while c.wp < #c.path and want > segs[c.wp] do want, c.wp = want - segs[c.wp], c.wp + 1 end
+      t = want / segs[c.wp]
+    end
+    local a, b = c.path[c.wp - 1], c.path[c.wp]
+    local ax, az, bx, bz = a[1], a[2], b[1], b[2]
     local yaw = math.atan(bx - ax, bz - az)
     local rx, rz = U.right(yaw)
-    local t = 0.3 + math.random() * 0.4
     local x, z = ax + (bx - ax) * t + rx * LANE, az + (bz - az) * t + rz * LANE
     local d = px and U.dist2d(x, z, px, pz)
     if not px or (d >= min_dist and d <= NEAR) then
@@ -71,6 +92,7 @@ function T.adopt(id, opts)
   local at = city.nearest(x, z)
   local ways = city.links(at)
   local c = {from = at, to = ways[math.random(math.max(1, #ways))] or at, speed = 0, stuck = 0}
+  route(c)
   c.keep, c.cruise = opts and opts.keep, opts and opts.cruise
   vehicle.headlights(id)
   T.cars[id] = c
@@ -105,7 +127,7 @@ local function update(id, c, dt)
     local x, y, z = engine.pos(id)
     local tx, tz = lane_target(c)
     if U.dist2d(x, z, tx, tz) < 4 then
-      pick_next(c)
+      if c.wp < #c.path then c.wp = c.wp + 1 else pick_next(c) end
       tx, tz = lane_target(c)
     end
     local yaw = engine.yaw(id)
