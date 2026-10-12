@@ -4,6 +4,10 @@
 --
 -- Keyboard: up/down (or W/S) to choose, left/right (or A/D) to change a
 -- setting, Enter or Space to pick, Esc to go back. The mouse works too.
+--
+-- Other systems add pages (shops do) with menu.add_page and open them with
+-- menu.show(name). An item is {label, act = fn} and may have value = fn
+-- returning the text (and an optional {r,g,b}) shown on its right.
 local settings = require "lib.settings"
 
 local M = {open = false, page = "main", sel = 1}
@@ -33,13 +37,15 @@ end)
 
 function M.items() return pages[M.page].items end
 
+function M.add_page(name, page) pages[name] = page end
+
 function M.go(page)
   M.page, M.sel = page, 1
 end
 
-function M.show()
+function M.show(page)
   if M.open then return end
-  M.open, M.page, M.sel = true, "main", 1
+  M.open, M.page, M.sel = true, type(page) == "string" and page or "main", 1
   engine.pause(true)
   engine.grab_mouse(false)
   click()
@@ -126,7 +132,9 @@ engine.on("frame", function()
   local L = M.layout()
   engine.rect(L.x, L.y, L.w, L.h, 0.05, 0.06, 0.08, 0.9)
   engine.rect(L.x, L.y, L.w, 4, 1, 0.85, 0.2, 1)
-  engine.text(pages[M.page].title, L.x + 24, L.y + 26, 24, 1, 0.85, 0.2, 1)
+  local title = pages[M.page].title
+  if type(title) == "function" then title = title() end
+  engine.text(title, L.x + 24, L.y + 26, 24, 1, 0.85, 0.2, 1)
   for i, item in ipairs(M.items()) do
     local r, on = L.rows[i], i == M.sel
     if on then engine.rect(r.x, r.y, r.w, r.h, 1, 0.85, 0.2, 0.18) end
@@ -140,6 +148,10 @@ engine.on("frame", function()
         engine.text("<", right - 118, r.y + 10, 14, 1, 0.85, 0.2, 1)
         engine.text(">", right - engine.text_width(">", 14), r.y + 10, 14, 1, 0.85, 0.2, 1)
       end
+    elseif item.value then
+      local v, col = item.value()
+      col = col or {1, 1, 1}
+      engine.text(v, r.x + r.w - 12 - engine.text_width(v, 14), r.y + 10, 14, col[1], col[2], col[3], 1)
     end
   end
   engine.text("ARROWS/WASD CHOOSE  ENTER PICK  ESC BACK", L.x + 24, L.y + L.h - 26, 10, 0.6, 0.6, 0.6, 1)

@@ -1,4 +1,5 @@
--- Progress that survives quitting: cash, missions passed and personal bests.
+-- Progress that survives quitting: cash, missions passed, personal bests,
+-- ammo, and the car you bought.
 -- It's the "progress" save (see engine.save), written a couple of seconds
 -- after anything changes and again when the game closes or reloads.
 -- Tab shows it; holding Backspace on that screen starts over.
@@ -8,8 +9,11 @@ local U = require "lib.util"
 local M = {}
 local KEY, DELAY, RESET_HOLD = "progress", 2, 3
 
+local AMMO = {pistol = 36, smg = 0} -- what a new game starts with
+
 local function blank()
-  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0}}
+  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0},
+          ammo = {pistol = AMMO.pistol, smg = AMMO.smg}, car = nil}
 end
 
 -- Keep only what we recognise, so a hand-edited save can't break the game.
@@ -28,6 +32,16 @@ local function clean(t)
       if type(v) == "number" and v >= 0 and v < 1e9 then p.stats[k] = v end
     end
   end
+  if type(t.ammo) == "table" then
+    for k in pairs(p.ammo) do
+      local v = t.ammo[k]
+      if type(v) == "number" then p.ammo[k] = math.tointeger(math.floor(U.clamp(v, 0, 9999))) end
+    end
+  end
+  local colors = #require("lib.prefabs").car_colors
+  if type(t.car) == "table" and math.type(t.car.color) == "integer" and t.car.color >= 1 and t.car.color <= colors then
+    p.car = {color = t.car.color}
+  end
   return p
 end
 
@@ -35,13 +49,21 @@ local data, err = engine.load(KEY)
 M.load_error = err
 if err then print("progress: " .. err) end
 local p = clean(data)
-G.cash, G.passed, G.stats = p.cash, p.missions, p.stats
+G.cash, G.passed, G.stats, G.owned_car = p.cash, p.missions, p.stats, p.car
+-- systems.weapons sets the starting ammo when it loads; ours replaces it once everything has.
+local loaded_ammo = p.ammo
+engine.on("init", function() G.ammo.pistol, G.ammo.smg = loaded_ammo.pistol, loaded_ammo.smg end)
 
-local saved_cash, dirty, due = G.cash, false, nil
+local saved_cash, saved_pistol, saved_smg, dirty, due = G.cash, p.ammo.pistol, p.ammo.smg, false, nil
+
+-- Something not tracked automatically changed (a purchase, say): save soon.
+function M.touch() dirty = true end
 
 function M.save()
-  local ok, e = engine.save(KEY, {version = 1, cash = G.cash, missions = G.passed, stats = G.stats})
-  saved_cash, dirty, due = G.cash, false, nil
+  local ammo = G.ammo or loaded_ammo
+  local ok, e = engine.save(KEY, {version = 1, cash = G.cash, missions = G.passed, stats = G.stats,
+                                  ammo = {pistol = ammo.pistol, smg = ammo.smg}, car = G.owned_car})
+  saved_cash, saved_pistol, saved_smg, dirty, due = G.cash, ammo.pistol, ammo.smg, false, nil
   if not ok then
     print("progress: " .. e)
     U.message("COULDN'T SAVE PROGRESS", 3)
@@ -49,12 +71,16 @@ function M.save()
   return ok
 end
 
-local function changed() return dirty or G.cash ~= saved_cash end
+local function changed()
+  local ammo = G.ammo or loaded_ammo
+  return dirty or G.cash ~= saved_cash or ammo.pistol ~= saved_pistol or ammo.smg ~= saved_smg
+end
 
 -- Forget everything: back to a new game.
 function M.reset()
   local fresh = blank()
-  G.cash, G.passed, G.stats = fresh.cash, fresh.missions, fresh.stats
+  G.cash, G.passed, G.stats, G.owned_car = fresh.cash, fresh.missions, fresh.stats, nil
+  if G.ammo then G.ammo.pistol, G.ammo.smg = fresh.ammo.pistol, fresh.ammo.smg end
   local mission = require "lib.mission"
   for _, def in ipairs(mission.defs) do def.passed = nil end
   if not G.mission then mission.show_start_markers() end

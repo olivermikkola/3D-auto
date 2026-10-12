@@ -413,6 +413,18 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(())
     });
     f!("tag", |e, _lua, id: u32| Ok(e.get(id).map(|x| x.tag.clone())));
+    // Swap an entity's model, e.g. a respray. Its body and scale stay as they are.
+    f!("set_mesh", |e, _lua, (id, name): (u32, String)| {
+        let m = mesh_id(&e, &name)?;
+        if let Some(en) = e.get_mut(id) {
+            en.mesh = Some(m);
+        }
+        Ok(())
+    });
+    f!("mesh_of", |e, _lua, id: u32| {
+        let m = e.get(id).and_then(|x| x.mesh);
+        Ok(m.and_then(|m| e.mesh_ids.iter().find(|(_, i)| **i == m).map(|(n, _)| n.clone())))
+    });
     f!("find", |e, _lua, tag: String| {
         Ok(e.ents.iter().enumerate().filter(|(_, x)| x.as_ref().is_some_and(|x| x.tag == tag)).map(|(i, _)| i as u32).collect::<Vec<_>>())
     });

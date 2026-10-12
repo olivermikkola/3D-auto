@@ -8,7 +8,8 @@ The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. 
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
 pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
-progress that's saved between sessions, and a pause menu with settings. Edit any `.lua` file while it runs and it hot-reloads.
+progress that's saved between sessions, a pause menu with settings, and shops to spend your
+cash in. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
@@ -23,7 +24,7 @@ cargo run --release              # runs ./game
 cargo run --release -- my_game   # any directory with a main.lua
 ```
 
-Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress ·
+Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress · `R` shops and the garage ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
 
 ## Design
@@ -76,7 +77,7 @@ The engine only ever calls `engine.emit(event, ...)`:
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
 own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `damaged`,
 `killed`, `gunshot`, `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`,
-`busted`, `mission_passed`, `stunt`, and `minimap` (other systems draw blips with it). A handler that
+`busted`, `mission_passed`, `stunt`, `purchase`, `resprayed`, `car_bought`, and `minimap` (other systems draw blips with it). A handler that
 throws is reported on screen with a traceback, and the other handlers still run.
 
 ## Lua API
@@ -96,6 +97,7 @@ engine.vel(id) -> x,y,z     engine.set_vel(id, x,y,z)
 engine.angvel(id) -> x,y,z  engine.set_angvel(id, x,y,z)  -- rad/s, world space
 engine.push(id, ix,iy,iz[, px,py,pz])                     -- impulse, optionally at a point
 engine.grounded(id)         engine.tag(id)                engine.find(tag) -> {ids}
+engine.set_mesh(id, name)  engine.mesh_of(id) -> name
 engine.set_color(id, r,g,b[,a])   engine.set_visible(id, bool)   engine.set_scale(id, s)
 engine.set_glow(id, g)          -- self-illumination regardless of time of day (spawn{glow=} too)
 engine.nearest(x,y,z, radius[, tag[, ignore]]) -> id, dist
@@ -175,6 +177,29 @@ changes**, which is the point of the kernel:
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
   Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
+
+## Shops
+
+| | |
+|---|---|
+| ![The gun shop](docs/gunshop.png) | ![Pay 'n' Spray](docs/paintshop.png) |
+
+Cash from missions and stunts buys things. Each shop is a zone with a prompt and a letter on the
+minimap; press **R** there. `lib/shop.lua` is the shared part (zone, prompt, blip, paying), and
+the shop counters are pages in the pause menu, so buying pauses the game.
+
+- **Gun shop (G),** across the street north of the lot, on foot: pistol ammo (+24, $60) and the
+  SMG (+90 rounds, $250).
+- **Pay 'n' Spray (P),** in the lot. Drive in, stop, and pick a color for $100 plus $100 per star.
+  A respray clears your wanted level, but only if the cops can't see you when you go in. No cop
+  cars.
+- **Car dealer (D),** the booth in the lot: buy a car of your own for $600. It's delivered to the
+  blue space next to the booth and shows on the minimap. It's saved with your progress, so it's
+  back in its space, in its current color, every time you start the game, even if it was
+  wrecked.
+
+Ammo is saved with your progress too. The only engine change is `engine.set_mesh`, which a
+respray uses to swap the car's model.
 
 ## Repair garage
 
@@ -309,7 +334,7 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
-`MENU_TEST=1` and `2` the pause menu and settings (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+`MENU_TEST=1` and `2` the pause menu and settings, and `SHOP_TEST=1` and `2` the shops (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing
