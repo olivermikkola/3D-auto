@@ -44,7 +44,7 @@ pub use evdev::Pads;
 pub use gil::Pads;
 
 // ---- Linux: evdev ---------------------------------------------------------------
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 mod evdev {
     use super::{Event, State, trigger_edge};
     use std::fs::File;
@@ -391,7 +391,7 @@ mod gil {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::evdev::*;
     use super::*;
