@@ -90,7 +90,7 @@ function R.load(map)
     end
   end
   n.grid = R.index(n.edges)
-  NET = n
+  NET, wet_rows = n, nil
   return n
 end
 
@@ -724,6 +724,30 @@ function R.pickup_spots(map)
   local out = {}
   for _, s in ipairs(map.pickups or {}) do out[#out + 1] = {s[1], s[2], s[3]} end
   return out
+end
+
+-- Is (x, z) on the map's water (its surveyed cover), and not on a bridge?
+-- Rows of water spans, ROW meters tall like the importer's strips.
+local ROW, wet_rows = 4
+function R.wet(x, z)
+  local water = NET and (NET.map.cover or {}).water
+  if not water then return false end
+  if not wet_rows then
+    wet_rows = {}
+    for _, st in ipairs(water) do
+      for j = math.floor(st[2] / ROW + 0.5), math.floor(st[4] / ROW + 0.5) - 1 do
+        wet_rows[j] = wet_rows[j] or {}
+        table.insert(wet_rows[j], st)
+      end
+    end
+  end
+  for _, st in ipairs(wet_rows[math.floor(z / ROW)] or {}) do
+    if x >= st[1] and x <= st[3] then
+      local e, _, _, _, d = R.nearest_edge(x, z)
+      return not (e and d < NET.edges[e].width / 2 + 1)
+    end
+  end
+  return false
 end
 
 -- Pavement for pedestrians: the edges they can walk (not highways).

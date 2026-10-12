@@ -5,9 +5,9 @@ local G = require "lib.state"
 require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
--- The map, before anything asks the city where things are. MAP=<name> picks
--- another one from maps/.
-city.use(os.getenv("MAP") or "manhattan")
+-- The map, before anything asks the city where things are: the one picked
+-- in the pause menu, or MAP=<name> for any in maps/.
+city.use(os.getenv("MAP") or city.chosen() or "manhattan")
 local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
@@ -18,6 +18,7 @@ local daynight = require "lib.daynight"
 local pickups = require "lib.pickups"
 require "lib.health"
 require "systems.carnage"
+require "systems.shore"
 require "systems.weapons"
 local sfx = require "lib.sfx"
 require "lib.stunts"

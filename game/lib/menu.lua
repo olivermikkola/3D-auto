@@ -18,9 +18,11 @@ local pages = {
     items = {
       {label = "RESUME", act = function() M.close() end},
       {label = "SETTINGS", act = function() M.go("settings") end},
+      {label = "CITY", act = function() M.go("city") end, value = function() return string.upper(require("lib.city").map().name) end},
       {label = "QUIT GAME", act = function() engine.quit() end},
     },
   },
+  city = {title = "CITY", back = "main", items = {}},
   settings = {title = "SETTINGS", back = "main", items = {}},
 }
 for _, s in ipairs(settings.list) do
@@ -28,6 +30,18 @@ for _, s in ipairs(settings.list) do
 end
 table.insert(pages.settings.items, {label = "RESET TO DEFAULTS", act = function() settings.reset() end})
 table.insert(pages.settings.items, {label = "BACK", act = function() M.go("main") end})
+-- Picking another city starts the game afresh there; cash and missions carry over.
+for _, m in ipairs(require("lib.city").MAPS) do
+  table.insert(pages.city.items, {label = m[2], act = function()
+    local city = require "lib.city"
+    if (city.map().id or "") == m[1] then return M.close() end
+    city.choose(m[1])
+  end, value = function()
+    if (require("lib.city").map().id or "") == m[1] then return "HERE", {1, 0.85, 0.2} end
+    return ""
+  end})
+end
+table.insert(pages.city.items, {label = "BACK", act = function() M.go("main") end})
 
 local function click() engine.play("ui_click", {ui = true}) end
 

@@ -147,6 +147,7 @@ engine.load(key) -> value | nil[, err]         engine.saves() -> {keys}
 
 -- misc
 engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.dirs(dir)  engine.quit()
+engine.reload()                                -- start the scripts afresh after this frame, as F5 does
 engine.load_mods(folder)  engine.load_mod(folder)        -- sandboxed; see MODDING.md
 ```
 
@@ -254,34 +255,39 @@ city test on every map.
 
 ### Maps drawn as roads: Raisio
 
-A map can list its roads instead of a grid. `MAP=raisio auto game` plays Raisio, Finland, drawn
-from the real town at about half size: Raisiontie curving north-west out of the center, E18 and
-E8 crossing at the interchange, Kerttulantie up to Kerttula, the school and library campus on
-Opinpolku with its two roundabouts, the church and cemetery on Kirkkotie, Mylly to the east,
-and the Ruskonjoki winding down past it all.
+A map can list its roads instead of a grid. Raisio, Finland, is one, at real size and from real
+map data: the center, Mylly, and Nesteentie all the way down to the harbor, about 7 by 6 km. Its
+2,100 junctions, 8,000 buildings, the bay, the river, forest and fields come from
+[OpenStreetMap](https://www.openstreetmap.org/). Pick it in the pause menu (Esc, then CITY), or
+run `MAP=raisio auto game`. The game remembers the city you picked.
 
-![Raisio from the air: the center, E8 and E18, the Ruskonjoki, forest all round](docs/raisio.png)
+![Raisio from the air: Raisionlahti, the docks, E18, the center and Mylly beyond](docs/raisio.png)
 
-`game/maps/raisio.lua` names junctions (points in meters, x east, z south) and lists each road as
-the junctions and bends it passes through:
+`tools/osm_import.py raisio` turns the map data into `game/maps/raisio_osm.lua` (`--fetch`
+downloads it fresh first). That holds junctions, named after the streets that meet there, and
+each road as the junctions and bends it passes through:
 
 ```lua
-junctions = {center = {0, 0}, kt0 = {-48, -50}, torni = {35, -48}},
+junctions = {["Nesteentie / Raisiontie"] = {1049.1, -1685.9}, ...},
 roads = {
-  {name = "Kerttulantie", kind = "main", "kt0", {-5, -52}, "torni", "keon_n", {95, -120}, "venheen"},
+  {name = "Nesteentie", kind = "main", width = 10, "Nesteentie / Raisiontie", "Nesteentie / Raisiontie 3"},
 },
 ```
 
-Roads only meet at named junctions; one that crosses another anywhere else is an error naming
-both, and so is a hand-placed building standing on a road. `lib/roadnet.lua` builds the rest:
-asphalt, pavements, center lines and street lamps along every curve, then buildings lining the
-roads by district (detached houses with pitched roofs in the suburbs, apartment blocks, a
-downtown core, warehouses), spruce forest wherever there's room, rivers with railings where roads
-cross them, the game's features on 40 m pads, and landmarks placed by hand. Traffic and police
-follow the bends, pedestrians walk the pavements from junction to junction, and the minimap
-draws it all. Every test runs on it.
+and building footprints as boxes, plus ground cover (water, forest, fields, parks, industry,
+parking) as strips. `game/maps/raisio.lua` loads it and adds the game: where you start, the
+hospital, the car park at Mylly, each mission's intersections, by street name.
 
-![Raisio's center at street level: apartment blocks, the gun shop, the TV tower](docs/raisio-center.png)
+Roads only meet at junctions; one that crosses another anywhere else is an error naming both,
+and so is a hand-placed building standing on a road. `lib/roadnet.lua` builds the rest: asphalt,
+pavements, center lines and street lamps along every curve, the surveyed buildings (detached
+houses with pitched roofs, apartment blocks, shops, warehouses), forest in the woods, the game's
+features on 40 m pads, and landmarks placed by hand. A map drawn by hand instead gets buildings
+lining its roads by district. The bay and the river stop you like a wall, except on bridges.
+Traffic and police follow the bends, pedestrians walk the pavements from junction to junction,
+and on a town this big the minimap is a radar that follows you. Every test runs on it.
+
+![Raisio's center at street level: apartment blocks along Raisiontie, E18 beyond](docs/raisio-center.png)
 
 ### Make your own city
 
@@ -298,7 +304,8 @@ traffic, police), with each field explained. It's MIT licensed, so start from it
    `python tools/headless_tests.py --output results --maps <yourtown> --seeds 1337`.
 
 To ship your city as its own game, copy the `game/` folder (say to `raisio/`), change the default
-map in its `main.lua` (`city.use(os.getenv("MAP") or "manhattan")`), and run `auto raisio`. The
+map in its `main.lua` (`city.use(os.getenv("MAP") or city.chosen() or "manhattan")`), and run
+`auto raisio`. The
 engine runs whatever game folder it's given. Give it your own name too (see [License](#license)).
 
 The street network has gaps (the river, the park), so `lib.city` exposes it as a road graph of
@@ -555,6 +562,8 @@ and remixed, but not sold.
 - **CC BY-NC 4.0** ([game/maps/LICENSE](game/maps/LICENSE)): `game/maps/manhattan.lua`,
   `game/maps/harbor.lua` and `game/maps/raisio.lua`. Share and adapt them with credit, but not commercially. Versions up to
   and including v0.2.0 were released entirely under MIT, and those copies stay MIT.
+- **ODbL 1.0**: `game/maps/raisio_osm.lua`, generated from OpenStreetMap data,
+  © OpenStreetMap contributors (see [game/maps/LICENSE](game/maps/LICENSE)).
 
 **The name.** Neither license covers the name "3D-auto". Fork it, build your own town on it, and
 release that, but under a name of your own, so nobody mistakes your game for this one (or this one
