@@ -449,8 +449,8 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 launches off the stunt ramp, gets busted by the police, then escapes them). `SEED=<integer>`
 controls population and AI randomness on either map; the default is 1337. For example,
 `MAP=harbor SEED=5 AUTO_TEST=1 auto game --headless 9000` reproduces that case.
-Lua errors exit non-zero, but reaching the tick budget without completing a test can exit zero.
-Acceptance therefore requires both `AUTOPLAY PASSED` and `GARAGE PASSED`, no Lua/FAILED
+Lua errors exit non-zero, and so does a test that runs out of ticks before it finishes.
+Acceptance still requires both `AUTOPLAY PASSED` and `GARAGE PASSED`, no Lua/FAILED
 messages, and exit zero. The maintained runner checks all three and preserves raw logs:
 
 ```
