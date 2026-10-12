@@ -65,6 +65,21 @@ engine.on("init", function()
   engine.grab_mouse(true)
 end)
 
+-- Every test ends by calling engine.quit(), passed or failed. Running out of
+-- --headless ticks first means it got stuck, which must not exit zero.
+local TESTS = {"AUTO_TEST", "SOAK", "GARAGE_TEST", "SAVE_TEST", "MENU_TEST", "SHOP_TEST",
+               "CITY_TEST", "PAD_TEST", "RELIABILITY_TEST"}
+for _, var in ipairs(TESTS) do
+  if os.getenv(var) then
+    local quit, finished = engine.quit, false
+    engine.quit = function(...) finished = true; return quit(...) end
+    engine.on("quit", function()
+      if not finished then error("TEST FAILED: " .. var .. " ran out of ticks before finishing", 0) end
+    end)
+    break
+  end
+end
+
 -- AUTO_TEST=1 plays the game by itself and quits (used by CI in headless mode).
 if os.getenv("AUTO_TEST") then require "test.autoplay" end
 if os.getenv("SOAK") then require "test.soak" end

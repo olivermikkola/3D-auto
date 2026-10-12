@@ -37,7 +37,7 @@ def assess(exit_code, text, markers):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", default="target/release/auto")
+    parser.add_argument("--binary", default="target/release/auto" + (".exe" if os.name == "nt" else ""))
     parser.add_argument("--game", default="game")
     parser.add_argument("--output", required=True)
     parser.add_argument("--maps", nargs="+", default=["manhattan", "harbor"])
@@ -45,6 +45,7 @@ def main():
     parser.add_argument("--jobs", type=int, default=3, help="bounded concurrent seed runs (1-4)")
     parser.add_argument("--suite", choices=["full", "autoplay", "reliability"], default="full")
     parser.add_argument("--soak", action="store_true", help="include 300 simulated seconds per map")
+    parser.add_argument("--timeout", type=int, default=300, help="seconds before one run counts as hung")
     args = parser.parse_args()
     if not 1 <= args.jobs <= 4:
         parser.error("--jobs must be between 1 and 4")
@@ -66,7 +67,7 @@ def main():
         start = time.monotonic()
         try:
             process = subprocess.run(command, env=environment, text=True, encoding="utf-8", errors="replace",
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=args.timeout)
             code, text = process.returncode, process.stdout
         except subprocess.TimeoutExpired as error:
             code = 124
@@ -107,7 +108,7 @@ def main():
         if args.soak:
             run(f"{map_name}-soak", dict(env, SOAK="1"), 18000, ["SOAK PASSED: 300 simulated seconds"])
         for kind, phases, ticks in [("SAVE", 3, 600), ("MENU", 2, 900), ("SHOP", 2, 900)]:
-            save_dir = output / f"task-pr18-{map_name}-{kind.lower()}-saves"
+            save_dir = output / f"{map_name}-{kind.lower()}-saves"
             save_dir.mkdir()
             for phase in range(1, phases + 1):
                 if kind == "SAVE" and phase == 3:
