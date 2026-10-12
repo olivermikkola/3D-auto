@@ -110,6 +110,8 @@ pub struct Engine {
     pub sounds: HashMap<String, Samples>,
     /// Voices that track an entity: (voice, entity).
     pub follow: Vec<(u32, u32)>,
+    /// Save data; carried across script reloads like the mixer.
+    pub saves: crate::save::Store,
 }
 
 impl Engine {
@@ -151,6 +153,7 @@ impl Engine {
             mixer,
             sounds: HashMap::new(),
             follow: Vec::new(),
+            saves: Default::default(),
         };
         for (name, m) in mesh::builtins() {
             e.add_mesh(name, m);

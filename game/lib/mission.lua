@@ -147,6 +147,7 @@ end
 function M.register(def)
   assert(type(def) == "table" and def.title and def.start and def.run, "a mission needs title, start and run")
   def.id = def.id or def.title
+  if G.passed[def.id] then def.passed = true end
   M.defs[#M.defs + 1] = def
   if M.ready then M.show_start_markers() end
 end

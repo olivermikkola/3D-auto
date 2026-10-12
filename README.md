@@ -7,7 +7,8 @@ into a tiny pub/sub bus, and scripts build the world on top of it.
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
-pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, and four missions. Edit any `.lua` file while it runs and it hot-reloads.
+pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
+and progress that's saved between sessions. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
@@ -22,7 +23,7 @@ cargo run --release              # runs ./game
 cargo run --release -- my_game   # any directory with a main.lua
 ```
 
-Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours ·
+Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the mouse.
 
 ## Design
@@ -34,8 +35,9 @@ mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the
 | `src/physics.rs` | ~580 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses. |
 | `src/audio.rs` | ~510 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
-| `src/script.rs` | ~450 | The `engine` Lua table and the event bus. |
-| `src/main.rs` | ~380 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
+| `src/script.rs` | ~720 | The `engine` Lua table and the event bus. |
+| `src/save.rs` | ~570 | Save data: Lua values to readable files and back, parsed as data and never run. |
+| `src/main.rs` | ~470 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
 
 Choices made to keep it small:
 
@@ -67,6 +69,7 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `contact` | `a, b, speed` | each touching body pair after physics; `speed` = impact speed in m/s |
 | `frame` | `dt` | once per rendered frame; build the HUD and camera here |
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
+| `quit` | | before the game closes, and before a hot reload replaces the scripts; save here |
 
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
 own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `damaged`,
@@ -121,6 +124,10 @@ engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g) 
 engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.screen() -> w,h
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
 
+-- saves (one plain value per key: tables, strings, numbers, booleans; see "Saves")
+engine.save(key, value) -> true | nil, err     -- value nil deletes the key
+engine.load(key) -> value | nil[, err]         engine.saves() -> {keys}
+
 -- misc
 engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.dirs(dir)  engine.quit()
 engine.load_mods(folder)  engine.load_mod(folder)        -- sandboxed; see MODDING.md
@@ -173,6 +180,31 @@ The cyan `R` on the minimap marks its location, and the bay shows the price or w
 service is unavailable. Repairs restore vehicle health and stop smoke/fire, including
 cancelling a burning car's pending explosion. Already healthy cars aren't charged;
 wanted drivers must lose the cops first. Repairs don't restore player health or wrecks.
+
+## Saves
+
+![The Tab screen](docs/progress.png)
+
+`lib/progress.lua` (~130 lines) keeps cash, the missions you've passed (their markers stay
+green), and stunt, busted and wasted records. It saves two seconds after anything changes
+and again when the game closes, so a hot reload (F5) no longer resets your cash either.
+`Tab` shows the record; holding `Backspace` on that screen starts a new game.
+
+The engine side is `engine.save(key, value)` and `engine.load(key)`:
+
+- **Where:** each key is one file, `<key>.lua`, in `~/.local/share/auto/<game>` on Linux,
+  `%APPDATA%\auto\<game>` on Windows and `~/Library/Application Support/auto/<game>` on macOS.
+  The game prints the folder at startup. `--save-dir DIR` puts saves somewhere else.
+- **Format:** readable Lua table syntax, so you can open and edit it. It's parsed as data and
+  never run, so a save can't execute code. Writes go to a temp file that's renamed into place,
+  so a crash mid-save keeps the old file.
+- **Bad files:** if a save can't be parsed, `load` returns `nil` plus the error and moves the
+  file to `<key>.lua.bad`, so a hand-edit gone wrong isn't overwritten. The game then starts
+  fresh and says so.
+- **Limits:** 64 keys and 256 KB per value; functions, cycles, infinity and NaN are refused.
+- **Tests never touch your progress:** `--headless`, `--screenshot` and `--frames` runs keep
+  saves in memory unless you pass `--save-dir`. CI runs the game three times on one folder to
+  check that progress survives a restart and that a corrupt save is set aside.
 
 ## Combat and health
 
@@ -247,13 +279,14 @@ return {
 ## Command line
 
 ```
-auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH]
+auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR]
 ```
 
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
-test. Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+test, and `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts (see
+`.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing
