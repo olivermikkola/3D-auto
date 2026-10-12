@@ -5,15 +5,13 @@ local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local cab = require "cab"
 
-local lx, lz = city.block_center(4, 3)
+local lx, lz = city.block_center(2, 15)
 
--- A random street corner at least `min` meters from (x, z).
+-- A random street corner between `min` and 260 meters from (x, z).
 local function corner_far_from(x, z, min)
-  for _ = 1, 50 do
-    local cx, cz = city.node(math.random(0, G.city.N), math.random(0, G.city.N))
-    if U.dist2d(cx, cz, x, z) > min then return cx, cz end
-  end
-  return city.node(0, 0)
+  local k, l = city.random_node(x, z, min, 260)
+  if k then return city.node(k, l) end
+  return city.node(city.nearest_node(x, z))
 end
 
 return {

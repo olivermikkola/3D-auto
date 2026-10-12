@@ -2,11 +2,12 @@
 local city = require "lib.city"
 local U = require "lib.util"
 
-local route = {{2, 2}, {2, 6}, {6, 6}, {6, 2}, {4, 2}, {4, 4}}
+-- A lap of the blocks around the lot: up the West Side, across, down the East Side.
+local route = {{1, 14}, {1, 17}, {4, 17}, {4, 14}, {3, 14}, {3, 16}}
 
 return {
   title = "Street Race",
-  start = {city.node(5, 3)},
+  start = {city.node(2, 14)},
   reward = 600,
   run = function(m)
     m:say("You need wheels for this one.")

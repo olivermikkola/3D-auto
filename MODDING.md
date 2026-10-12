@@ -36,7 +36,9 @@ Press G in game. That's the whole mod.
   game's saves or each other's. A mod can hold 16 keys.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
 - **The game's modules:** `lib.state`, `lib.util`, `lib.input` (`move`, `drive`, `look`,
-  `connected`), `lib.city` (`district(i, j)`, `node`, `block_center`), `lib.landmarks`,
+  `connected`), `lib.city` (`district(i, j)`, `node`, `block_center`, and the road graph:
+  `road`, `neighbors`, `nodes`, `random_node`, `nearest_node`; not every grid line is a road, so
+  walk the graph), `lib.landmarks`,
   `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`,
   `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups`
   (`place`), `systems.weapons` (`defs`, add your own), `systems.carnage` (`explode`),

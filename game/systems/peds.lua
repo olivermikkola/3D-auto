@@ -25,22 +25,16 @@ end
 
 -- ---- sidewalk geometry ------------------------------------------------------
 
-local function ring() return G.city.block / 2 - 2.2 end
 -- Corners counter-clockwise; index <-> (sx, sz) sign pair.
 local SIGNS = {{1, 1}, {-1, 1}, {-1, -1}, {1, -1}}
 
 local function corner(i, j, k)
   local cx, cz = city.block_center(i, j)
-  local r = ring()
-  return cx + SIGNS[k][1] * r, cz + SIGNS[k][2] * r
+  return cx + SIGNS[k][1] * (G.city.bx / 2 - 2.2), cz + SIGNS[k][2] * (G.city.bz / 2 - 2.2)
 end
 
-local function block_of(x, z)
-  local L = G.city
-  local i = U.clamp(math.floor((x - L.origin) / L.P), 0, L.N - 1)
-  local j = U.clamp(math.floor((z - L.origin) / L.P), 0, L.N - 1)
-  return i, j
-end
+local block_of = city.block_of
+local function walkable(i, j) return city.district(i, j) ~= "water" end
 
 local function nearest_corner(p, x, z)
   local best, bk = math.huge, 1
@@ -59,9 +53,8 @@ local function next_leg(p)
   local s = SIGNS[p.k]
   if math.random() < 0.25 then
     local opts = {}
-    local N = G.city.N
-    if p.i + s[1] >= 0 and p.i + s[1] < N then opts[#opts + 1] = {p.i + s[1], p.j, -s[1], s[2]} end
-    if p.j + s[2] >= 0 and p.j + s[2] < N then opts[#opts + 1] = {p.i, p.j + s[2], s[1], -s[2]} end
+    if walkable(p.i + s[1], p.j) then opts[#opts + 1] = {p.i + s[1], p.j, -s[1], s[2]} end
+    if walkable(p.i, p.j + s[2]) then opts[#opts + 1] = {p.i, p.j + s[2], s[1], -s[2]} end
     if #opts > 0 then
       local o = opts[math.random(#opts)]
       for k, sg in ipairs(SIGNS) do
@@ -79,8 +72,11 @@ end
 -- ---- population ---------------------------------------------------------------
 
 local function spawn_ped(near_x, near_z, min_d, max_d)
+  local bi, bj = block_of(near_x, near_z)
   for _ = 1, 30 do
-    local i, j = math.random(0, G.city.N - 1), math.random(0, G.city.N - 1)
+    -- A block around the player: avenues are twice as far apart as streets.
+    local i, j = bi + math.random(-2, 2), bj + math.random(-4, 4)
+    if not walkable(i, j) then goto continue end
     local k = math.random(4)
     local a, b = corner(i, j, k)
     local n = k % 4 + 1
@@ -98,6 +94,7 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
       Ped.peds[id] = p
       return id
     end
+    ::continue::
   end
 end
 

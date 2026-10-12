@@ -60,7 +60,7 @@ at(7.0, function()
 end)
 at(7.5, function()
   check(G.mission and G.mission.def.title == "Joyride", "mission starts at its marker")
-  local gx, gz = city.node(1, 7)
+  local gx, gz = city.node(5, 12)
   engine.set_pos(car, gx, 0.8, gz)
   engine.set_vel(car, 0, 0, 0)
 end)
@@ -114,14 +114,17 @@ local function walking_peds()
   end
   return n
 end
--- Nearest ped in `state`, optionally only mid-block (away from corner lamps).
+-- Nearest ped in `state`, optionally only mid-block (on the sidewalk, away
+-- from the corner lamps; not someone cutting through a block after a scare).
 local function nearest_ped(state, mid_block)
   local px, _, pz = engine.pos(G.vehicle or G.player)
   local best, bid = math.huge
   for id, p in pairs(peds.peds) do
     local x, _, z = engine.pos(id)
     local bx, bz = city.block_center(p.i, p.j)
-    local ok = not mid_block or math.min(math.abs(x - bx), math.abs(z - bz)) < G.city.block / 2 - 7
+    local ex, ez = math.abs(x - bx) - (G.city.bx / 2 - 2.2), math.abs(z - bz) - (G.city.bz / 2 - 2.2)
+    local side = (math.abs(ex) < 1 and ez < -7) or (math.abs(ez) < 1 and ex < -7)
+    local ok = not mid_block or side
     local d = (x - px) ^ 2 + (z - pz) ^ 2
     if p.state == state and ok and d < best then best, bid = d, id end
   end
@@ -134,9 +137,14 @@ after(0.2, function()
   -- Back in the car, parked next to someone, lean on the horn.
   press("e")
   check(G.vehicle == car, "back in the car")
-  scared = nearest_ped("walk")
+  -- Someone on a sidewalk, with the car out on the street beside them.
+  scared = nearest_ped("walk", true)
   local x, _, z = engine.pos(scared)
-  engine.set_pos(car, x + 6, 0.8, z)
+  local p = peds.peds[scared]
+  local bx, bz = city.block_center(p.i, p.j)
+  local nx, nz = 0, 0
+  if math.abs(x - bx) / G.city.bx > math.abs(z - bz) / G.city.bz then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
+  engine.set_pos(car, x + nx * 6, 0.8, z + nz * 6)
   engine.set_vel(car, 0, 0, 0)
 end)
 after(0.3, function() press("h") end)
@@ -150,7 +158,7 @@ after(5.0, function()
   local p = peds.peds[id]
   local bx, bz = city.block_center(p.i, p.j)
   local nx, nz = 0, 0
-  if math.abs(x - bx) > math.abs(z - bz) then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
+  if math.abs(x - bx) / G.city.bx > math.abs(z - bz) / G.city.bz then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
   engine.set_pos(car, x + nx * 9, 0.8, z + nz * 9)
   engine.orient(car, math.atan(-nx, -nz))
   engine.set_angvel(car, 0, 0, 0)
@@ -199,11 +207,11 @@ end)
 
 after(1.0, function() wanted.set(1) end)
 until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star", function()
-  -- Teleport to whichever corner of town is farthest from the cop.
+  -- Teleport to whichever intersection in town is farthest from the cop.
   local cop = next(police.cops)
   local cx, _, cz = engine.pos(cop)
   local best, bx, bz = -1
-  for _, n in ipairs{{0, 0}, {0, G.city.N}, {G.city.N, 0}, {G.city.N, G.city.N}} do
+  for _, n in ipairs(city.nodes()) do
     local x, z = city.node(n[1], n[2])
     local d = (x - cx) ^ 2 + (z - cz) ^ 2
     if d > best then best, bx, bz = d, x, z end
@@ -280,6 +288,19 @@ end)
 until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, officers get out of their cars")
 until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
   H.player.hp = 12 -- skip ahead
+  -- ...and stand in the open ten meters from an officer who can see us, so
+  -- this doesn't hang on long-range dice or one stuck behind a pillar.
+  local px, py, pz = engine.pos(G.player)
+  for id in pairs(police.officers) do
+    local x, y, z = engine.pos(id)
+    local dx, dy, dz = px - x, py + 0.4 - (y + 1), pz - z
+    local hit = engine.raycast(x, y + 1, z, dx, dy, dz, math.sqrt(dx * dx + dy * dy + dz * dz), id)
+    local d = math.sqrt(dx * dx + dz * dz)
+    if (hit == nil or hit == G.player) and d > 10 then
+      engine.set_pos(G.player, x + dx / d * 10, py, z + dz / d * 10)
+      break
+    end
+  end
 end)
 until_(function() return wastes == 1 end, 30, "out of health: WASTED")
 until_(function() return respawned end, 8, "respawned outside the hospital", function()

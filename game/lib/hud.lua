@@ -20,33 +20,61 @@ local function bar(x, y, bw, bh, frac, r, g, b)
   engine.rect(x, y, bw * math.max(0, math.min(1, frac)), bh, r, g, b, 0.95)
 end
 
-local function minimap(sw, sh)
-  local L = G.city
-  if not L then return end
-  local S, half = 180, L.size / 2
-  local x0, y0 = sw - S - 20, sh - S - 20
-  local function map(wx, wz) return x0 + (wx + half) / L.size * S, y0 + (wz + half) / L.size * S end
-  engine.rect(x0 - 4, y0 - 4, S + 8, S + 8, 0, 0, 0, 0.55)
-  engine.rect(x0, y0, S, S, 0.62, 0.62, 0.6, 0.85)
-  -- Districts: industry brown, houses green; downtown stays grey.
+-- The map's static part (water, blocks, park, roads) as rects in 0..1 map
+-- coordinates, worked out once per city.
+local base, base_city
+local COLORS = {
+  downtown = {0.62, 0.62, 0.6}, residential = {0.7, 0.62, 0.52}, industrial = {0.62, 0.5, 0.38},
+  park = {0.36, 0.58, 0.3}, road = {0.25, 0.25, 0.27},
+}
+local function map_base(L)
+  if base_city == L then return base end
   local city = require "lib.city"
-  local bw = L.block / L.size * S
-  for i = 0, L.N - 1 do
-    for j = 0, L.N - 1 do
-      local d = city.district(i, j)
-      if d ~= "downtown" then
-        local bx, by = map(L.origin + (i + 0.5) * L.P, L.origin + (j + 0.5) * L.P)
-        local c = d == "industrial" and {0.62, 0.5, 0.38} or {0.5, 0.66, 0.45}
-        engine.rect(bx - bw / 2, by - bw / 2, bw, bw, c[1], c[2], c[3], 0.9)
+  local rects = {}
+  local function add(x0, z0, x1, z1, c)
+    rects[#rects + 1] = {(x0 + L.sx / 2) / L.sx, (z0 + L.sz / 2) / L.sz, (x1 - x0) / L.sx, (z1 - z0) / L.sz, c}
+  end
+  local A, S = L.avenue / 2, L.street / 2
+  for _, n in ipairs(city.nodes()) do
+    local x, z = city.node(n[1], n[2])
+    add(x - A, z - S, x + A, z + S, COLORS.road)
+  end
+  for _, s in ipairs(city.segments()) do
+    local ax, az = city.node(s[1], s[2])
+    local bx, bz = city.node(s[1] + s[3], s[2] + s[4])
+    add(ax - A, az - S, bx + A, bz + S, COLORS.road)
+  end
+  for i = 0, L.NX - 1 do
+    for j = 0, L.NZ - 1 do
+      local c = COLORS[city.district(i, j)]
+      if c and city.district(i, j) ~= "park" then
+        local x, z = city.block_center(i, j)
+        add(x - L.bx / 2, z - L.bz / 2, x + L.bx / 2, z + L.bz / 2, c)
       end
     end
   end
-  local rw = L.road / L.size * S
-  for k = 0, L.N do
-    local a = map(L.origin + k * L.P, 0)
-    engine.rect(a - rw / 2, y0, rw, S, 0.25, 0.25, 0.27, 0.95)
-    local _, b = map(0, L.origin + k * L.P)
-    engine.rect(x0, b - rw / 2, S, rw, 0.25, 0.25, 0.27, 0.95)
+  local P = L.park
+  if P then
+    add(P.x0, P.z0, P.x1, P.z1, COLORS.park)
+    add(P.x0, P.transverse - S, P.x1, P.transverse + S, COLORS.road)
+  end
+  base, base_city = rects, L
+  return rects
+end
+
+local function minimap(sw, sh)
+  local L = G.city
+  if not L then return end
+  -- The island is tall and thin, so the map is too; it scales with the window.
+  local H = math.floor(math.min(230, sh * 0.3))
+  local W = math.floor(H * L.sx / L.sz)
+  local x0, y0 = sw - W - 20, sh - H - 20
+  local function map(wx, wz) return x0 + (wx + L.sx / 2) / L.sx * W, y0 + (wz + L.sz / 2) / L.sz * H end
+  engine.rect(x0 - 4, y0 - 4, W + 8, H + 8, 0, 0, 0, 0.55)
+  engine.rect(x0, y0, W, H, 0.18, 0.32, 0.55, 0.85)
+  for _, r in ipairs(map_base(L)) do
+    local c = r[5]
+    engine.rect(x0 + r[1] * W, y0 + r[2] * H, r[3] * W, r[4] * H, c[1], c[2], c[3], 0.9)
   end
   for _, id in ipairs(engine.find("car")) do
     local x, _, z = engine.pos(id)
@@ -110,7 +138,7 @@ engine.on("frame", function(dt)
   local W = require "systems.weapons"
   local def = W.defs[G.weapon]
   local label = def.name .. (def.melee and "" or string.format("  %d", G.ammo[G.weapon] or 0))
-  shadow_text(label, w - 20 - engine.text_width(label, 16), h - 230, 16, 1, 1, 1)
+  shadow_text(label, w - 20 - engine.text_width(label, 16), h - math.min(230, h * 0.3) - 55, 16, 1, 1, 1)
   if G.player and not def.melee then
     local cx, cy = w / 2, h / 2
     for _, r in ipairs{{-9, -1, 6, 2}, {3, -1, 6, 2}, {-1, -9, 2, 6}, {-1, 3, 2, 6}} do

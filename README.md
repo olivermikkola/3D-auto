@@ -5,14 +5,16 @@ and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **
 into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
-procedural city with downtown, industrial and residential districts, a TV tower and a car park
-you can drive to the top of, drivable cars that can jump and roll, a stunt park, on-foot movement,
+procedural island city laid out like Manhattan (long blocks between wide avenues, Central Park,
+a skyline that peaks in Midtown and the Financial District, brownstones uptown) with an Art Deco
+tower, a TV tower and a car park you can drive to the top of, drivable cars that can jump and
+roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
 pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
 progress that's saved between sessions, a pause menu with settings, and shops to spend your
 cash in. Edit any `.lua` file while it runs and it hot-reloads.
 
-![Night drive: headlights, street lamps, lit office floors](docs/night.png)
+![Midtown at golden hour, the Empire in the middle and Central Park beyond](docs/skyline.png)
 
 **Download:** builds for Linux, Windows and macOS are on the
 [Releases](https://github.com/olivermikkola/3D-auto/releases) page. Unzip and run `auto`. On
@@ -201,32 +203,54 @@ sensitivity, invert camera Y) apply to the right stick too.
 
 | | |
 |---|---|
-| ![Houses in the south](docs/homes.png) | ![Warehouses and containers in the east](docs/industry.png) |
-| ![The car park](docs/carpark.png) | ![The TV tower at dusk](docs/tower.png) |
+| ![Midtown's towers, with the park beyond](docs/midtown.png) | ![Central Park: the reservoir, the lake, the transverse road](docs/park.png) |
+| ![Brownstones with stoops on an uptown street](docs/brownstones.png) | ![Times Square after dark](docs/times.png) |
+| ![The West Side yards](docs/industry.png) | ![The car park, squeezed in between towers](docs/carpark.png) |
 
-`lib/city.lua` builds an 8×8 grid of blocks, now in three districts (tinted on the minimap):
+`lib/city.lua` lays the city out like Manhattan, all of it boxes:
 
-- **Downtown** in the middle: office towers, taller toward the center.
-- **Industrial** along the east edge: warehouses with sawtooth roofs, yards of shipping
-  containers, and striped smokestacks.
-- **Residential** along the south: houses with pitched roofs, front yards and trees.
+- **The grid:** 7 avenues run north-south, 16 m wide and 100 m apart, and 21 streets run east-west,
+  12 m wide and 48 m apart, so blocks are long 84 × 36 m strips. Buildings are flush with the
+  sidewalk on both long sides, a continuous street wall, and avenue corners build taller than
+  mid-block. Dashes and zebra crossings are baked into one mesh per grid line.
+- **The island:** it narrows at both tips; blocks off it are river, with invisible walls at the
+  shore, and the river sits a quay wall below the streets all round.
+- **Central Park:** 2 × 7 blocks with the reservoir and its running track, the lake and its
+  fountain, the meadow, a loop drive and about 180 trees. Its inner streets are gone except one
+  transverse road across the middle.
+- **The skyline** has two peaks, Midtown just south of the park and the Financial District at the
+  southern tip, with supertalls up to 50 floors: glass curtain walls with masts, brick with
+  window bands, and Art Deco "wedding cake" towers that step back to a crown and spire (each tier
+  is its own collider).
+- **Uptown** is brownstone terraces (stoops, cornices, a color per house) mid-block and apartment
+  houses on the avenues. NYC's wooden water tanks stand on many of the brick roofs.
+- **The West Side yards:** warehouses with sawtooth roofs, shipping containers and smokestacks.
+- **Small parks:** Washington Square with its arch and fountain, Union Square, Battery Park, and
+  glowing billboards over every frontage of Times Square.
 
-Every lot makes the same `math.random` calls in the same order whatever it becomes; details like
-container colors use a hash of the block instead. So downtown, the street layout and everything
-placed after the city (traffic, pedestrians, pickups) are exactly what they were before the
-districts existed. CI's playthrough didn't need to change.
+Each block draws from its own seeded generator, so the city never touches `math.random` and
+changing one block can't reshuffle the rest.
 
-`lib/landmarks.lua` adds two one-off places (`T` and `C` on the minimap):
+The street network has gaps (the river, the park), so `lib.city` exposes it as a graph:
+`city.road(k, l, dk, dl)`, `city.neighbors`, `city.nodes`, `city.segments`, `city.nearest_node`,
+`city.random_node(x, z, min, max)` and `city.block_of(x, z)`. Traffic, police and pedestrians walk
+it instead of assuming a full grid, and the minimap draws it. The city is about 600 × 970 m, so
+traffic follows the player: cars that end up more than 330 m away are moved to a street nearer,
+out of sight, and pedestrians spawn on the blocks around you.
 
-- **The TV tower,** 100 m tall next to the starting lot, floodlit at night with a red beacon on
-  top. You can steer by it from most of the city.
+`lib/landmarks.lua` adds three one-off places (`E`, `T` and `C` on the minimap):
+
+- **The Empire,** an Art Deco tower in Midtown and the tallest thing in town: 186 m to the top
+  tier, then a lit crown and a mast with a red light on top.
+- **The TV tower,** 100 m tall uptown, floodlit at night with a red beacon on top.
 - **The car park,** three decks with stacked ramps up the east and west sides, entered from the
   south street. The roof has a kicker on its south edge.
 
 A bigger city meant more static boxes, and the physics compared every moving body against every
 box. It now keeps static bodies in a grid that is only rebuilt when one moves, and still visits
 pairs in the same order, so every test's simulation is bit-for-bit identical. A soak tick is about
-1.1 ms (it was 1.0 ms); what remains is mostly raycasts, which still scan every entity.
+1.1 ms. The Manhattan island (three times the area, a few more cars) costs about a quarter more
+per tick than the old 8 × 8 grid did; most of that is raycasts, which still scan every entity.
 
 ## Wanted level and police
 
@@ -400,9 +424,11 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
-any failure. `SOAK=1` runs a traffic soak
+any failure. `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
+pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
-`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the districts and a drive up the car park, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the layout (a connected road graph with nothing built on it, the shore walls, the
+skyline's two peaks, the landmarks) and a drive up the car park, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing

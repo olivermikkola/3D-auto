@@ -35,22 +35,30 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
-local function nearest_node(x, z)
-  local L = G.city
-  local k = U.clamp(math.floor((x - L.origin) / L.P + 0.5), 0, L.N)
-  local l = U.clamp(math.floor((z - L.origin) / L.P + 0.5), 0, L.N)
-  return k, l
-end
-
 -- An intersection 70-130 m from where the cops think the player is.
 local function spawn_point()
   local px, pz = wanted.center[1], wanted.center[2]
-  for _ = 1, 40 do
-    local k, l = math.random(0, G.city.N), math.random(0, G.city.N)
+  for _ = 1, 10 do
+    local k, l = city.random_node(px, pz, 70, 130)
+    if not k then return end
     local x, z = city.node(k, l)
-    local d = U.dist2d(x, z, px, pz)
-    if d > 70 and d < 130 and not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
+    if not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
   end
+end
+
+-- One intersection along the roads from (k, l) toward (gk, gl): along the
+-- longer axis if that road exists, else the other, else any way that's open.
+local function step_toward(k, l, gk, gl)
+  local dk, dl = gk - k, gl - l
+  local sk, sl = dk > 0 and 1 or -1, dl > 0 and 1 or -1
+  local tries = math.abs(dk) >= math.abs(dl) and {{sk, 0, dk}, {0, sl, dl}} or {{0, sl, dl}, {sk, 0, dk}}
+  for _, t in ipairs(tries) do
+    if t[3] ~= 0 and city.road(k, l, t[1], t[2]) then return k + t[1], l + t[2] end
+  end
+  local opts = city.neighbors(k, l)
+  local n = opts[math.random(math.max(1, #opts))]
+  if n then return n[1], n[2] end
+  return k, l
 end
 
 local function spawn_cop()
@@ -122,17 +130,16 @@ local function drive_cop(c, dt)
   else
     -- Follow the grid one intersection at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
-    local k, l = nearest_node(x, z)
-    local gk, gl = nearest_node(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
+    local k, l = city.nearest_node(x, z)
+    local gk, gl = city.nearest_node(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
     if not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
-      local dk, dl = gk - k, gl - l
-      if dk == 0 and dl == 0 then
-        if math.random() < 0.5 then dk = math.random(0, 1) * 2 - 1 else dl = math.random(0, 1) * 2 - 1 end
-        if k + dk < 0 or k + dk > G.city.N then dk = -dk end
-        if l + dl < 0 or l + dl > G.city.N then dl = -dl end
+      if k == gk and l == gl then
+        local opts = city.neighbors(k, l) -- there: search a street nearby
+        local n = opts[math.random(math.max(1, #opts))]
+        if n then k, l = n[1], n[2] end
+      else
+        k, l = step_toward(k, l, gk, gl)
       end
-      if math.abs(dk) >= math.abs(dl) and dk ~= 0 then k = k + (dk > 0 and 1 or -1)
-      elseif dl ~= 0 then l = l + (dl > 0 and 1 or -1) end
       c.goal = {city.node(k, l)}
     end
     tx, tz = c.goal[1], c.goal[2]

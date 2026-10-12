@@ -37,17 +37,18 @@ local function show(s)
 end
 
 function P.start()
-  -- A few spots on sidewalks around the middle of town.
+  -- A few spots on the avenue sidewalks, around where you start and uptown.
   local function spot(kind, i, j, sx, sz)
     local cx, cz = city.block_center(i, j)
-    P.place(kind, cx + sx * (G.city.block / 2 - 1.2), cz + sz * (G.city.block / 2 - 6))
+    P.place(kind, cx + sx * (G.city.bx / 2 - 1.2), cz + sz * (G.city.bz / 2 - 6))
   end
-  spot("health", 4, 3, -1, -1)
-  spot("ammo", 4, 3, 1, -1)
-  spot("health", 3, 4, 1, 1)
-  spot("ammo", 5, 4, -1, 1)
-  spot("smg", 2, 2, 1, 1)
-  spot("health", 6, 5, -1, -1)
+  spot("health", 2, 15, -1, -1)
+  spot("ammo", 2, 15, 1, -1)
+  spot("health", 3, 16, 1, 1)
+  spot("ammo", 1, 16, -1, 1)
+  spot("smg", 4, 12, 1, 1)
+  spot("health", 1, 6, -1, -1)
+  spot("ammo", 4, 18, 1, 1)
   for _, s in ipairs(P.spots) do show(s) end
 end
 

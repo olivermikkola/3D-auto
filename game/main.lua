@@ -26,7 +26,7 @@ require "lib.shop"
 
 engine.on("init", function()
   math.randomseed(1337)
-  engine.fog(90, 320)
+  engine.fog(110, 380)
 
   prefabs.build()
   sfx.build()
@@ -44,12 +44,12 @@ engine.on("init", function()
   player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
   G.cam_yaw = 0.3
 
-  traffic.start(18)
+  traffic.start(20)
   peds.start()
   pickups.start()
   -- The hospital: where you wake up after getting wasted.
-  local hx, hz = city.block_center(3, 3)
-  G.hospital = {hx + G.city.block / 2 - 1.5, 1.2, hz}
+  local hx, hz = city.block_center(G.city.hospital[1], G.city.hospital[2])
+  G.hospital = {hx - G.city.bx / 2 + 1.5, 1.2, hz}
   mission.load_all("missions")
   require("systems.garage").build()
   require("systems.gunshop").build()
@@ -67,6 +67,7 @@ if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
+if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)
