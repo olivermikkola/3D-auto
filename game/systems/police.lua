@@ -381,6 +381,8 @@ engine.on("frame", function()
   local on = math.floor(engine.time() * 6) % 2 == 0
   local active = wanted.stars() > 0
   for id, c in pairs(P.cops) do
+    -- A car blown up this tick is only dropped from P.cops on the next one.
+    if not engine.exists(id) then goto continue end
     local x, y, z = engine.pos(id)
     local ux, uy, uz = engine.up(id)
     local rx, ry, rz = engine.right(id)
@@ -394,6 +396,7 @@ engine.on("frame", function()
       local k = lit and 1 or 0.25
       if side == 1 then engine.set_color(light, k, 0.1 * k, 0.1 * k) else engine.set_color(light, 0.1 * k, 0.2 * k, k) end
     end
+    ::continue::
   end
 end)
 
@@ -401,9 +404,11 @@ end)
 engine.on("minimap", function(map)
   local blink = math.floor(engine.time() * 4) % 2 == 0
   for id in pairs(P.cops) do
-    local x, _, z = engine.pos(id)
-    local mx, my = map(x, z)
-    engine.rect(mx - 2.5, my - 2.5, 5, 5, blink and 1 or 0.2, 0.1, blink and 0.2 or 1, 1)
+    if engine.exists(id) then
+      local x, _, z = engine.pos(id)
+      local mx, my = map(x, z)
+      engine.rect(mx - 2.5, my - 2.5, 5, 5, blink and 1 or 0.2, 0.1, blink and 0.2 or 1, 1)
+    end
   end
   if wanted.stars() > 0 then
     local r = wanted.radius()
