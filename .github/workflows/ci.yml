@@ -37,6 +37,11 @@ jobs:
           rm -rf menu-test
           MENU_TEST=1 ./target/release/auto game --headless 900 --save-dir menu-test
           MENU_TEST=2 ./target/release/auto game --headless 900 --save-dir menu-test
+      - name: Shops across a restart
+        run: |
+          rm -rf shop-test
+          SHOP_TEST=1 ./target/release/auto game --headless 900 --save-dir shop-test
+          SHOP_TEST=2 ./target/release/auto game --headless 900 --save-dir shop-test
       - name: Soak (5 simulated minutes)
         if: runner.os == 'Linux'
         run: SOAK=1 ./target/release/auto game --headless 18000
