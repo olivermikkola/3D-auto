@@ -10,7 +10,7 @@ a skyline that peaks in Midtown and the Financial District, brownstones uptown) 
 tower, a TV tower and a car park you can drive to the top of, drivable cars that can jump and
 roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
-pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
+pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, seven missions,
 progress that's saved between sessions, a pause menu with settings, and shops to spend your
 cash in. Edit any `.lua` file while it runs and it hot-reloads.
 
@@ -439,6 +439,9 @@ return {
 A mission that needs a place only some maps have checks first and returns `false` to sit this
 map out: `if not city.has("bank") then return false end`.
 
+Set `after = "<file name>"` to keep a mission locked until another is passed: Fragile Cargo,
+Takedown and Smuggler's Run open one by one after Getaway, and passing one announces the next.
+
 ## Command line
 
 ```
@@ -474,7 +477,8 @@ pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
 `MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the loaded map's layout (a connected road graph with nothing built on it, the
 shore walls, the skyline's peaks, the landmarks) and a drive up the car park, `MAP=harbor` any of
-these on the second map, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+these on the second map, `PAD_TEST=1` the gamepad controls, and `MISSION_TEST=1` the later
+missions and the order they unlock in (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing

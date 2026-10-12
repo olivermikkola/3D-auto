@@ -35,6 +35,12 @@ return {
     race = {route = {{0, 5}, {0, 1}, {3, 1}, {3, 3}, {5, 3}, {5, 0}, {2, 0}, {2, 4}}},
     bank = {node = {4, 1}},
     getaway_start = {node = {1, 6}},
+    cargo_pickup = {node = {4, 4}},             -- the docks
+    cargo_drop = {node = {0, 1}},               -- the old town
+    takedown_start = {node = {1, 3}},
+    target_start = {node = {4, 0}},
+    smuggle = {route = {{1, 0}, {5, 1}, {3, 5}, {0, 6}}},
+    smuggle_drop = {node = {2, 1}},
   },
 
   pickups = {{"health", 2, 4, -1, -1}, {"ammo", 2, 4, 1, -1}, {"smg", 3, 1, 1, 1}, {"health", 0, 6, 1, 1}},

@@ -58,6 +58,13 @@ return {
     race = {route = {{1, 14}, {1, 17}, {4, 17}, {4, 14}, {3, 14}, {3, 16}}},
     bank = {node = {2, 19}},                    -- down in the Financial District
     getaway_start = {node = {4, 15}},
+    cargo_pickup = {node = {0, 12}},            -- the West Side, by the river
+    cargo_drop = {node = {5, 5}},               -- the Upper East Side
+    takedown_start = {node = {3, 12}},
+    target_start = {node = {1, 3}},             -- the Upper West Side
+    -- Packages from the Village, the Lower East Side, Midtown East and the park's west edge.
+    smuggle = {route = {{0, 16}, {5, 17}, {5, 9}, {1, 8}}},
+    smuggle_drop = {node = {4, 13}},
   },
 
   -- Pickups on the avenue sidewalks: kind, block, and which corner (signs).

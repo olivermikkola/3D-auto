@@ -68,7 +68,7 @@ end)
 -- Every test ends by calling engine.quit(), passed or failed. Running out of
 -- --headless ticks first means it got stuck, which must not exit zero.
 local TESTS = {"AUTO_TEST", "SOAK", "GARAGE_TEST", "SAVE_TEST", "MENU_TEST", "SHOP_TEST",
-               "CITY_TEST", "PAD_TEST", "RELIABILITY_TEST"}
+               "CITY_TEST", "PAD_TEST", "RELIABILITY_TEST", "MISSION_TEST"}
 for _, var in ipairs(TESTS) do
   if os.getenv(var) then
     local quit, finished = engine.quit, false
@@ -90,6 +90,7 @@ if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
+if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

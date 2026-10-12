@@ -74,8 +74,11 @@ require("lib.mission").register{
 ```
 
 The mission object has `say`, `wait`, `sleep`, `timer`, `clear_timer`, `marker`, `remove`,
-`spawn` (despawned when the mission ends), `near`, `in_car`, `fail`, `wanted` and `stars`.
-Returning from `run` passes the mission.
+`spawn` (despawned when the mission ends), `near`, `in_car`, `fail`, `wanted`, `stars`,
+`on(event, fn)` (a handler removed when the mission ends) and `defer(fn)` (runs when it ends,
+passed or failed). Returning from `run` passes the mission. Add `after = "<mission id>"` to
+keep it locked until that one is passed (a game mission's id is its file name, like
+`"04_getaway"`; a mod's is its `id`, or its title).
 
 ## The sandbox
 
