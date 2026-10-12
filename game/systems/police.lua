@@ -211,9 +211,23 @@ local function drive_cop(c, dt)
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
   if c.stuck > 1.2 then
     c.reverse, c.stuck = 1.0, 0
-    -- Wedged again and again on a road map: think again about the way.
-    c.jams = (c.jams or 0) + 1
-    if c.jams >= 3 and city.network() then c.goal, c.jams = nil, 0 end
+    -- Wedged again and again on a road map (a U-turn on a narrow street):
+    -- back up further, a proper three-point turn, and think again about
+    -- the way.
+    if city.network() then
+      c.jams = (c.jams or 0) + 1
+      if c.jams >= 2 then c.reverse = 2.2 end
+      -- Swung wide round a corner into a wall: back to the middle of the
+      -- junction, where there's room, then on along the road.
+      if c.jams == 2 and c.route then
+        local jx, jz = city.pos(city.nearest(x, z))
+        if U.dist2d(x, z, jx, jz) < 25 then
+          table.insert(c.route, c.ri, {jx, jz})
+          c.goal = c.route[c.ri]
+        end
+      end
+      if c.jams >= 4 then c.goal, c.jams = nil, 0 end
+    end
   end
   if c.reverse > 0 then
     c.reverse = c.reverse - dt

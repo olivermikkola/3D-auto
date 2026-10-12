@@ -41,6 +41,29 @@ local function long_avenue()
   return city.pos(bj)
 end
 
+-- The nearest junction, to wait for the police at. On a grid that's the
+-- middle of the crossing; on a map drawn as roads it's live traffic, so
+-- stand on the pavement beside it, away from every road that meets there.
+local function beside_junction(x, z)
+  local j = city.nearest(x, z)
+  local jx, jz = city.pos(j)
+  if not city.network() then return jx, jz end
+  local best, bx, bz = -1, jx, jz
+  for k = 0, 15 do
+    local a = k * math.pi / 8
+    local dx, dz = math.sin(a), math.cos(a)
+    local worst = math.huge
+    for _, n in ipairs(city.links(j)) do
+      local path = city.path(j, n)
+      local ox, oz = path[2][1] - jx, path[2][2] - jz
+      local l = math.sqrt(ox * ox + oz * oz)
+      worst = math.min(worst, 1 - (dx * ox + dz * oz) / l)
+    end
+    if worst > best then best, bx, bz = worst, jx + dx * 11, jz + dz * 11 end
+  end
+  return bx, bz
+end
+
 local yaw0, car
 at(0.5, function()
   check(G.player and engine.grounded(G.player), "player spawned on the ground")
@@ -239,7 +262,7 @@ after(0.5, function()
   -- The run-over left our own car beside the player, sometimes occluding
   -- police sight. Start this independent chase on the nearest junction.
   local x, _, z = engine.pos(G.player)
-  x, z = city.pos(city.nearest(x, z))
+  x, z = beside_junction(x, z)
   engine.set_pos(G.player, x, 1.2, z)
   cash_before = G.cash
   wanted.set(1)
@@ -365,7 +388,7 @@ after(1.0, function()
   -- Combat is independent of the exploded car's wreck and the lot canopy.
   -- Police still spawn at distance and have to drive here normally.
   local x, _, z = engine.pos(G.player)
-  x, z = city.pos(city.nearest(x, z))
+  x, z = beside_junction(x, z)
   engine.set_pos(G.player, x, 1.2, z)
   H.heal_player(100)
   wanted.clear()
