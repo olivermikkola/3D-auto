@@ -281,8 +281,9 @@ local function add_seg(H, ax, az, bx, bz, clear, edge, width)
         math.min(ax, bx) - clear, math.min(az, bz) - clear, math.max(ax, bx) + clear, math.max(az, bz) + clear)
 end
 
-local function add_circle(H, x, z, r)
-  H.add({x = x, z = z, r = r}, x - r, z - r, x + r, z + r)
+-- `survey`: one of the surveyed buildings, which may touch each other.
+local function add_circle(H, x, z, r, survey)
+  H.add({x = x, z = z, r = r, survey = survey}, x - r, z - r, x + r, z + r)
 end
 
 -- Are the corners and edge midpoints of a w x d box along (fx, fz) all
@@ -356,8 +357,31 @@ end
 -- the last; the color and a tree every so many square meters (nil: none).
 local COVER = {
   {"field", {0.5, 0.56, 0.3}}, {"forest", {0.2, 0.33, 0.17}, 700}, {"park", {0.34, 0.52, 0.27}, 2500},
-  {"works", {0.46, 0.45, 0.43}}, {"parking", {0.3, 0.3, 0.32}}, {"water", WATER},
+  {"cemetery", {0.3, 0.44, 0.27}, 500}, {"works", {0.46, 0.45, 0.43}}, {"parking", {0.3, 0.3, 0.32}},
+  {"track", {0.68, 0.33, 0.24}}, {"sand", {0.78, 0.68, 0.5}}, {"court", {0.36, 0.46, 0.6}}, {"pitch", {0.25, 0.56, 0.22}},
+  {"water", WATER},
 }
+local LINE = {0.95, 0.95, 0.92}
+
+-- A church: stone walls under a steep roof along its length, unit
+-- footprint, real height; with `tower`, a bell tower and spire at one end.
+local churches = {}
+local function church_mesh(h, tower)
+  local name = string.format("church_%g_%s", h, tower and "t" or "n")
+  if churches[name] then return name end
+  local wall, roof = {0.8, 0.78, 0.74}, {0.22, 0.2, 0.2}
+  local hw = math.min(h, 8)
+  local parts = {{mesh = "cube", pos = {0, hw / 2, 0}, size = {1, hw, 1}, color = wall}}
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, hw + 3, -0.25}, size = {1.02, 6, 0.52}, color = roof}
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, hw + 3, 0.25}, yaw = math.pi, size = {1.02, 6, 0.52}, color = roof}
+  for k = -2, 2 do -- tall narrow windows down both sides
+    parts[#parts + 1] = {mesh = "cube", pos = {k * 0.17, hw * 0.55, 0}, size = {0.04, hw * 0.45, 1.01}, color = {0.2, 0.22, 0.28},
+                         emissive = 1}
+  end
+  engine.mesh(name, parts)
+  churches[name] = true
+  return name
+end
 
 -- A strip along a polyline: a box per segment and a disc at each bend, so
 -- curves have no gaps.
@@ -533,7 +557,7 @@ function R.build(map, kit)
       local ch = chunked()
       for _, st in ipairs(strips) do
         local x, z = (st[1] + st[3]) / 2, (st[2] + st[4]) / 2
-        ch.add(x, z, {mesh = "cube", pos = {x, k * 0.006 - 0.005, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2]})
+        ch.add(x, z, {mesh = "cube", pos = {x, k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2]})
       end
       ch.bake("cover_" .. c[1], c[1] == "water" and "water" or "cover")
     end
@@ -549,6 +573,127 @@ function R.build(map, kit)
       for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
     end
     ch.bake("paved", "cover")
+  end
+
+  -- Football pitches: white lines, and goals you can hit.
+  local lines = chunked()
+  for _, p in ipairs(map.pitches or {}) do
+    local px, pz, len, wid, yaw = p[1], p[2], p[3], p[4], p[5]
+    local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
+    local function at(u, v) return px + ux * u + vx * v, pz + uz * u + vz * v end
+    local function line(u0, v0, u1, v1)
+      local x0, z0 = at(u0, v0)
+      local x1, z1 = at(u1, v1)
+      local l = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
+      lines.add((x0 + x1) / 2, (z0 + z1) / 2, {mesh = "cube", pos = {(x0 + x1) / 2, 0.05, (z0 + z1) / 2}, yaw = math.atan(x1 - x0, z1 - z0),
+                                                size = {0.14, 0.01, l}, color = LINE})
+    end
+    local L, W = len / 2 - 1.5, wid / 2 - 1.5
+    line(-L, -W, L, -W); line(-L, W, L, W); line(-L, -W, -L, W); line(L, -W, L, W); line(0, -W, 0, W)
+    local cr = math.min(9.15, W * 0.35)
+    for k = 0, 15 do
+      local a0, a1 = k / 16 * 2 * math.pi, (k + 1) / 16 * 2 * math.pi
+      line(cr * math.cos(a0), cr * math.sin(a0), cr * math.cos(a1), cr * math.sin(a1))
+    end
+    local bd, bw = math.min(16.5, L * 0.3), math.min(20, W * 0.6)
+    for _, e in ipairs{-1, 1} do
+      line(e * L, -bw, e * (L - bd), -bw); line(e * L, bw, e * (L - bd), bw); line(e * (L - bd), -bw, e * (L - bd), bw)
+      local gw = math.min(3.66, W * 0.15)
+      for _, side in ipairs{-1, 1} do
+        local x, z = at(e * (L + 0.3), side * gw)
+        kit.static{mesh = "cube", pos = {x, 1.22, z}, size = {0.15, 2.44, 0.15}, color = LINE, tag = "goal"}
+      end
+      local x, z = at(e * (L + 0.3), 0)
+      kit.static{mesh = "cube", pos = {x, 2.4, z}, yaw = yaw, size = {0.15, 0.15, 2 * gw + 0.15}, color = LINE, tag = "goal"}
+    end
+  end
+  -- Running tracks placed by hand: a 400 m oval, red, round a grass infield.
+  for _, t in ipairs(map.tracks or {}) do
+    local tx, tz, yaw = t[1], t[2], t[3]
+    local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
+    local STRAIGHT, R, LANES = 84.4, 41.3, 9.8 -- R: middle of the lanes
+    local pts = {}
+    for _, e in ipairs{1, -1} do -- each bend: the half circle round one end
+      for k = 0, 16 do
+        local a = (k / 16 - 0.5) * math.pi
+        local u, v = e * (STRAIGHT / 2 + R * math.cos(a)), e * R * math.sin(a)
+        pts[#pts + 1] = {tx + ux * u + vx * v, tz + uz * u + vz * v}
+      end
+    end
+    pts[#pts + 1] = pts[1]
+    local parts = {}
+    strip(parts, pts, LANES, 0.047, {0.7, 0.32, 0.24}, true)
+    for _, part in ipairs(parts) do lines.add(part.pos[1], part.pos[3], part) end
+    lines.add(tx, tz, {mesh = "cube", pos = {tx, 0.04, tz}, yaw = yaw, size = {STRAIGHT, 0.02, 2 * R - LANES}, color = {0.25, 0.56, 0.22}})
+    for _, e in ipairs{1, -1} do -- grass in the bends too
+      for k = 1, 6 do
+        local a = k / 7 * math.pi / 2
+        local w = 2 * (R - LANES / 2) * math.cos(a - math.pi / 14)
+        local u = e * (STRAIGHT / 2 + (R - LANES / 2) * math.sin(a))
+        lines.add(tx + ux * u, tz + uz * u, {mesh = "cube", pos = {tx + ux * u, 0.04, tz + uz * u}, yaw = yaw,
+                                            size = {(R - LANES / 2) / 6, 0.02, w}, color = {0.25, 0.56, 0.22}})
+      end
+    end
+    add_circle(H, tx, tz, STRAIGHT / 2 + R + LANES / 2)
+  end
+  lines.bake("lines", "cover")
+
+  -- Foot and cycle bridges over roads: a deck high enough to drive under,
+  -- ramping down to the paths at its ends; solid where it's up.
+  for _, b in ipairs(map.footbridges or {}) do
+    local width, pts = b[1], {}
+    for i = 2, #b do pts[#pts + 1] = b[i] end
+    local total = 0
+    for i = 2, #pts do total = total + math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2) end
+    local TOP = 5.6
+    local function height(sv) return math.min(TOP, math.min(sv, total - sv) * 0.35) + 0.2 end
+    local sv = 0
+    for i = 2, #pts do
+      local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
+      local seg = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      local n = math.max(1, math.ceil(seg / 4))
+      local yaw = math.atan(bx - ax, bz - az)
+      local rx, rz = math.cos(yaw), -math.sin(yaw)
+      for k = 0, n - 1 do
+        local t0, t1 = k / n, (k + 1) / n
+        local h0, h1 = height(sv + seg * t0), height(sv + seg * t1)
+        local x, z = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
+        local l, pitch = seg / n, -math.atan(h1 - h0, seg / n)
+        local up = math.min(h0, h1) >= TOP
+        local deck = {mesh = "cube", pos = {x, (h0 + h1) / 2, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
+                      color = {0.62, 0.62, 0.6}, tag = "bridge"}
+        if up then kit.static(deck) else engine.spawn(deck) end
+        for _, side in ipairs{-1, 1} do
+          engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, (h0 + h1) / 2 + 0.6, z + rz * side * width / 2}, yaw = yaw,
+                       pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}}
+        end
+        -- Pillars off the asphalt, every few pieces.
+        if k % 3 == 1 and (h0 + h1) / 2 > 2.5 then
+          local ei, _, _, _, d = R.nearest_edge(x, z)
+          if not ei or d > NET.edges[ei].width / 2 + 1.5 then
+            kit.static{mesh = "cylinder", pos = {x, (h0 + h1) / 4, z}, size = {0.7, (h0 + h1) / 2, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge"}
+          end
+        end
+      end
+      sv = sv + seg
+    end
+  end
+
+  -- Roofs you can park on (and drive up to): ramps first, so nothing is
+  -- built where they land.
+  for _, rp in ipairs(map.roof_parking or {}) do
+    for _, rm in ipairs(rp.ramps or {}) do
+      local incline = 0.2
+      local len = (rp.height + kit.CURB) / math.sin(incline)
+      local fx, fz = math.sin(rm[3]), math.cos(rm[3])
+      kit.ramp(rm[1], rm[2], rm[3], 9, len, incline)
+      for t = -len / 2, len / 2, 8 do add_circle(H, rm[1] + fx * t, rm[2] + fz * t, 7) end
+    end
+  end
+  local function roof_parked(x, z)
+    for _, rp in ipairs(map.roof_parking or {}) do
+      if (x - rp.x) ^ 2 + (z - rp.z) ^ 2 < rp.r * rp.r then return rp end
+    end
   end
 
   -- Pads for the game's features (the lot, the stunt park...).
@@ -596,10 +741,49 @@ function R.build(map, kit)
     local ok = true
     for _, c in ipairs(circles) do
       ok = ok and not H.near(c[1], c[2], c[3] + 40, function(it)
-        return not it.seg and (c[1] - it.x) ^ 2 + (c[2] - it.z) ^ 2 < (c[3] + it.r) ^ 2 and it.r > 8
+        return not it.seg and not it.survey and (c[1] - it.x) ^ 2 + (c[2] - it.z) ^ 2 < (c[3] + it.r) ^ 2 and it.r > 8
       end)
     end
-    if ok then
+    local rp = (kind == "shop" or kind == "works") and roof_parked(x, z)
+    if ok and rp then
+      -- A flat roof at the deck's height, asphalt on top with bays marked.
+      local h2 = rp.height
+      kit.static{mesh = "cube", pos = {x, h2 / 2, z}, yaw = yaw, size = {w, h2, d}, color = {0.78, 0.74, 0.66}, tag = "building"}
+      engine.spawn{mesh = "cube", pos = {x, h2 + 0.05, z}, yaw = yaw, size = {w - 0.2, 0.06, d - 0.2}, color = {0.3, 0.3, 0.32}}
+      local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
+      for u = -w / 2 + 3, w / 2 - 3, 2.6 do
+        for _, v in ipairs{-d / 4, d / 4} do
+          engine.spawn{mesh = "cube", pos = {x + ux * u + vx * v, h2 + 0.09, z + uz * u + vz * v}, yaw = yaw,
+                       size = {0.1, 0.01, d / 2 - 8}, color = LINE}
+        end
+      end
+      for _, side in ipairs{-1, 1} do -- a low wall round the edge
+        kit.static{mesh = "cube", pos = {x + vx * side * d / 2, h2 + 0.5, z + vz * side * d / 2}, yaw = yaw, size = {w, 1, 0.3},
+                   color = {0.7, 0.68, 0.62}, tag = "wall"}
+      end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif ok and kind == "church" then
+      local main = f[8] and f[8]:lower():find("kirkko")
+      kit.static{mesh = church_mesh(h, main), pos = {x, 0, z}, yaw = yaw, size = {w, math.min(h, 8) + 6, d}, scale = {w, 1, d},
+                 tag = "building"}
+      if main then -- the church itself (not its chapels) gets a tower, at its east end
+        local ux, uz = math.cos(yaw), -math.sin(yaw)
+        local e = ux > 0 and 1 or -1
+        local tx, tz = x + ux * e * (w / 2 - 3.5), z + uz * e * (w / 2 - 3.5)
+        kit.static{mesh = "cube", pos = {tx, 9, tz}, yaw = yaw, size = {7, 18, 7}, color = {0.8, 0.78, 0.74}, tag = "building"}
+        for _, turn in ipairs{0, math.pi / 2} do -- two steep gables crossed: a spire
+          for _, back in ipairs{-1, 1} do -- back to back, like a house roof
+            local a = yaw + turn
+            engine.spawn{mesh = "wedge", pos = {tx + math.sin(a) * 1.8 * back, 24, tz + math.cos(a) * 1.8 * back},
+                         yaw = a + (back > 0 and math.pi or 0), size = {7.2, 12, 3.6}, color = {0.2, 0.2, 0.2}}
+          end
+        end
+        engine.spawn{mesh = "cube", pos = {tx, 31.5, tz}, size = {0.2, 3, 0.2}, color = {0.85, 0.75, 0.3}}
+      end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif ok then
       if kind == "house" or kind == "terrace" then
         local floors = h < 4.5 and 1 or 2
         kit.static{mesh = house_mesh(1 + i % #HOUSE, floors), pos = {x, floors * 1.45, z}, yaw = yaw,
@@ -616,7 +800,7 @@ function R.build(map, kit)
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
       end
-      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3]) end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
     end
   end
@@ -716,6 +900,11 @@ function R.build(map, kit)
     end
   end
   L.buildings, L.trees = count, trees
+  -- Which pavements are clear, worked out now rather than when the first
+  -- pedestrian asks (half a second on a big town).
+  for ei, e in ipairs(NET.edges) do
+    if e.kind ~= "highway" then R.pavement(ei, 1); R.pavement(ei, -1) end
+  end
   return L
 end
 
@@ -750,8 +939,41 @@ function R.wet(x, z)
   return false
 end
 
--- Pavement for pedestrians: the edges they can walk (not highways).
-function R.walkable(e) return NET.edges[e].kind ~= "highway" end
+-- Is the pavement on side `side` of edge e (+1: right of its first bend
+-- toward its last) clear to walk? Not where it lies on another road's
+-- asphalt, as between the two halves of a divided road. The ends, where
+-- every pavement crosses the side street, don't count.
+function R.pavement(e, side)
+  NET.pave = NET.pave or {}
+  local key = e * 2 + (side > 0 and 1 or 0)
+  if NET.pave[key] == nil then
+    local E, ed = NET.edges, NET.edges[e]
+    local n, bad = 0, 0
+    for i = 2, #ed.pts do
+      local a, b = ed.pts[i - 1], ed.pts[i]
+      local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+      if len > 0 then
+        local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
+        local o = (ed.width / 2 + SIDEWALK / 2) * side
+        local from, to = i == 2 and math.min(15, len / 2) or 2, i == #ed.pts and math.max(len - 15, len / 2) or len - 2
+        for t = from, to, 4 do
+          local x, z = a[1] + fx * t + fz * o, a[2] + fz * t - fx * o
+          local oe, _, _, _, d = R.nearest_edge(x, z)
+          n = n + 1
+          if oe ~= e and d < E[oe].width / 2 then bad = bad + 1 end
+        end
+      end
+    end
+    NET.pave[key] = n == 0 or bad <= n * 0.2
+  end
+  return NET.pave[key]
+end
+
+-- Pavement for pedestrians: the edges they can walk (not highways, and with
+-- a clear pavement on at least one side).
+function R.walkable(e)
+  return NET.edges[e].kind ~= "highway" and (R.pavement(e, 1) or R.pavement(e, -1))
+end
 R.SIDEWALK = SIDEWALK
 
 return R

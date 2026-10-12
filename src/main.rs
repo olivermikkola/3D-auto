@@ -140,9 +140,10 @@ fn newest_mtime(dir: &Path) -> Option<SystemTime> {
     best
 }
 
-/// The frame event's dt: zero while paused, so anything animated per frame holds still.
-fn frame_dt(eng: &Shared) -> f32 {
-    if eng.borrow().paused { 0.0 } else { (1.0 / TICK_HZ) as f32 }
+/// The frame event's dt: the time since the last frame, zero while paused
+/// so anything animated per frame holds still.
+fn frame_dt(eng: &Shared, dt: f32) -> f32 {
+    if eng.borrow().paused { 0.0 } else { dt }
 }
 
 /// Key events go to the game, or to menus while it's paused.
@@ -153,6 +154,7 @@ fn key_event(eng: &Shared) -> &'static str {
 /// One simulation tick: scripts think, physics moves, contacts are reported.
 fn tick(eng: &Shared, script: &Script) {
     let dt = (1.0 / TICK_HZ) as f32;
+    eng.borrow_mut().snapshot();
     script.emit(eng, "tick", dt);
     let contacts = eng.borrow_mut().step(dt);
     for c in contacts {
@@ -187,7 +189,7 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
                 tick(&eng, s);
             }
             eng.borrow_mut().hud.clear();
-            s.emit(&eng, "frame", frame_dt(&eng));
+            s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
             eng.borrow_mut().update_audio();
             mixer.lock().unwrap().mix(&mut sink);
             if eng.borrow().quit {
@@ -210,6 +212,8 @@ struct App {
     gfx: render::Renderer,
     acc: f64,
     last: f64,
+    /// Seconds between the last two frames.
+    frame_time: f32,
     watch_at: f64,
     mtime: Option<SystemTime>,
     reload: bool,
@@ -259,6 +263,7 @@ impl EventHandler for App {
         let now = miniquad::date::now();
         let dt = (now - self.last).min(0.25);
         self.last = now;
+        self.frame_time = dt as f32;
         if now >= self.watch_at {
             self.watch_at = now + 0.5;
             let m = newest_mtime(&self.eng.borrow().root);
@@ -292,8 +297,14 @@ impl EventHandler for App {
             e.screen = (w, h);
             e.hud.clear();
         }
+        // Draw between the last two ticks, as far along as the clock is
+        // toward the next (screenshots step whole ticks, so are always at one).
+        let fixed = self.shot.is_some() || self.quit_after.is_some();
+        let along = if fixed || self.eng.borrow().paused { 1.0 } else { (self.acc * TICK_HZ).clamp(0.0, 1.0) as f32 };
+        let saved = self.eng.borrow_mut().blend(along);
         if let Some(s) = &self.script {
-            s.emit(&self.eng, "frame", frame_dt(&self.eng));
+            let dt = if fixed { self.ticks_per_frame as f32 / TICK_HZ as f32 } else { self.frame_time };
+            s.emit(&self.eng, "frame", frame_dt(&self.eng, dt));
         }
         self.eng.borrow_mut().update_audio();
         {
@@ -315,6 +326,7 @@ impl EventHandler for App {
             }
         }
         self.gfx.draw(&self.eng.borrow());
+        self.eng.borrow_mut().unblend(saved);
         self.frame += 1;
         if let Some((path, at)) = &self.shot
             && self.frame == *at
@@ -523,6 +535,7 @@ fn main() {
             script,
             gfx: render::Renderer::new(),
             acc: 0.0,
+            frame_time: (1.0 / TICK_HZ) as f32,
             last: miniquad::date::now(),
             watch_at: 0.0,
             mtime,

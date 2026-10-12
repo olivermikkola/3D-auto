@@ -322,6 +322,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("set_pos", |e, _lua, (id, x, y, z): (u32, f32, f32, f32)| {
         if let Some(en) = e.get_mut(id) {
             en.pos = v3(x, y, z);
+            en.prev = None; // a teleport: don't draw it sliding there
         }
         Ok(())
     });

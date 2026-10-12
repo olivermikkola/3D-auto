@@ -993,7 +993,7 @@ end
 function C.build()
   if NET then
     return roadnet.build(MAP, {static = static, rng = rng, CURB = CURB, FLOOR = FLOOR, feature = feature,
-                               building_mesh = building_mesh, warehouse_mesh = warehouse_mesh})
+                               building_mesh = building_mesh, warehouse_mesh = warehouse_mesh, ramp = C.ramp})
   end
   local sx, sz = NX * PX + AVE, NZ * PZ + ST
   local L = {
