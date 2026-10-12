@@ -1,5 +1,9 @@
 # auto
 
+[![CI](https://github.com/olivermikkola/3D-auto/actions/workflows/ci.yml/badge.svg)](https://github.com/olivermikkola/3D-auto/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/olivermikkola/3D-auto)](https://github.com/olivermikkola/3D-auto/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A minimal 3D sandbox kernel in Rust. One ~1 MB binary renders low-poly meshes with shadows
 and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **The game is entirely Lua**: the binary emits events
 into a tiny pub/sub bus, and scripts build the world on top of it.
