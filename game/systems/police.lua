@@ -36,10 +36,45 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
+-- How far it is by road from junction `from` to each junction (meters).
+local function road_dist(from)
+  local dist, done = {[from] = 0}, {}
+  while true do
+    local best, u = math.huge
+    for j, d in pairs(dist) do
+      if not done[j] and (d < best or (d == best and j < u)) then best, u = d, j end
+    end
+    if not u then return dist end
+    done[u] = true
+    for _, n in ipairs(city.links(u)) do
+      local p, len = city.path(u, n), 0
+      for i = 2, #p do len = len + U.dist2d(p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) end
+      if not dist[n] or best + len < dist[n] then dist[n] = best + len end
+    end
+  end
+end
+
 -- A junction 70-130 m from where the cops think the player is (further,
--- in a town whose junctions are far apart).
+-- in a town whose junctions are far apart). On a map drawn as roads,
+-- 70-160 m by road: a junction that's close as the crow flies can be a long
+-- drive round, and a cop sent the long way ends up too far off and is
+-- recycled, again and again.
 local function spawn_point()
   local px, pz = wanted.center[1], wanted.center[2]
+  if city.network() then
+    local dist, cands = road_dist(city.nearest(px, pz)), {}
+    for _, j in ipairs(city.junctions()) do
+      local x, z = city.pos(j)
+      local d = dist[j]
+      if d and d >= 70 and d <= 160 and U.dist2d(x, z, px, pz) >= 50 and not engine.nearest(x, 1, z, 6) then
+        cands[#cands + 1] = j
+      end
+    end
+    if #cands > 0 then
+      local x, z = city.pos(cands[math.random(#cands)])
+      return x, z, math.atan(px - x, pz - z)
+    end
+  end
   for _ = 1, 10 do
     local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
@@ -193,6 +228,8 @@ local function drive_cop(c, dt)
     local hit, d = engine.raycast(x + fx * 2.5, 0.8, z + fz * 2.5, fx, 0, fz, 16, id)
     local tag = hit and engine.tag(hit)
     if (tag == "car" or tag == "cop") and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5 then c.overtake = 2 end
+    -- On a road map, a parked or stuck car in the lane is passed too.
+    if (tag == "car" or tag == "cop") and city.network() and math.abs(vehicle.speed(hit)) < 1 then c.overtake = 2 end
     c.overtake = math.max(0, (c.overtake or 0) - dt)
     local lane = c.overtake > 0 and -LANE or LANE
     tx, tz = gx + rx * lane, gz + rz * lane
