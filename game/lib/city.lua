@@ -22,6 +22,9 @@ local WATER_DEEP = {0.16, 0.3, 0.52}
 -- included), road widths, grid pitch, and where avenue 0 and street 0 are.
 local MAP, NX, NZ, BX, BZ, AVE, ST, PX, PZ, OX, OZ
 local PARK, SPECIAL, BILLBOARDS, roads, GRAPH
+-- Set when the map is drawn as roads (lib/roadnet) rather than a grid.
+local NET
+local roadnet = require "lib.roadnet"
 
 local palette = {
   {0.85, 0.82, 0.76}, {0.72, 0.68, 0.62}, {0.70, 0.45, 0.35}, {0.62, 0.66, 0.70},
@@ -41,11 +44,18 @@ function C.use(map)
     m.id = map
     map = m
   end
-  local g = assert(map.grid, "a map needs a grid")
-  MAP, NX, NZ, BX, BZ, AVE, ST = map, g.nx, g.nz, g.bx, g.bz, g.avenue, g.street
-  assert(BZ >= 36, "blocks must be at least 36 m deep: the lot, car park and stunt park need it")
   assert(map.specials and map.specials.lot and map.places and map.places.hospital,
          "a map needs a lot (where you start) and a hospital")
+  roads, GRAPH, NET = {}, nil, nil
+  if map.roads then
+    MAP = map
+    NET = roadnet.load(map)
+    roadnet.check(map)
+    return map
+  end
+  local g = assert(map.grid, "a map needs a grid or roads")
+  MAP, NX, NZ, BX, BZ, AVE, ST = map, g.nx, g.nz, g.bx, g.bz, g.avenue, g.street
+  assert(BZ >= 36, "blocks must be at least 36 m deep: the lot, car park and stunt park need it")
   PX, PZ = BX + AVE, BZ + ST
   OX, OZ = -NX * PX / 2, -NZ * PZ / 2
   PARK = map.park
@@ -62,6 +72,7 @@ end
 -- Catch mistakes in a map early, with the name of what's wrong: places on
 -- intersections without a road, special blocks in the river or the park.
 function C.check()
+  if NET then return roadnet.check(MAP) end
   local function fail(fmt, ...) error(string.format("map '%s': " .. fmt, MAP.name or "?", ...), 0) end
   local function node_ok(n, what)
     if not C.on_road(n[1], n[2]) then fail("%s is at intersection %d,%d, which has no road", what, n[1], n[2]) end
@@ -240,6 +251,10 @@ end
 
 local function graph()
   if GRAPH then return GRAPH end
+  if NET then
+    GRAPH = {pos = NET.pos, links = NET.links, roads = NET.roads, id = {}}
+    return GRAPH
+  end
   local g = {pos = {}, links = {}, roads = {}, id = {}}
   for _, n in ipairs(C.nodes()) do
     local id = #g.pos + 1
@@ -274,6 +289,18 @@ function C.junctions()
   return out
 end
 function C.roads() return graph().roads end
+
+-- Is the map drawn as roads rather than a grid?
+function C.network() return NET ~= nil end
+
+-- The road from junction a to b as points, a and b included; on a grid
+-- it's straight, elsewhere it may bend.
+function C.path(a, b)
+  local g = graph()
+  if a == b then return {g.pos[a], g.pos[a]} end
+  if NET then return roadnet.path(a, b) end
+  return {g.pos[a], g.pos[b]}
+end
 
 -- The junction at grid intersection (k, l), if it has a road.
 function C.junction(k, l) return graph().id[k .. "," .. l] end
@@ -875,6 +902,10 @@ local SIDES = {n = {0, -1}, s = {0, 1}, e = {1, 0}, w = {-1, 0}}
 
 -- Does the map have all these places?
 function C.has(...)
+  if NET then
+    for _, name in ipairs{...} do if not roadnet.has(MAP, name) then return false end end
+    return true
+  end
   for _, name in ipairs{...} do
     if not ((MAP.places or {})[name] or (MAP.specials or {})[name]) then return false end
   end
@@ -885,6 +916,7 @@ end
 -- point by one side of a block (see maps/manhattan.lua). Specials are
 -- places too, at their block's center.
 function C.place(name)
+  if NET then return roadnet.place(MAP, name) end
   local p = (MAP.places or {})[name]
   if not p then
     local sp = (MAP.specials or {})[name]
@@ -905,6 +937,7 @@ end
 
 -- A named route: the list of its intersections as {x, z}.
 function C.route(name)
+  if NET then return roadnet.route(MAP, name) end
   local p = (MAP.places or {})[name]
   if not (p and p.route) then error(string.format("map '%s' has no route '%s'", MAP.name or "?", name), 2) end
   local out = {}
@@ -915,6 +948,7 @@ end
 -- Where the map's health, ammo and weapon pickups go, as {kind, x, z}: on
 -- the avenue sidewalks near the named corner of their block.
 function C.pickup_spots()
+  if NET then return roadnet.pickup_spots(MAP) end
   local out = {}
   for _, s in ipairs(MAP.pickups or {}) do
     local kind, i, j, sx, sz = table.unpack(s)
@@ -928,6 +962,11 @@ end
 -- south (+z). The first ordinary downtown block of the map's candidates
 -- gets it; nil if none qualifies. Call after C.build().
 function C.gunshop_spot(L)
+  if NET then
+    local g = MAP.gunshop
+    if g then return g[1], g[2] end
+    return
+  end
   for _, c in ipairs(MAP.gunshop or {}) do
     if L.kinds[c[1] .. "," .. c[2]] == "buildings" and C.district(c[1], c[2]) == "downtown" then
       local cx, cz = C.block_center(c[1], c[2])
@@ -937,6 +976,10 @@ function C.gunshop_spot(L)
 end
 
 function C.build()
+  if NET then
+    return roadnet.build(MAP, {static = static, rng = rng, CURB = CURB, FLOOR = FLOOR, feature = feature,
+                               building_mesh = building_mesh, warehouse_mesh = warehouse_mesh})
+  end
   local sx, sz = NX * PX + AVE, NZ * PZ + ST
   local L = {
     map = MAP.id or MAP.name, NX = NX, NZ = NZ, PX = PX, PZ = PZ, bx = BX, bz = BZ, avenue = AVE, street = ST, walk = WALK,

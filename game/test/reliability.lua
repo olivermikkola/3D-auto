@@ -107,22 +107,44 @@ local function fixtures()
   wanted.clear(); P.clear()
 
   local bx,bz = city.place("lot")
-  local z = bz - (G.city.bz / 2 - 2.2)
-  check(not F.clear_approach(bx,z,0,-1), "mid-side lamp blocks the full car-width corridor")
+  -- A pavement spot just behind a street lamp, and the way to the road
+  -- (nx, nz); fx, fz runs along the pavement. On a grid, the lamp halfway
+  -- along the lot block's north side; on a road map, the lamp nearest the lot.
+  local x, z, nx, nz, fx, fz, reach = bx, bz - (G.city.bz or 0) / 2 + 2.2, 0, -1, 1, 0, (G.city.bx or 0) / 2 - 8
+  if city.network() then
+    local roadnet = require "lib.roadnet"
+    local best, lamp = math.huge
+    for _, id in ipairs(engine.find("lamp")) do
+      local lx,_,lz = engine.pos(id)
+      local d = (lx-bx)^2+(lz-bz)^2
+      if d < best then best, lamp = d, id end
+    end
+    local lx,_,lz = engine.pos(lamp)
+    local e, i = roadnet.nearest_edge(lx, lz, true)
+    local pts = roadnet.net().edges[e].pts
+    local ax,az,ex,ez = pts[i-1][1],pts[i-1][2],pts[i][1],pts[i][2]
+    local len = math.sqrt((ex-ax)^2+(ez-az)^2)
+    fx, fz = (ex-ax)/len, (ez-az)/len
+    nx, nz = fz, -fx
+    if (lx-ax)*nx + (lz-az)*nz > 0 then nx, nz = -nx, -nz end -- toward the road
+    x, z, reach = lx - nx*1.2, lz - nz*1.2, 20
+  end
+  check(not F.clear_approach(x,z,nx,nz), "mid-side lamp blocks the full car-width corridor")
   -- Search for a true positive premise instead of assuming bx+8 is empty.
   -- Do not move ambient traffic or weaken the helper when it correctly blocks.
   local clear
-  for offset = 6, G.city.bx / 2 - 8, 2 do
+  for offset = 6, reach, 2 do
     for _, side in ipairs{-1, 1} do
-      if F.clear_approach(bx + offset * side,z,0,-1) then clear = {bx + offset * side,z}; break end
+      local cx, cz = x + fx*offset*side, z + fz*offset*side
+      if F.clear_approach(cx,cz,nx,nz) then clear = {cx,cz}; break end
     end
     if clear then break end
   end
   check(clear ~= nil, "a verified clear mid-side corridor remains selectable")
-  local obstruction = vehicle.spawn(clear[1], clear[2] - 6, 0, 1)
-  check(not F.clear_approach(clear[1],clear[2],0,-1), "a real car blocks the verified clear corridor")
+  local obstruction = vehicle.spawn(clear[1] + nx*6, clear[2] + nz*6, 0, 1)
+  check(not F.clear_approach(clear[1],clear[2],nx,nz), "a real car blocks the verified clear corridor")
   engine.despawn(obstruction)
-  check(F.clear_approach(clear[1],clear[2],0,-1), "removing only the fixture car restores the clear premise")
+  check(F.clear_approach(clear[1],clear[2],nx,nz), "removing only the fixture car restores the clear premise")
 
   local flight = F.runover_spot(G.player)
   check(flight ~= nil, "a genuine clear road flight fixture is available")
@@ -136,11 +158,14 @@ local function fixtures()
   -- Drive the real walking handler into a solid fixture. Its commanded
   -- velocity stays nonzero, while physics stops it; recovery must use the
   -- previous physics result rather than the just-written intent.
-  local i,j = G.city.lot[1],G.city.lot[2]
   blocked_ped = engine.spawn{mesh = "ped1", pos = {bx+8,1.2,bz-9}, size = {0.7,1.8,0.7},
                             body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
   H.set(blocked_ped,30)
-  peds.peds[blocked_ped] = {id=blocked_ped,i=i,j=j,k=1,dir=1,state="walk",speed=1.4,stuck=0,tx=bx+18,tz=bz-9}
+  local where = {i=G.city.lot and G.city.lot[1], j=G.city.lot and G.city.lot[2], k=1}
+  if city.network() then where = {e=require("lib.roadnet").nearest_edge(bx+8, bz-9, true), hand=1, wp=2} end
+  local walker = {id=blocked_ped,dir=1,state="walk",speed=1.4,stuck=0,tx=bx+18,tz=bz-9}
+  for key, v in pairs(where) do walker[key] = v end
+  peds.peds[blocked_ped] = walker
   blocker = engine.spawn{pos = {bx+9,2,bz-9}, size = {0.5,4,4}, body = "static", tag = "wall"}
 
   -- Remote cars don't disturb pursuit/population. The first explosion

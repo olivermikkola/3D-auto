@@ -148,14 +148,11 @@ local function nearest_ped(state, mid_block, away_from)
   local best, bid = math.huge
   for id, p in pairs(peds.peds) do
     local x, _, z = engine.pos(id)
-    local bx, bz = city.block_center(p.i, p.j)
-    local ex, ez = math.abs(x - bx) - (G.city.bx / 2 - 2.2), math.abs(z - bz) - (G.city.bz / 2 - 2.2)
-    local side = (math.abs(ex) < 1 and ez < -7) or (math.abs(ez) < 1 and ex < -7)
+    local nx, nz, side = peds.curb(id)
     local ok = not mid_block or side
     -- A car is two meters wide: a center ray misses mid-side lamps.
     -- Reserve the whole approach and the ped's flight along the sidewalk.
     if ok and mid_block then
-      local nx, nz = fixtures.outward(x, z, bx, bz)
       ok = fixtures.clear_approach(x, z, nx, nz, car)
     end
     local d = (x - px) ^ 2 + (z - pz) ^ 2
@@ -176,9 +173,7 @@ after(0.2, function()
   -- choose the horn fixture beyond its blast range and enter with real E.
   scared = nearest_ped("walk", true, car)
   local x, _, z = engine.pos(scared)
-  local p = peds.peds[scared]
-  local bx, bz = city.block_center(p.i, p.j)
-  local nx, nz = fixtures.outward(x, z, bx, bz)
+  local nx, nz = peds.curb(scared)
   check(G.player and not G.dead, "alive on foot before the pedestrian fixture")
   car = vehicle.spawn(x + nx * 6, z + nz * 6, math.atan(-nx, -nz), 1)
   local cx, cy, cz = engine.pos(car)
@@ -346,7 +341,21 @@ until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, office
 until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
   H.player.hp = 12 -- two more real officer hits must still kill the player
 end)
-until_(function() return wastes == 1 end, 30, "out of health: WASTED")
+until_(function()
+  -- This phase is about dying to gunfire, not being arrested: an officer
+  -- who walks right up (they stop shooting inside 6 m) is sent back.
+  local px, _, pz
+  if G.player and engine.exists(G.player) then px, _, pz = engine.pos(G.player) end
+  for id in pairs(police.officers) do
+    local x, _, z
+    if engine.exists(id) then x, _, z = engine.pos(id) end
+    if px and x and (x - px) ^ 2 + (z - pz) ^ 2 < 6 ^ 2 then
+      engine.despawn(id)
+      police.officers[id] = nil
+    end
+  end
+  return wastes == 1
+end, 30, "out of health: WASTED")
 until_(function() return respawned end, 8, "respawned outside the hospital", function()
   check(H.player.hp == H.player.max, "health restored")
   check(wanted.stars() == 0 and police.count() == 0 and police.officer_count() == 0, "wanted cleared, police gone")

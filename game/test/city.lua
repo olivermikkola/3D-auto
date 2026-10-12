@@ -37,21 +37,16 @@ end
 -- Minimums for the maps we ship, beyond what any map must pass. A map
 -- without an entry just has to have one of each thing its data asks for.
 local EXPECT = {
+  raisio = {buildings = 200, houses = 150, apartments = 35, warehouses = 2, trees = 1400, lamps = 110},
   manhattan = {
     downtown = 40, residential = 30, over_100m = 15, peak_top = 140, terraces = 30, deco = 5, warehouses = 10,
     containers = 8, rooftop = 40, billboards = 20, park_trees = 150,
   },
 }
 
-local function setup()
-  local L, M = G.city, city.map()
-  local want = EXPECT[L.map] or {}
-  local function at_least(key, n, what)
-    local need = want[key] or 1
-    check(n >= need, string.format("%d %s (at least %d)", n, what, need))
-  end
-  print("  map: " .. M.name)
-
+-- A grid map: its districts, road graph, skyline and what the blocks are
+-- made of. Returns the top of each skyline peak.
+local function grid_layout(L, M, want, at_least)
   -- Districts: the land, the park and every district the rules name.
   local count, water = {}, 0
   for i = 0, L.NX - 1 do
@@ -169,6 +164,68 @@ local function setup()
     at_least("park_trees", trees, "trees in the park")
   end
 
+  return peak_tops
+end
+
+-- A map drawn as roads: every lane of every road clear to drive, a wall
+-- at the shore, and enough of everything built along the roads.
+local function road_layout(L, M, want, at_least)
+  local solid = {building = true, container = true, landmark = true, wall = true, tree = true, lamp = true, carpark = true,
+                 ramp = true, fountain = true}
+  local roadnet = require "lib.roadnet"
+  local blocked, segs = 0, 0
+  for _, e in ipairs(roadnet.net().edges) do
+    for i = 2, #e.pts do
+      local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+      local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      local fx, fz = (bx - ax) / len, (bz - az) / len
+      segs = segs + 1
+      for _, lane in ipairs{-3.2, 0, 3.2} do
+        local hit, _, hx, _, hz = engine.raycast(ax + fz * lane, 1, az - fx * lane, fx, 0, fz, len)
+        if hit and solid[engine.tag(hit)] then
+          blocked = blocked + 1
+          if blocked <= 3 then
+            print(string.format("    blocked: %s %s on %s at (%.0f, %.0f)", engine.tag(hit), engine.mesh_of(hit) or "", e.name, hx, hz))
+          end
+        end
+      end
+    end
+  end
+  check(blocked == 0, string.format("all %d stretches of road are clear to drive, in both lanes", segs))
+  local west, wx, wz = math.huge
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
+    if x < west then west, wx, wz = x, x, z end
+  end
+  local hit = engine.raycast(wx, 1, wz, -1, 0, 0, 60)
+  check(hit and engine.tag(hit) == "wall", "a wall at the shore keeps cars out of the sea")
+  local houses, apartments, sheds = 0, 0, 0
+  for _, id in ipairs(engine.find("building")) do
+    local m = engine.mesh_of(id) or ""
+    if m:find("^house") then houses = houses + 1
+    elseif m:find("^warehouse") then sheds = sheds + 1
+    elseif m:find("^brick") or m:find("^glass") then apartments = apartments + 1 end
+  end
+  at_least("buildings", #engine.find("building"), "buildings")
+  at_least("houses", houses, "detached houses with pitched roofs")
+  at_least("apartments", apartments, "apartment and office blocks")
+  at_least("warehouses", sheds, "warehouses")
+  at_least("trees", #engine.find("tree"), "trees")
+  at_least("lamps", #engine.find("lamp"), "street lamps")
+  return {}
+end
+
+local function setup()
+  local L, M = G.city, city.map()
+  local want = EXPECT[L.map] or {}
+  local function at_least(key, n, what)
+    local need = want[key] or 1
+    check(n >= need, string.format("%d %s (at least %d)", n, what, need))
+  end
+  print("  map: " .. M.name)
+
+  local peak_tops = city.network() and road_layout(L, M, want, at_least) or grid_layout(L, M, want, at_least)
+
   -- Landmarks, for the ones the map has.
   local sp = M.specials
   local expected = (sp.tower and 1 or 0) + (sp.empire and 1 or 0) + (sp.carpark and 1 or 0)
@@ -193,7 +250,7 @@ local function setup()
     return
   end
 
-  cx, cz = city.block_center(L.carpark[1], L.carpark[2])
+  cx, cz = city.place("carpark")
   D, CURB = landmarks.DECK, L.curb
   engine.despawn(G.player)
   G.player = nil

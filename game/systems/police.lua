@@ -36,14 +36,29 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
--- A junction 70-130 m from where the cops think the player is.
+-- A junction 70-130 m from where the cops think the player is (further,
+-- in a town whose junctions are far apart).
 local function spawn_point()
   local px, pz = wanted.center[1], wanted.center[2]
   for _ = 1, 10 do
-    local j = city.random_near(px, pz, 70, 130)
+    local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
     local x, z = city.pos(j)
     if not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
+  end
+  -- A town's junctions can be few and far apart (and busy): anywhere
+  -- along a road in range will do, in the lane heading for the player.
+  if not city.network() then return end
+  local roads = city.roads()
+  for _ = 1, 20 do
+    local r = roads[math.random(#roads)]
+    local path = city.path(r[1], r[2])
+    local i = math.random(2, #path)
+    local a, b = path[i - 1], path[i]
+    local t = math.random()
+    local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+    local d = U.dist2d(x, z, px, pz)
+    if d >= 60 and d <= 200 and not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
   end
 end
 
@@ -124,14 +139,25 @@ local function drive_cop(c, dt)
     -- A route may start out away from them, round water or a park.
     local at = city.nearest(x, z)
     local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
-    if not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
+    if c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
+      c.ri = c.ri + 1 -- round the next bend of this road
+      c.goal = c.route[c.ri]
+    elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
+      local from = at
       if at == goal then
         local opts = city.links(at) -- there: search a street nearby
         at = opts[math.random(math.max(1, #opts))] or at
       else
         at = city.step_toward(at, goal)
       end
-      c.goal = {city.pos(at)}
+      -- Pick the road up at the bend after the stretch the car is on.
+      c.route, c.ri = city.path(from, at), 2
+      local best = math.huge
+      for i = 2, #c.route do
+        local d = U.dist2d(x, z, c.route[i][1], c.route[i][2]) + U.dist2d(x, z, c.route[i - 1][1], c.route[i - 1][2])
+        if d < best then best, c.ri = d, i end
+      end
+      c.goal = c.route[c.ri]
     end
     -- Drive in the right-hand lane, like traffic, so oncoming cars pass
     -- by; pull out into the other lane to overtake whatever's ahead in ours.

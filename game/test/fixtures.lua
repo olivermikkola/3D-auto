@@ -85,15 +85,18 @@ function F.runover_spot(car)
   local city = require "lib.city"
   local px, _, pz = engine.pos(car)
   local best, spot = math.huge, nil
-  for _, segment in ipairs(city.segments()) do
-    local ax, az = city.node(segment[1], segment[2])
-    local bx, bz = city.node(segment[1]+segment[3], segment[2]+segment[4])
-    local dx, dz = segment[3], segment[4]
-    for _, t in ipairs{0.35, 0.65} do
-      local x, z = ax+(bx-ax)*t, az+(bz-az)*t
-      local distance = (x-px)^2+(z-pz)^2
-      if distance < best and F.clear_flight(x,z,dx,dz,car) then
-        best, spot = distance, {x,z,dx,dz}
+  for _, road in ipairs(city.roads()) do
+    local path = city.path(road[1], road[2])
+    for i = 2, #path do
+      local ax, az, bx, bz = path[i-1][1], path[i-1][2], path[i][1], path[i][2]
+      local len = math.sqrt((bx-ax)^2+(bz-az)^2)
+      local dx, dz = (bx-ax)/len, (bz-az)/len
+      for _, t in ipairs{0.35, 0.65} do
+        local x, z = ax+(bx-ax)*t, az+(bz-az)*t
+        local distance = (x-px)^2+(z-pz)^2
+        if distance < best and F.clear_flight(x,z,dx,dz,car) then
+          best, spot = distance, {x,z,dx,dz}
+        end
       end
     end
   end

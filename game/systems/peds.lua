@@ -1,5 +1,6 @@
--- Pedestrians: walk the sidewalk loop around their block, sometimes cross
--- the street at a corner, run from danger, and get knocked flying by cars.
+-- Pedestrians: walk the sidewalk loop around their block (or, on a map
+-- drawn as roads, along the pavements from junction to junction),
+-- sometimes cross the street at a corner, run from danger, and get knocked flying by cars.
 -- Pure Lua on the engine API; the population follows the player around.
 local G = require "lib.state"
 local U = require "lib.util"
@@ -69,9 +70,129 @@ local function next_leg(p)
   set_target(p, corner(p.i, p.j, p.k))
 end
 
+-- ---- pavements of a map drawn as roads ---------------------------------------
+-- There a ped walks the pavement along one road (edge e), toward bend wp,
+-- in direction dir (+1 up the bends, -1 down), on the `hand` side of the
+-- way it's walking. At a junction it takes another road there, now and
+-- then crossing to the other side.
+
+local roadnet = require "lib.roadnet"
+local net = {}
+
+local function edges() return roadnet.net().edges end
+
+-- Walkable roads meeting at each junction.
+local function at_junction(j)
+  if not net.inc then
+    net.inc = {}
+    for ei, e in ipairs(edges()) do
+      if roadnet.walkable(ei) then
+        for _, end_ in ipairs{e.a, e.b} do
+          net.inc[end_] = net.inc[end_] or {}
+          table.insert(net.inc[end_], ei)
+        end
+      end
+    end
+  end
+  return net.inc[j] or {}
+end
+
+-- Bend i of the ped's road, moved out to the pavement on its hand side.
+function net.point(p, i)
+  local e = edges()[p.e]
+  local pts = e.pts
+  local j = (pts[i - p.dir] and i - p.dir) or i + p.dir -- a neighbor to take the direction from
+  local a, b = pts[math.min(i, j)], pts[math.max(i, j)]
+  local fx, fz = b[1] - a[1], b[2] - a[2]
+  if p.dir < 0 then fx, fz = -fx, -fz end
+  local l = math.sqrt(fx * fx + fz * fz) + 1e-6
+  local o = (e.width / 2 + roadnet.SIDEWALK / 2) * p.hand
+  return pts[i][1] + fz / l * o, pts[i][2] - fx / l * o
+end
+
+function net.next_leg(p)
+  local pts = edges()[p.e].pts
+  local n = p.wp + p.dir
+  p.crossing = false
+  if n >= 1 and n <= #pts then
+    p.wp = n
+  else
+    -- At a junction: carry on down another road (back the way we came only
+    -- at a dead end), now and then crossing over.
+    local e = edges()[p.e]
+    local j = p.dir > 0 and e.b or e.a
+    local opts = {}
+    for _, ei in ipairs(at_junction(j)) do if ei ~= p.e then opts[#opts + 1] = ei end end
+    local ne = opts[math.random(math.max(1, #opts))] or p.e
+    if math.random() < 0.25 then p.hand, p.crossing = -p.hand, true end
+    p.e = ne
+    local ed = edges()[ne]
+    if ed.a == j then p.dir, p.wp = 1, 1 else p.dir, p.wp = -1, #ed.pts end
+  end
+  set_target(p, net.point(p, p.wp))
+end
+
+-- Back to the nearest pavement (after running away).
+function net.rejoin(p, x, z)
+  local e, i = roadnet.nearest_edge(x, z, true)
+  local pts = edges()[e].pts
+  local a, b = pts[i - 1], pts[i]
+  local side = (b[1] - a[1]) * (z - a[2]) - (b[2] - a[2]) * (x - a[1]) -- > 0: left of a->b
+  p.e, p.dir = e, math.random() < 0.5 and 1 or -1
+  p.wp = p.dir > 0 and i or i - 1
+  p.hand = (side > 0) == (p.dir > 0) and -1 or 1
+  set_target(p, net.point(p, p.wp))
+end
+
+function net.turn(p)
+  p.dir, p.hand = -p.dir, -p.hand
+  local pts = edges()[p.e].pts
+  p.wp = math.max(1, math.min(#pts, p.wp + p.dir))
+  set_target(p, net.point(p, p.wp))
+end
+
+function net.spawn(near_x, near_z, min_d, max_d)
+  -- Only roads that come within reach are worth trying.
+  local E, near = edges(), {}
+  for ei, e in ipairs(E) do
+    if roadnet.walkable(ei) then
+      for _, q in ipairs(e.pts) do
+        if U.dist2d(q[1], q[2], near_x, near_z) < max_d + 60 then near[#near + 1] = ei break end
+      end
+    end
+  end
+  if #near == 0 then return end
+  for _ = 1, 30 do
+    local ei = near[math.random(#near)]
+    local pts = E[ei].pts
+    local i = math.random(2, #pts)
+    do
+      local p = {e = ei, dir = math.random() < 0.5 and 1 or -1, hand = math.random() < 0.5 and 1 or -1}
+      p.wp = p.dir > 0 and i or i - 1
+      local ax, az = net.point(p, p.dir > 0 and i - 1 or i)
+      local bx, bz = net.point(p, p.wp)
+      local t = math.random()
+      local x, z = ax + (bx - ax) * t, az + (bz - az) * t
+      local dist = U.dist2d(x, z, near_x, near_z)
+      if dist >= min_d and dist <= max_d and not engine.nearest(x, 1, z, 1.5) then return p, x, z end
+    end
+  end
+end
+
 -- ---- population ---------------------------------------------------------------
 
 local function spawn_ped(near_x, near_z, min_d, max_d)
+  if city.network() then
+    local p, x, z = net.spawn(near_x, near_z, min_d, max_d)
+    if not p then return end
+    local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15, z}, size = {0.7, 1.8, 0.7},
+                            body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
+    H.set(id, 30)
+    p.id, p.speed, p.state, p.stuck = id, WALK * (0.8 + math.random() * 0.4), "walk", 0
+    set_target(p, net.point(p, p.wp))
+    Ped.peds[id] = p
+    return id
+  end
   local bi, bj = block_of(near_x, near_z)
   for _ = 1, 30 do
     -- A block around the player: avenues are twice as far apart as streets.
@@ -96,6 +217,32 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
     end
     ::continue::
   end
+end
+
+-- Which way the road is from where ped `id` stands (a unit x, z), and
+-- whether it's mid-block: on the pavement well away from any corner.
+function Ped.curb(id)
+  local p = Ped.peds[id]
+  local x, _, z = engine.pos(id)
+  if city.network() then
+    local e = edges()[p.e]
+    local best, cx, cz = math.huge, x, z
+    for i = 2, #e.pts do
+      local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+      local dx, dz = bx - ax, bz - az
+      local t = math.max(0, math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)))
+      local d = U.dist2d(x, z, ax + dx * t, az + dz * t)
+      if d < best then best, cx, cz = d, ax + dx * t, az + dz * t end
+    end
+    local l = math.max(1e-6, U.dist2d(x, z, cx, cz))
+    local jx, jz = city.pos(city.nearest(x, z))
+    return (cx - x) / l, (cz - z) / l, U.dist2d(x, z, jx, jz) > 20
+  end
+  local bx, bz = city.block_center(p.i, p.j)
+  local ex, ez = math.abs(x - bx) - (G.city.bx / 2 - 2.2), math.abs(z - bz) - (G.city.bz / 2 - 2.2)
+  local mid = (math.abs(ex) < 1 and ez < -7) or (math.abs(ez) < 1 and ex < -7)
+  if math.abs(x - bx) / G.city.bx > math.abs(z - bz) / G.city.bz then return x > bx and 1 or -1, 0, mid end
+  return 0, z > bz and 1 or -1, mid
 end
 
 function Ped.count()
@@ -139,6 +286,7 @@ local function walk(id, p, dt)
   if p.state == "flee" then
     if engine.time() > p.until_t then
       p.state = "walk"
+      if city.network() then net.rejoin(p, x, z) return end
       p.i, p.j = block_of(x, z)
       p.k = nearest_corner(p, x, z)
       set_target(p, corner(p.i, p.j, p.k))
@@ -146,7 +294,9 @@ local function walk(id, p, dt)
     end
     mx, mz, speed = p.fx, p.fz, RUN
   else
-    if U.dist2d(x, z, p.tx, p.tz) < 0.8 then next_leg(p) end
+    if U.dist2d(x, z, p.tx, p.tz) < 0.8 then
+      if city.network() then net.next_leg(p) else next_leg(p) end
+    end
     mx, mz = p.tx - x, p.tz - z
     local l = math.sqrt(mx * mx + mz * mz) + 1e-3
     mx, mz, speed = mx / l, mz / l, p.speed
@@ -161,7 +311,10 @@ local function walk(id, p, dt)
   end
   -- Blocked (a lamp, a parked car, a crowd): turn around.
   p.stuck = (speed > 0 and actual_speed2 < 0.1) and p.stuck + dt or 0
-  if p.stuck > 2 and p.state == "walk" then
+  if p.stuck > 2 and p.state == "walk" and city.network() then
+    p.stuck = 0
+    net.turn(p)
+  elseif p.stuck > 2 and p.state == "walk" then
     p.stuck, p.dir = 0, -p.dir
     p.k = (p.k - 1 + p.dir) % 4 + 1
     set_target(p, corner(p.i, p.j, p.k))
@@ -276,4 +429,5 @@ engine.on("tick", function(dt)
   end
 end)
 
+Ped.net = net
 return Ped
