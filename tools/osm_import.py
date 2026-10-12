@@ -231,7 +231,24 @@ def rings(e):
     return out
 
 
-COVER = [  # (class, test on tags), first match wins; later classes draw on top
+HARD = ("asphalt", "concrete", "paved", "acrylic", "tartan", "clay", "paving_stones")
+
+
+def pitch_kind(t):
+    """Sports ground surfaces: turf, sand, or a hard court."""
+    if t.get("leisure") != "pitch": return None
+    surface, sport = t.get("surface", ""), t.get("sport", "")
+    if surface in ("sand", "dirt", "gravel", "fine_gravel") or sport in ("equestrian", "beachvolleyball"): return "sand"
+    if surface in HARD or sport in ("tennis", "basketball", "skateboard", "multi", "padel", "volleyball"): return "court"
+    return "pitch"
+
+
+COVER = [  # (class, test on tags), first match wins; the game draws them in its own order
+    ("track", lambda t: t.get("leisure") == "track"),
+    ("sand", lambda t: pitch_kind(t) == "sand"),
+    ("court", lambda t: pitch_kind(t) == "court"),
+    ("pitch", lambda t: pitch_kind(t) == "pitch"),
+    ("cemetery", lambda t: t.get("amenity") == "grave_yard" or t.get("landuse") == "cemetery"),
     ("water", lambda t: t.get("natural") in ("water", "bay") or t.get("waterway") == "riverbank" or "water" in t and t.get("natural") == "water"),
     ("forest", lambda t: t.get("landuse") == "forest" or t.get("natural") in ("wood", "scrub")),
     ("field", lambda t: t.get("landuse") in ("farmland", "meadow", "grass", "greenfield") or t.get("natural") in ("grassland", "heath")),
@@ -448,7 +465,12 @@ def main():
             kind = building_kind(t, A)
             h = height_of(t, kind, A)
             name = t.get("name")
-            for (x, z, bw, bd, ang) in boxes_of(poly):
+            # A church is one nave under one roof, not strips.
+            parts = boxes_of(poly)
+            if kind == "church":
+                ang, (cx, cz), bw, bd = min_rect(poly)
+                parts = [(cx, cz, bw, bd, ang) if bw >= bd else (cx, cz, bd, bw, ang + math.pi / 2)]
+            for (x, z, bw, bd, ang) in parts:
                 # Keep clear of the (game-width) roads and their pavements.
                 r = math.hypot(bw, bd) / 2
                 hit = False
@@ -498,6 +520,30 @@ def main():
             out.extend(open_runs.values())
         strips[cls] = out
 
+    # ---- football pitches (lines and goals) ----
+    pitches = []
+    for el in els:
+        t = el.get("tags", {})
+        if pitch_kind(t) != "pitch" or t.get("sport", "soccer") not in ("soccer", "american_football", "rugby", ""): continue
+        for ring in rings(el):
+            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+            if not all(inside(*p) for p in poly): continue
+            ang, (cx, cz), pw, pd = min_rect(poly)
+            if pw < pd: ang, pw, pd = ang + math.pi / 2, pd, pw
+            if pw >= 40 and pd >= 25 and area(poly) > 0.85 * pw * pd:
+                pitches.append((cx, cz, pw, pd, -ang))
+
+    # ---- footbridges: foot and cycle ways that cross a road on a bridge ----
+    footbridges = []
+    for el in els:
+        t = el.get("tags", {})
+        if t.get("highway") not in ("footway", "cycleway", "path", "pedestrian") or t.get("bridge") in (None, "no"): continue
+        pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.5)
+        if len(pts) < 2 or not all(inside(*p) for p in pts): continue
+        over = any(seg_cross(a, b, c, d) for a, b in zip(pts, pts[1:])
+                   for _, c, d in G.near(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])))
+        if over: footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts))
+
     # ---- write ----
     def f(v): return f"{v:.1f}".rstrip("0").rstrip(".")
     def q(s): return json.dumps(s, ensure_ascii=False)
@@ -535,6 +581,13 @@ def main():
         tail = f", {q(name)}" if name else ""
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
+    L.append("  -- football pitches: {x, z, length, width, yaw}")
+    L.append("  pitches = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pw)}, {f(pd)}, {a:.3f}}}" for x, z, pw, pd, a in pitches) + "},")
+    L.append("  -- foot and cycle bridges over roads: {width, points...}")
+    L.append("  footbridges = {")
+    for wd, pts in footbridges:
+        L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    L.append("  },")
     L.append("  -- {x0, z0, x1, z1} strips")
     L.append("  cover = {")
     for cls, out in strips.items():
@@ -545,7 +598,8 @@ def main():
     njs = len(used)
     print(f"{dest.relative_to(ROOT)}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({dropped} too close to a road), "
-          + ", ".join(f"{k} {len(v)}" for k, v in strips.items()) + f"; {dest.stat().st_size // 1024} KB")
+          + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
+          + f", {len(pitches)} pitches, {len(footbridges)} footbridges; {dest.stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":

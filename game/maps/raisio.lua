@@ -19,6 +19,8 @@ return {
   paved = osm.paved,
   footprints = osm.footprints,
   cover = osm.cover,
+  pitches = osm.pitches,
+  footbridges = osm.footbridges,
   trees = 6000,
   lamp_every = 60,
 
@@ -27,7 +29,15 @@ return {
     lot = {905, -1586},     -- behind the S-market, in the center
     plaza = {671, -1513},
     stunt = {-500, 0},      -- out in the fields off Nesteentie
-    carpark = {2810, -2150}, -- Mylly
+  },
+
+  -- Kerttula's running track, west of the football pitch (the map data
+  -- has only the pitch): {x, z, yaw of the straights}.
+  tracks = {{482, -2382, 1.847}},
+
+  -- Mylly: park on the roof, up a ramp at either end.
+  roof_parking = {
+    {x = 2790, z = -2200, r = 230, height = 9, ramps = {{2574.4, -2196.9, 1.783}, {2999.7, -2255.7, -1.359}}},
   },
 
   labels = {
