@@ -1,5 +1,7 @@
 -- Ambient traffic: cars wander the street grid in the right-hand lane,
--- turning at random at intersections and braking for obstacles.
+-- turning at random at intersections and braking for obstacles. The city is
+-- big, so traffic follows the player: cars that end up far away are moved
+-- to a street nearer them, out of sight.
 local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
@@ -18,23 +20,26 @@ local function lane_target(c)
   return bx + rx * LANE - fx * LANE, bz + rz * LANE - fz * LANE
 end
 
-local function pick_next(c, N)
-  local k, l = c.to[1], c.to[2]
+local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
+
+-- At a dead end (the shore, the park) turning back is the only way on.
+local function pick_next(c)
   local opts = {}
-  for _, d in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
-    local nk, nl = k + d[1], l + d[2]
-    local back = nk == c.from[1] and nl == c.from[2]
-    if nk >= 0 and nk <= N and nl >= 0 and nl <= N and not back then opts[#opts + 1] = {nk, nl} end
+  for _, n in ipairs(city.neighbors(c.to[1], c.to[2])) do
+    if n[1] ~= c.from[1] or n[2] ~= c.from[2] then opts[#opts + 1] = n end
   end
   c.from, c.to = c.to, opts[math.random(#opts)] or c.from
 end
 
--- Place car c on a random street segment, at least `min_dist` from the player.
-local function place(c, N, min_dist)
-  for _ = 1, 20 do
-    local k, l = math.random(0, N - 1), math.random(0, N)
-    c.from, c.to = {k, l}, {k + 1, l}
-    if math.random() < 0.5 then c.from, c.to = {l, k}, {l, k + 1} end
+-- Place car c on a random street segment between `min_dist` and NEAR from
+-- the player (anywhere in town if there's no player).
+local segments
+local function place(c, min_dist)
+  segments = segments or city.segments()
+  local px, _, pz = U.player_pos()
+  for _ = 1, 40 do
+    local s = segments[math.random(#segments)]
+    c.from, c.to = {s[1], s[2]}, {s[1] + s[3], s[2] + s[4]}
     if math.random() < 0.5 then c.from, c.to = c.to, c.from end
     local ax, az = city.node(c.from[1], c.from[2])
     local bx, bz = city.node(c.to[1], c.to[2])
@@ -42,8 +47,8 @@ local function place(c, N, min_dist)
     local rx, rz = U.right(yaw)
     local t = 0.3 + math.random() * 0.4
     local x, z = ax + (bx - ax) * t + rx * LANE, az + (bz - az) * t + rz * LANE
-    local px, _, pz = U.player_pos()
-    if not px or U.dist2d(x, z, px, pz) >= min_dist then
+    local d = px and U.dist2d(x, z, px, pz)
+    if not px or (d >= min_dist and d <= NEAR) then
       c.speed, c.stuck = 0, 0
       return x, z, yaw
     end
@@ -52,7 +57,7 @@ end
 
 local function add_car(min_dist)
   local c = {}
-  local x, z, yaw = place(c, G.city.N, min_dist)
+  local x, z, yaw = place(c, min_dist)
   if not x then return end
   c.id = vehicle.spawn(x, z, yaw)
   vehicle.headlights(c.id)
@@ -83,11 +88,11 @@ engine.on("vehicle_enter", function(id)
   end
 end)
 
-local function update(id, c, dt, N)
+local function update(id, c, dt)
     local x, y, z = engine.pos(id)
     local tx, tz = lane_target(c)
     if U.dist2d(x, z, tx, tz) < 4 then
-      pick_next(c, N)
+      pick_next(c)
       tx, tz = lane_target(c)
     end
     local yaw = engine.yaw(id)
@@ -118,10 +123,11 @@ local function update(id, c, dt, N)
       engine.set_angvel(id, wx * 0.8, 0, wz * 0.8)
     end
 
-    -- Wedged somewhere for too long: quietly respawn it out of sight.
+    -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
-    if c.stuck > 6 then
-      local nx, nz, nyaw2 = place(c, N, 90)
+    local px, _, pz = U.player_pos()
+    if c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR) then
+      local nx, nz, nyaw2 = place(c, 90)
       if nx then
         engine.set_pos(id, nx, 0.8, nz)
         engine.orient(id, nyaw2)
@@ -132,10 +138,9 @@ local function update(id, c, dt, N)
 end
 
 engine.on("tick", function(dt)
-  local N = G.city and G.city.N
-  if not N then return end
+  if not G.city then return end
   for id, c in pairs(T.cars) do
-    if engine.exists(id) then update(id, c, dt, N) else T.cars[id] = nil end
+    if engine.exists(id) then update(id, c, dt) else T.cars[id] = nil end
   end
 end)
 

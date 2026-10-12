@@ -1,11 +1,11 @@
 -- Rob the bank, then shake a three-star pursuit.
 local city = require "lib.city"
 
-local bx, bz = city.node(6, 3)
+local bx, bz = city.node(2, 19) -- down in the Financial District
 
 return {
   title = "Getaway",
-  start = {city.node(3, 2)},
+  start = {city.node(4, 15)},
   reward = 1200,
   run = function(m)
     m:say("Get a fast car and drive to the bank.")

@@ -28,17 +28,17 @@ page.items[#page.items + 1] = {label = "LEAVE", act = function() menu.close() en
 menu.add_page("gunshop", page)
 
 -- The first ordinary building block near the lot gets the shop on its
--- south face (every building there is flush with it), facing the street.
-local CANDIDATES = {{4, 2}, {3, 2}, {5, 2}, {3, 3}, {5, 3}}
+-- south face (the street wall is flush with the sidewalk), facing the street.
+local CANDIDATES = {{2, 14}, {3, 14}, {3, 15}, {1, 14}}
 
 function M.build()
   local L = G.city
-  local bi, bj = 4, 2
+  local bi, bj = 2, 14
   for _, c in ipairs(CANDIDATES) do
-    if L.kinds[c[1] .. "," .. c[2]] == "buildings" then bi, bj = c[1], c[2] break end
+    if L.kinds[c[1] .. "," .. c[2]] == "buildings" and city.district(c[1], c[2]) == "downtown" then bi, bj = c[1], c[2] break end
   end
   local cx, cz = city.block_center(bi, bj)
-  local face = cz + (L.block - 6) / 4 + ((L.block - 6) / 2 - 1.5) / 2 -- buildings' south wall
+  local face = cz + L.bz / 2 - L.walk -- buildings' south wall
   local x = cx
   -- Storefront: door, window, a red awning and a glowing sign. Nothing solid,
   -- so pedestrians still walk the sidewalk.

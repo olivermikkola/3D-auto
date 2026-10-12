@@ -1,6 +1,6 @@
--- Two one-off places the procedural blocks can't make: a TV tower you can
--- steer by from anywhere in the city, and a multi-storey car park you can
--- drive to the top of (and off the top of). lib/city calls these for their
+-- One-off places the procedural blocks can't make: a TV tower and an Art
+-- Deco skyscraper you can steer by from anywhere in the city, and a
+-- multi-storey car park you can drive to the top of (and off the top of). lib/city calls these for their
 -- blocks; each returns {name, letter, x, z} for the minimap.
 local M = {}
 local CURB = 0.2
@@ -32,6 +32,51 @@ function M.tower(cx, cz)
   end
   engine.light{pos = {cx, CURB + H + 18.5, cz}, color = {1, 0.15, 0.1}, radius = 25, intensity = 3}
   return {name = "TV TOWER", letter = "T", x = cx, z = cz}
+end
+
+-- ---- the Empire: the tallest thing in Midtown -------------------------------------
+-- Limestone setbacks stepping up to a lit crown and a mooring mast. Each tier
+-- is its own collider; the mesh hangs off the base.
+local EMPIRE = {{40, 30, 6}, {34, 25, 20}, {26, 19, 18}, {17, 13, 6}, {11, 9, 3}} -- width, depth, floors
+M.EMPIRE_FLOOR = 3.5
+
+function M.empire(cx, cz)
+  local F = M.EMPIRE_FLOOR
+  local stone, glass = {0.8, 0.76, 0.66}, {0.3, 0.33, 0.38}
+  local base = EMPIRE[1][3] * F
+  local parts, y0 = {}, -base / 2
+  for t, tier in ipairs(EMPIRE) do
+    local w, d, h = tier[1], tier[2], tier[3] * F
+    parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + h / 2, 0}, size = {w, h, d}, color = stone}
+    -- Vertical strips of windows, the way the real thing reads from the street.
+    for k = 1, math.floor(w / 3) - 1 do
+      parts[#parts + 1] = {mesh = "cube", pos = {-w / 2 + k * 3, y0 + h / 2, 0}, size = {1.1, h - 1, d + 0.06}, color = glass,
+                           emissive = (k + t) % 3 == 0 and 0.7 or 0}
+    end
+    for k = 1, math.floor(d / 3) - 1 do
+      parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + h / 2, -d / 2 + k * 3}, size = {w + 0.06, h - 1, 1.1}, color = glass,
+                           emissive = (k + t) % 4 == 0 and 0.7 or 0}
+    end
+    parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + h + 0.3, 0}, size = {w + 0.4, 0.6, d + 0.4}, color = {0.66, 0.62, 0.54}}
+    y0 = y0 + h
+  end
+  -- The crown, floodlit at night, and the mast.
+  parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + 3, 0}, size = {7, 6, 6}, color = {1, 0.85, 0.5}, emissive = 1}
+  parts[#parts + 1] = {mesh = "cylinder", pos = {0, y0 + 9, 0}, size = {3, 6, 3}, color = {0.85, 0.85, 0.88}}
+  parts[#parts + 1] = {mesh = "cylinder", pos = {0, y0 + 22, 0}, size = {0.6, 20, 0.6}, color = {0.8, 0.8, 0.82}}
+  parts[#parts + 1] = {mesh = "sphere", pos = {0, y0 + 32.5, 0}, size = 1, color = {1, 0.15, 0.1}, emissive = 1}
+  engine.mesh("empire", parts)
+  engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {44, 0.04, 34}, color = {0.7, 0.68, 0.64}}
+  static{mesh = "empire", pos = {cx, CURB + base / 2, cz}, size = {EMPIRE[1][1], base, EMPIRE[1][2]}, scale = 1, tag = "landmark"}
+  local y = CURB + base
+  for t = 2, #EMPIRE do
+    local w, d, h = EMPIRE[t][1], EMPIRE[t][2], EMPIRE[t][3] * F
+    static{pos = {cx, y + h / 2, cz}, size = {w, h, d}, visible = false, tag = "landmark"}
+    y = y + h
+  end
+  engine.light{pos = {cx, y + 4, cz}, color = {1, 0.8, 0.45}, radius = 30, intensity = 2.5}
+  engine.light{pos = {cx, y + 32.5, cz}, color = {1, 0.15, 0.1}, radius = 20, intensity = 3}
+  return {name = "EMPIRE", letter = "E", x = cx, z = cz, top = y}
 end
 
 -- ---- multi-storey car park --------------------------------------------------------

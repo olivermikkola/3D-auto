@@ -395,7 +395,9 @@ impl Renderer {
         let env = &eng.env;
         let cam = &eng.camera;
         let aspect = w / h.max(1.0);
-        let proj = Mat4::perspective(cam.fov, aspect, 0.1, env.fog_end + 50.0);
+        // The camera keeps 0.4 m off walls, so a 0.25 m near plane clips
+        // nothing and buys depth precision for flat details far away.
+        let proj = Mat4::perspective(cam.fov, aspect, 0.25, env.fog_end + 50.0);
         let view = Mat4::look_at(cam.eye, cam.target, Vec3::UP);
         let vp = proj * view;
         let fwd = (cam.target - cam.eye).norm();

@@ -3,7 +3,7 @@ local G = require "lib.state"
 local city = require "lib.city"
 local U = require "lib.util"
 
-local px, pz = city.block_center(3, 4)
+local px, pz = city.block_center(3, 16) -- the plaza
 
 return {
   title = "Demolition",

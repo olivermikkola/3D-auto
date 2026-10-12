@@ -1,16 +1,212 @@
--- Procedural city: a grid of blocks separated by roads. Returns the layout
--- so other systems (traffic, missions, minimap) can reason about streets.
+-- Procedural city laid out like Manhattan. Avenues run north-south (along z;
+-- north is -z) and are wide and far apart, streets run east-west and are
+-- narrow and close together, so blocks are long east-west strips. The island
+-- narrows at both tips, Central Park takes a 2x7 run of blocks with one road
+-- crossing it, and the skyline has two peaks: Midtown just south of the park
+-- and the Financial District at the southern tip. Everything is boxes.
+--
+-- Returns the layout so other systems (traffic, police, peds, missions, the
+-- minimap) can reason about streets. Not every grid line is a road: off the
+-- island and inside the park there are gaps, so walk the graph with
+-- C.road / C.neighbors rather than assuming a full grid.
 local C = {}
 
-local N, BLOCK, ROAD = 8, 36, 14
-local P = BLOCK + ROAD        -- block pitch
-local O = -N * P / 2          -- coordinate of road line 0
-local CURB = 0.2
+local NX, NZ = 6, 20           -- blocks between avenues, blocks between streets
+local BX, BZ = 84, 36          -- block size, sidewalk included
+local AVE, ST = 16, 12         -- avenue and street widths
+local PX, PZ = BX + AVE, BZ + ST
+local OX, OZ = -NX * PX / 2, -NZ * PZ / 2 -- avenue line 0, street line 0
+local CURB, WALK, FLOOR = 0.2, 3, 3.5
+local WATER_DEEP = {0.16, 0.3, 0.52}
+
+-- Central Park; its interior roads are gone except one transverse.
+local PARK = {i0 = 2, i1 = 3, j0 = 4, j1 = 10, transverse = 8}
+
+-- Blocks with something special in them. Most features take the middle
+-- 36 m of their block and buildings fill the ends.
+local SPECIAL = {
+  ["2,15"] = "lot", ["3,16"] = "plaza", ["1,16"] = "stunt", ["1,15"] = "carpark", ["4,1"] = "tower",
+  ["3,13"] = "empire", ["2,17"] = "square", -- Washington Square
+  ["4,17"] = "park", ["1,19"] = "park",     -- Union Square, Battery Park
+}
+local TIMES = {i = 2, j = 11} -- billboards on every frontage
 
 local palette = {
   {0.85, 0.82, 0.76}, {0.72, 0.68, 0.62}, {0.70, 0.45, 0.35}, {0.62, 0.66, 0.70},
   {0.90, 0.88, 0.80}, {0.55, 0.52, 0.50}, {0.78, 0.60, 0.45}, {0.68, 0.74, 0.78},
 }
+
+-- ---- shape of the island -------------------------------------------------------
+
+-- First and last land block in row j: narrow at the northern tip, and
+-- tapering to the Battery in the south.
+local function island(j)
+  if j == 0 then return 2, 5 end
+  if j == 1 then return 1, 5 end
+  if j == NZ - 2 then return 0, 4 end
+  if j == NZ - 1 then return 1, 3 end
+  return 0, NX - 1
+end
+
+local function in_park(i, j) return i >= PARK.i0 and i <= PARK.i1 and j >= PARK.j0 and j <= PARK.j1 end
+
+function C.district(i, j)
+  if i < 0 or i >= NX or j < 0 or j >= NZ then return "water" end
+  local a, b = island(j)
+  if i < a or i > b then return "water" end
+  if in_park(i, j) then return "park" end
+  if i == 0 and j >= 13 and j <= 16 then return "industrial" end -- the old West Side yards
+  if j <= PARK.j1 then return "residential" end                   -- Harlem and the Upper Sides
+  return "downtown"
+end
+
+-- A block that faces streets: on the island and not in the park.
+local function street_block(i, j)
+  local d = C.district(i, j)
+  return d ~= "water" and d ~= "park"
+end
+
+-- 0..1: how tall downtown grows here. Both peaks stretch across the
+-- island's width more than along it, the way Midtown does.
+function C.height(x, z)
+  local a = 1 - math.sqrt((x / 1.8) ^ 2 + (z - (OZ + 12.8 * PZ)) ^ 2) / 200
+  local b = 0.9 * (1 - math.sqrt(((x + 40) / 1.5) ^ 2 + (z - (OZ + 18.8 * PZ)) ^ 2) / 140)
+  return math.max(a, b, 0)
+end
+
+-- ---- the road graph ----------------------------------------------------------------
+-- Nodes are intersections (k, l): avenue line k = 0..NX, street line l = 0..NZ.
+
+function C.node(k, l) return OX + k * PX, OZ + l * PZ end
+function C.block_center(i, j) return OX + (i + 0.5) * PX, OZ + (j + 0.5) * PZ end
+
+local function has_road(k, l, dk, dl)
+  if k < 0 or l < 0 or k + dk > NX or l + dl > NZ then return false end
+  if dk == 1 and dl == 0 then -- a street, between blocks (k, l-1) and (k, l)
+    if l == PARK.transverse and k >= PARK.i0 and k <= PARK.i1 then return true end
+    return street_block(k, l - 1) or street_block(k, l)
+  elseif dk == 0 and dl == 1 then -- an avenue, between blocks (k-1, l) and (k, l)
+    return street_block(k - 1, l) or street_block(k, l)
+  end
+  return false
+end
+
+-- Is there a road from node (k, l) one step along (dk, dl)? The layout is
+-- fixed, so answers are remembered: the police ask every tick.
+local roads = {}
+function C.road(k, l, dk, dl)
+  if dk < 0 or dl < 0 then k, l, dk, dl = k + dk, l + dl, -dk, -dl end
+  local key = ((k + 2) * 64 + l + 2) * 4 + dk * 2 + dl
+  local r = roads[key]
+  if r == nil then
+    r = has_road(k, l, dk, dl)
+    roads[key] = r
+  end
+  return r
+end
+
+local DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+
+function C.neighbors(k, l)
+  local out = {}
+  for _, d in ipairs(DIRS) do
+    if C.road(k, l, d[1], d[2]) then out[#out + 1] = {k + d[1], l + d[2]} end
+  end
+  return out
+end
+
+function C.on_road(k, l) return #C.neighbors(k, l) > 0 end
+
+-- Every intersection that has a road, as {k, l}.
+function C.nodes()
+  local out = {}
+  for k = 0, NX do
+    for l = 0, NZ do
+      if C.on_road(k, l) then out[#out + 1] = {k, l} end
+    end
+  end
+  return out
+end
+
+-- Every road segment, each once, as {k, l, dk, dl}.
+function C.segments()
+  local out = {}
+  for k = 0, NX do
+    for l = 0, NZ do
+      if C.road(k, l, 1, 0) then out[#out + 1] = {k, l, 1, 0} end
+      if C.road(k, l, 0, 1) then out[#out + 1] = {k, l, 0, 1} end
+    end
+  end
+  return out
+end
+
+local function clamp(v, a, b) return v < a and a or (v > b and b or v) end
+
+-- The block containing (or nearest to) a point.
+function C.block_of(x, z)
+  return clamp(math.floor((x - OX) / PX), 0, NX - 1), clamp(math.floor((z - OZ) / PZ), 0, NZ - 1)
+end
+
+-- The nearest intersection that is on a road.
+function C.nearest_node(x, z)
+  local k0, l0 = math.floor((x - OX) / PX + 0.5), math.floor((z - OZ) / PZ + 0.5)
+  local best, bk, bl = math.huge
+  for k = math.max(0, k0 - 2), math.min(NX, k0 + 2) do
+    for l = math.max(0, l0 - 3), math.min(NZ, l0 + 3) do
+      if C.on_road(k, l) then
+        local nx, nz = C.node(k, l)
+        local d = (nx - x) ^ 2 + (nz - z) ^ 2
+        if d < best then best, bk, bl = d, k, l end
+      end
+    end
+  end
+  if bk then return bk, bl end
+  local n = C.nodes()[1]
+  return n[1], n[2]
+end
+
+-- A random intersection between min and max meters from (x, z), or nil.
+function C.random_node(x, z, min, max)
+  local cands = {}
+  for _, n in ipairs(C.nodes()) do
+    local nx, nz = C.node(n[1], n[2])
+    local d = math.sqrt((nx - x) ^ 2 + (nz - z) ^ 2)
+    if d >= min and d <= max then cands[#cands + 1] = n end
+  end
+  local n = cands[math.random(math.max(1, #cands))]
+  if n then return n[1], n[2] end
+end
+
+-- ---- deterministic randomness ------------------------------------------------------
+-- Each block draws from its own generator, so the city never touches
+-- math.random and changing one block can't reshuffle the rest.
+local function rng(a, b)
+  local s = (a + 1) * 0x9E3779B97F4A7C15 ~ (b + 1) * 0xC2B2AE3D27D4EB4F
+  return function(lo, hi)
+    s = s * 6364136223846793005 + 1442695040888963407
+    local r = ((s >> 33) & 0x7fffffff) / 0x80000000
+    if lo then return lo + math.floor(r * (hi - lo + 1)) end
+    return r
+  end
+end
+
+-- ---- buildings -----------------------------------------------------------------------
+
+local function static(t)
+  t.body = t.body or "static"
+  return engine.spawn(t)
+end
+
+-- Windows for one floor of a box of the given footprint fraction: a band
+-- through each pair of opposite faces, so all four sides get glass.
+local function window_band(parts, y, s, on)
+  local glass = on and {0.34, 0.31, 0.25} or {0.25, 0.3, 0.38}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, y, 0}, size = {s + 0.01, 1.4, s * 0.94}, color = glass, emissive = on and 1 or 0}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, y, 0}, size = {s * 0.94, 1.4, s + 0.01}, color = glass, emissive = on and 1 or 0}
+end
+
+-- About a third of the floors have their lights on at night.
+local function lit(f, floors) return (f * 7 + floors * 3) % 3 == 0 end
 
 -- One baked mesh per (style, floors). Footprint is 1x1 (scaled per building),
 -- height is real so window bands keep a sane spacing.
@@ -18,22 +214,19 @@ local baked = {}
 local function building_mesh(style, floors)
   local name = style .. floors
   if baked[name] then return name end
-  local h = floors * 3.5
+  local h = floors * FLOOR
   local parts
   if style == "glass" then
     parts = {{mesh = "cube", size = {1, h, 1}, color = {0.35, 0.45, 0.55}, emissive = 0.08}}
     for f = 1, floors - 1 do
-      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5, 0}, size = {1.01, 0.3, 1.01}, color = {0.85, 0.87, 0.9}}
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR, 0}, size = {1.01, 0.3, 1.01}, color = {0.85, 0.87, 0.9}}
+    end
+    if floors >= 30 then -- a mast on the supertalls
+      parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 8, 0}, size = {0.03, 16, 0.03}, color = {0.75, 0.75, 0.78}}
     end
   else
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
-    for f = 0, floors - 1 do
-      -- About a third of the floors have their lights on at night.
-      local lit = (f * 7 + floors * 3) % 3 == 0
-      local glass = lit and {0.34, 0.31, 0.25} or {0.25, 0.3, 0.38}
-      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {1.01, 1.4, 0.94}, color = glass, emissive = lit and 1 or 0}
-      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3.5 + 1.9, 0}, size = {0.94, 1.4, 1.01}, color = glass, emissive = lit and 1 or 0}
-    end
+    for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
   end
   parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.3, 0}, size = {1.02, 0.6, 1.02}, color = {0.6, 0.6, 0.6}}
   parts[#parts + 1] = {mesh = "cube", pos = {0.2, h / 2 + 1.0, -0.15}, size = {0.25, 1.0, 0.2}, color = {0.7, 0.7, 0.7}}
@@ -42,22 +235,117 @@ local function building_mesh(style, floors)
   return name
 end
 
-local function static(t)
-  t.body = t.body or "static"
-  return engine.spawn(t)
+-- Art Deco "wedding cake": the street wall rises to a setback, then
+-- narrower tiers climb to a crown and a spire. The podium is the entity's
+-- collider and the mesh origin; upper tiers get invisible boxes of their own.
+local TIERS = {{1, 0.42}, {0.72, 0.34}, {0.46, 0.24}} -- footprint fraction, share of the floors
+
+local function tier_floors(floors)
+  local a = math.floor(floors * TIERS[1][2] + 0.5)
+  local b = math.floor(floors * TIERS[2][2] + 0.5)
+  return {a, b, floors - a - b}
 end
 
-local function building(x, z, w, d, floors, glass, c)
-  local style = glass and "glass" or "brick"
-  local h = floors * 3.5
+local function deco_mesh(floors)
+  local name = "deco" .. floors
+  if baked[name] then return name end
+  local fl = tier_floors(floors)
+  local base = fl[1] * FLOOR
+  local parts, y0 = {}, -base / 2 -- bottom of the current tier, from the podium's centre
+  for t, tier in ipairs(TIERS) do
+    local s, h = tier[1], fl[t] * FLOOR
+    parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + h / 2, 0}, size = {s, h, s}, color = {1, 1, 1}}
+    for f = 0, fl[t] - 1 do window_band(parts, y0 + f * FLOOR + 1.9, s, lit(f + t, floors)) end
+    -- A darker ledge at each setback.
+    parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + h + 0.25, 0}, size = {s + 0.02, 0.5, s + 0.02}, color = {0.55, 0.53, 0.5}}
+    y0 = y0 + h
+  end
+  -- Crown and spire, lit at night.
+  parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + 2.5, 0}, size = {0.28, 5, 0.28}, color = {0.9, 0.85, 0.7}, emissive = 0.6}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, y0 + 5 + 7, 0}, size = {0.04, 14, 0.04}, color = {0.8, 0.8, 0.82}}
+  engine.mesh(name, parts)
+  baked[name] = true
+  return name
+end
+
+-- The New York rooftop water tank, on stilts.
+local function water_tower_mesh()
+  if baked.watertower then return end
+  local wood = {0.45, 0.32, 0.22}
+  local parts = {}
+  for _, c in ipairs{{1, 1}, {-1, 1}, {1, -1}, {-1, -1}} do
+    parts[#parts + 1] = {mesh = "cube", pos = {c[1] * 0.9, 1.0, c[2] * 0.9}, size = {0.2, 2, 0.2}, color = {0.25, 0.25, 0.27}}
+  end
+  parts[#parts + 1] = {mesh = "cylinder", pos = {0, 3.6, 0}, size = {2.8, 3.2, 2.8}, color = wood}
+  parts[#parts + 1] = {mesh = "cylinder", pos = {0, 5.5, 0}, size = {2.2, 0.6, 2.2}, color = {0.3, 0.3, 0.32}}
+  parts[#parts + 1] = {mesh = "cylinder", pos = {0, 6.0, 0}, size = {0.9, 0.5, 0.9}, color = {0.3, 0.3, 0.32}}
+  engine.mesh("watertower", parts)
+  baked.watertower = true
+end
+
+-- A plain box building: brick with window bands, or a glass curtain wall.
+local function building(x, z, w, d, floors, style, c, r)
+  local h = floors * FLOOR
   static{mesh = building_mesh(style, floors), pos = {x, CURB + h / 2, z}, size = {w, h, d}, scale = {w, 1, d},
-         color = glass and {1, 1, 1} or c, tag = "building"}
+         color = style == "glass" and {1, 1, 1} or c, tag = "building"}
+  if style == "brick" and floors >= 5 and floors <= 22 and r() < 0.4 then
+    water_tower_mesh()
+    engine.spawn{mesh = "watertower", pos = {x + (r() - 0.5) * w * 0.5, CURB + h + 0.6, z + (r() - 0.5) * d * 0.4},
+                 scale = 1, tag = "rooftop"}
+  end
+  return h
 end
 
--- Cheap deterministic noise for details, so they never touch math.random
--- (and so never move anything that was already placed by it).
-local function hash(a, b, k)
-  return ((a * 73856093) ~ (b * 19349663) ~ (k * 83492791)) % 1000 / 1000
+local function deco(x, z, w, d, floors, c)
+  local fl = tier_floors(floors)
+  local base = fl[1] * FLOOR
+  static{mesh = deco_mesh(floors), pos = {x, CURB + base / 2, z}, size = {w, base, d}, scale = {w, 1, d}, color = c,
+         tag = "building"}
+  local y = CURB + base
+  for t = 2, 3 do
+    local s, h = TIERS[t][1], fl[t] * FLOOR
+    static{pos = {x, y + h / 2, z}, size = {w * s, h, d * s}, visible = false, tag = "building"}
+    y = y + h
+  end
+  return y - CURB
+end
+
+-- ---- brownstones: a terrace of row houses with stoops ------------------------------
+local STONE = {{0.45, 0.3, 0.24}, {0.58, 0.28, 0.2}, {0.84, 0.78, 0.66}, {0.52, 0.5, 0.48}, {0.55, 0.58, 0.48}, {0.4, 0.26, 0.22}}
+
+-- `facing` is -1 if the street is to the north (-z), 1 if to the south.
+local function rowhouses(x, z, w, d, facing, r, name)
+  local stories = r(3, 5)
+  local h, units = stories * 3.2, math.max(1, math.floor(w / 6.5))
+  local uw = w / units
+  local bd = d - 1.6 -- the stoops take the strip by the sidewalk
+  local front = facing * bd / 2
+  local parts = {}
+  for u = 0, units - 1 do
+    local ux = -w / 2 + (u + 0.5) * uw
+    local c = STONE[r(1, #STONE)]
+    parts[#parts + 1] = {mesh = "cube", pos = {ux, 0, 0}, size = {uw - 0.04, h, bd}, color = c}
+    for f = 0, stories - 1 do
+      local on = r() < 0.3
+      local glass = on and {0.34, 0.31, 0.25} or {0.22, 0.26, 0.32}
+      for _, s in ipairs{-0.25, 0.25} do
+        parts[#parts + 1] = {mesh = "cube", pos = {ux + s * uw, -h / 2 + f * 3.2 + 1.8, 0}, size = {uw * 0.22, 1.5, bd + 0.06},
+                             color = glass, emissive = on and 1 or 0}
+      end
+    end
+    -- Cornice, door, and the stoop down to the sidewalk.
+    parts[#parts + 1] = {mesh = "cube", pos = {ux, h / 2 + 0.2, 0}, size = {uw, 0.4, bd + 0.4},
+                         color = {c[1] * 0.7, c[2] * 0.7, c[3] * 0.7}}
+    parts[#parts + 1] = {mesh = "cube", pos = {ux + uw * 0.3, -h / 2 + 2.3, front + facing * 0.05}, size = {1.0, 2.0, 0.1},
+                         color = {0.22, 0.14, 0.1}}
+    for s = 0, 2 do
+      parts[#parts + 1] = {mesh = "cube", pos = {ux + uw * 0.3, -h / 2 + 0.2 + s * 0.4, front + facing * (1.4 - s * 0.45) / 2},
+                           size = {1.3, 0.4 + s * 0.4, 1.4 - s * 0.45}, color = {c[1] * 0.85, c[2] * 0.85, c[3] * 0.85}}
+    end
+  end
+  engine.mesh(name, parts)
+  static{mesh = name, pos = {x, CURB + h / 2, z - facing * 0.8}, size = {w, h, bd}, scale = 1, tag = "building"}
+  return h
 end
 
 -- ---- industrial: warehouses with sawtooth roofs, containers, smokestacks ----
@@ -84,16 +372,16 @@ local function warehouse_mesh(v, h)
   return name
 end
 
-local function warehouse(x, z, w, d, floors, glass, ci, cj, k)
-  local h = 6 + (floors % 3) * 2
-  local v = 1 + (floors + ci + cj) % #METAL
-  -- The shed takes most of the lot; containers fill the yard beside it.
+-- The shed takes most of the lot; containers fill the yard beside it.
+local function warehouse(x, z, w, d, r, name)
+  local h = 6 + r(0, 2) * 2
+  local v = r(1, #METAL)
   local ww = w * 0.72
   static{mesh = warehouse_mesh(v, h), pos = {x - (w - ww) / 2, CURB + h / 2, z}, size = {ww, h, d}, scale = {ww, 1, d},
          tag = "building"}
   local yx = x + w / 2 - (w - ww) / 2
   local slots = math.floor(d / 3.2)
-  local stack_slot = glass and k == 1 and slots - 1 -- one lot in some blocks gets a smokestack
+  local stack_slot = r() < 0.2 and slots - 1 -- some yards have a smokestack
   -- The yard's containers are baked into one mesh with one collider over the row.
   local cw = math.min(w - ww - 0.6, 6)
   local parts, z0, z1, top = {}, nil, nil, 0
@@ -101,10 +389,10 @@ local function warehouse(x, z, w, d, floors, glass, ci, cj, k)
     local sz = z - d / 2 + 1.6 + n * 3.2
     if n == stack_slot then
       static{mesh = "smokestack", pos = {yx, CURB + 14, sz}, size = {2.2, 28, 2.2}, scale = 1, tag = "building"}
-    elseif hash(ci, cj, k * 16 + n) < 0.75 then
-      local stack = hash(cj, ci, k * 16 + n) < 0.35 and 2 or 1
+    elseif r() < 0.75 then
+      local stack = r() < 0.35 and 2 or 1
       for st = 1, stack do
-        local cc = CONTAINER[1 + math.floor(hash(ci + st, cj, k * 16 + n) * #CONTAINER)]
+        local cc = CONTAINER[r(1, #CONTAINER)]
         parts[#parts + 1] = {mesh = "cube", pos = {0, 1.3 + (st - 1) * 2.6, sz - z}, size = {cw, 2.6, 2.6}, color = cc}
         parts[#parts + 1] = {mesh = "cube", pos = {0, 1.3 + (st - 1) * 2.6, sz - z}, size = {cw + 0.02, 0.15, 2.62},
                              color = {cc[1] * 0.7, cc[2] * 0.7, cc[3] * 0.7}}
@@ -116,96 +404,200 @@ local function warehouse(x, z, w, d, floors, glass, ci, cj, k)
     -- Parts sit relative to the row's middle, which is where the collider goes.
     local mid = (z0 + z1) / 2
     for _, pt in ipairs(parts) do pt.pos[2], pt.pos[3] = pt.pos[2] - top / 2, pt.pos[3] - (mid - z) end
-    local name = string.format("containers_%d_%d_%d", ci, cj, k)
     engine.mesh(name, parts)
     static{mesh = name, pos = {yx, CURB + top / 2, mid}, size = {cw, top, z1 - z0 + 2.6}, scale = 1, tag = "container"}
   end
+  return h
 end
 
--- ---- residential: houses with pitched roofs, yards and trees ------------------
-local ROOF = {{0.55, 0.22, 0.18}, {0.3, 0.3, 0.33}, {0.45, 0.32, 0.22}}
+-- ---- filling a block -----------------------------------------------------------------
 
-local function house_mesh(stories, wall, roof)
-  local name = string.format("house%d_%d_%d", stories, wall, roof)
-  if baked[name] then return name end
-  local h, rh = stories * 3, 2.4
-  local rc = ROOF[roof]
-  local parts = {{mesh = "cube", size = {1, h, 1}, color = palette[wall]}}
-  for f = 0, stories - 1 do
-    local lit = (f + wall + roof) % 2 == 0
-    local glass = lit and {0.34, 0.31, 0.25} or {0.25, 0.3, 0.38}
-    parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * 3 + 1.7, 0}, size = {0.7, 1.1, 1.02}, color = glass, emissive = lit and 1 or 0}
+-- One lot facing a street. `facing` is -1 (street to the north), 1 (south),
+-- or 0 for a tower that takes the block's whole depth. Returns its height.
+local function lot(x, z, w, d, facing, avenue, district, i, j, r, name)
+  if district == "industrial" then return warehouse(x, z, w, d, r, name) end
+  local c = palette[r(1, #palette)]
+  if district == "residential" then
+    -- Brownstones mid-block, apartment houses on the avenues.
+    local brownstone = not avenue and r() < (j <= 3 and 0.75 or 0.55)
+    if brownstone and facing ~= 0 then return rowhouses(x, z, w, d, facing, r, name) end
+    return building(x, z, w, d, avenue and r(6, 12) or r(4, 7), "brick", c, r)
   end
-  parts[#parts + 1] = {mesh = "cube", pos = {0.3, -h / 2 + 1.1, 0}, size = {0.14, 2.2, 1.03}, color = {0.4, 0.26, 0.16}} -- doors
-  -- Gable roof: two wedges back to back, with eaves.
-  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + rh / 2, -0.27}, size = {1.08, rh, 0.56}, color = rc}
-  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + rh / 2, 0.27}, size = {1.08, rh, 0.56}, yaw = math.pi, color = rc}
-  parts[#parts + 1] = {mesh = "cube", pos = {0.3, h / 2 + rh * 0.7, 0.15}, size = {0.08, rh * 0.8, 0.08}, color = {0.5, 0.3, 0.25}}
-  engine.mesh(name, parts)
-  baked[name] = true
-  return name
+  -- Downtown: avenue frontage builds taller than the side streets.
+  local f = C.height(x, z)
+  local floors = math.floor(r(3, 7) * (0.7 + 4.5 * f ^ 1.2) * (avenue and 1 or 0.8))
+  if f > 0.5 and r() < 0.4 * f then floors = r(30, 50) end -- the supertalls
+  floors = math.max(3, floors)
+  local square = math.max(w, d) / math.min(w, d) < 1.7
+  local roll = r()
+  if floors >= 18 and square and roll < 0.35 then return deco(x, z, w, d, floors, c) end
+  local glass = roll < (floors >= 18 and 0.75 or 0.18)
+  return building(x, z, w, d, floors, glass and "glass" or "brick", c, r)
 end
 
-local function houses(x, z, w, d, floors, glass, ci, cj, k)
-  engine.spawn{mesh = "cube", pos = {x, CURB + 0.02, z}, size = {w + 1, 0.04, d + 1}, color = {0.35, 0.55, 0.28}, tag = "yard"}
-  -- Wide lots get a pair of houses; each sits back from the street with a tree out front.
-  local n = w > 18 and 2 or 1
-  for m = 1, n do
-    local hx = x + (m - (n + 1) / 2) * (w / n)
-    local stories = 1 + floors % 2
-    local hw, hd = math.min(9, w / n - 3), 7
-    local wall = 1 + math.floor(hash(ci, cj, k * 4 + m) * #palette)
-    local roof = 1 + (glass and 1 or 0) + (k + m) % 2
-    static{mesh = house_mesh(stories, wall, roof), pos = {hx, CURB + stories * 1.5, z}, size = {hw, stories * 3, hd},
-           scale = {hw, 1, hd}, tag = "building"}
-    local side = hash(cj, ci, k * 4 + m) < 0.5 and -1 or 1
-    static{mesh = "tree", pos = {hx + side * (hw / 2 + 1.5), CURB, z + side * (d / 2 - 1.5)}, size = {0.5, 6, 0.5},
-           scale = 0.7 + hash(ci, cj, k + m) * 0.4, tag = "tree"}
+-- Fill [x0, x1] x [z0, z1] (inside the sidewalks) with lots, flush to the
+-- sidewalk on both street sides like a Manhattan street wall. `ends` says
+-- which ends of the span touch an avenue. Returns what it built, for
+-- anything that wants to decorate the frontage.
+local function fill(x0, x1, z0, z1, i, j, r, ends)
+  local district = C.district(i, j)
+  local built, segs, x = {}, {}, x0
+  while x1 - x > 0.1 do
+    local w = district == "industrial" and 26 or r(14, 28)
+    if x1 - (x + w) < 12 then w = x1 - x end
+    segs[#segs + 1] = {x, x + w}
+    x = x + w
   end
-end
-
--- Districts: industry along the east edge, houses along the south, downtown
--- everywhere else. Every lot makes the same math.random draws in the same
--- order whatever it becomes, so street-level layout never shifts.
-function C.district(i, j)
-  if i >= N - 2 then return "industrial" end
-  if j >= N - 2 then return "residential" end
-  return "downtown"
-end
-
--- dry: make the random draws but build nothing (a landmark takes the block).
-local function fill_buildings(cx, cz, ci, cj, dry)
-  -- Taller downtown.
-  local center = 1 - (math.abs(ci - (N - 1) / 2) + math.abs(cj - (N - 1) / 2)) / N
-  local inner = BLOCK - 6
-  local split = math.random() < 0.5
-  local lots = split and {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}} or {{0, -1}, {0, 1}}
-  local district = C.district(ci, cj)
-  for k, l in ipairs(lots) do
-    local w = split and inner / 2 - 1.5 or inner - 2
-    local d = inner / 2 - 1.5
-    local floors = math.max(2, math.floor((2 + math.random() * 6) * (0.5 + center * 1.8)))
-    local glass = math.random() < 0.25
-    local c = palette[math.random(#palette)]
-    local x, z = cx + l[1] * inner / 4 * (split and 1 or 0), cz + l[2] * inner / 4
-    if dry then -- nothing
-    elseif district == "industrial" then warehouse(x, z, w, d, floors, glass, ci, cj, k)
-    elseif district == "residential" then houses(x, z, w, d, floors, glass, ci, cj, k)
-    else building(x, z, w, d, floors, glass, c) end
+  local depth = z1 - z0
+  for n, s in ipairs(segs) do
+    local sx0, sx1 = s[1] + 0.3, s[2] - 0.3
+    local w, mx = sx1 - sx0, (sx0 + sx1) / 2
+    local avenue = (n == 1 and ends[1]) or (n == #segs and ends[2])
+    local name = string.format("lot_%d_%d_%d_%d", i, j, math.floor(x0), n)
+    local f = district == "downtown" and C.height(mx, (z0 + z1) / 2) or 0
+    if f > 0.45 and w >= 18 and r() < f * 0.8 then
+      local h = lot(mx, (z0 + z1) / 2, w, depth, 0, avenue, district, i, j, r, name)
+      built[#built + 1] = {x0 = sx0, x1 = sx1, z0 = z0, z1 = z1, h = h}
+    else
+      local d = depth / 2 - 0.3
+      for _, side in ipairs{-1, 1} do
+        local mz = side < 0 and z0 + d / 2 or z1 - d / 2
+        local h = lot(mx, mz, w, d, side, avenue, district, i, j, r, name .. (side < 0 and "n" or "s"))
+        built[#built + 1] = {x0 = sx0, x1 = sx1, z0 = mz - d / 2, z1 = mz + d / 2, h = h, side = side}
+      end
+    end
   end
+  return built
 end
 
-local function park(cx, cz, dry)
-  if dry then
-    for _ = 1, 9 do math.random(); math.random(); math.random() end
-    return
-  end
-  engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 5, 0.04, BLOCK - 5}, color = {0.3, 0.55, 0.25}}
-  for _ = 1, 9 do
-    local x, z = cx + (math.random() - 0.5) * (BLOCK - 8), cz + (math.random() - 0.5) * (BLOCK - 8)
-    static{mesh = "tree", pos = {x, CURB, z}, size = {0.5, 6, 0.5}, scale = 0.8 + math.random() * 0.5, tag = "tree"}
+-- Times Square: glowing billboards all over the frontages.
+local BILLBOARD = {{1, 0.2, 0.3}, {0.2, 0.6, 1}, {1, 0.85, 0.2}, {0.3, 1, 0.5}, {1, 0.4, 0.1}, {0.85, 0.3, 1}, {1, 1, 1}}
+local function billboards(built, r)
+  for _, b in ipairs(built) do
+    for _, side in ipairs{-1, 1} do
+      if b.side == nil or b.side == side then
+        local zf = side < 0 and b.z0 - 0.15 or b.z1 + 0.15
+        local y = 4
+        while y < math.min(b.h - 3, 40) do
+          local bw, bh = math.min(b.x1 - b.x0 - 1, r(6, 14)), r(3, 7)
+          local bx = b.x0 + 0.5 + bw / 2 + r() * (b.x1 - b.x0 - 1 - bw)
+          engine.spawn{mesh = "cube", pos = {bx, y + bh / 2, zf}, size = {bw, bh, 0.2}, color = BILLBOARD[r(1, #BILLBOARD)],
+                       glow = 1, tag = "billboard"}
+          y = y + bh + r(1, 4)
+        end
+      end
+    end
   end
 end
+
+local function trees(n, x0, x1, z0, z1, r, avoid)
+  for _ = 1, n do
+    local x, z = x0 + r() * (x1 - x0), z0 + r() * (z1 - z0)
+    local ok = true
+    for _, a in ipairs(avoid or {}) do
+      if math.abs(x - a[1]) < a[3] / 2 + 2 and math.abs(z - a[2]) < a[4] / 2 + 2 then ok = false end
+    end
+    if ok then
+      static{mesh = "tree", pos = {x, CURB, z}, size = {0.5, 6, 0.5}, scale = 0.75 + r() * 0.6, tag = "tree"}
+    end
+  end
+end
+
+-- A flat patch on top of a block. `layer` stacks patches (grass, then paths
+-- and water on it) a little apart so they don't z-fight.
+local function grass(x, z, w, d, c, layer)
+  engine.spawn{mesh = "cube", pos = {x, CURB + 0.01 + (layer or 0) * 0.05, z}, size = {w, 0.04, d}, color = c or {0.3, 0.55, 0.25}}
+end
+local PATH, WATER = {0.72, 0.66, 0.54}, {0.2, 0.38, 0.6}
+
+local function pocket_park(cx, cz, r)
+  grass(cx, cz, BX - 5, BZ - 5)
+  -- A cross of paths, benches of trees either side.
+  grass(cx, cz, BX - 5, 2.5, PATH, 1)
+  grass(cx, cz, 2.5, BZ - 5, PATH, 1)
+  trees(16, cx - BX / 2 + 4, cx + BX / 2 - 4, cz - BZ / 2 + 4, cz + BZ / 2 - 4, r, {{cx, cz, BX, 4}, {cx, cz, 4, BZ}})
+end
+
+-- Washington Square: the arch at the foot of the avenue, a fountain, trees.
+local function square(cx, cz, r)
+  pocket_park(cx, cz, r)
+  local stone = {0.88, 0.86, 0.8}
+  engine.mesh("arch", {
+    {mesh = "cube", pos = {-3.6, 0, 0}, size = {2.4, 10, 2.4}, color = stone},
+    {mesh = "cube", pos = {3.6, 0, 0}, size = {2.4, 10, 2.4}, color = stone},
+    {mesh = "cube", pos = {0, 6.3, 0}, size = {9.6, 2.6, 2.4}, color = stone},
+    {mesh = "cube", pos = {0, 7.8, 0}, size = {10, 0.4, 2.6}, color = {0.78, 0.76, 0.7}},
+  })
+  -- The arch stands on the north path; its legs are solid, you can drive under it.
+  engine.spawn{mesh = "arch", pos = {cx, CURB + 5, cz - BZ / 2 + 5}, scale = 1, tag = "arch"}
+  for _, s in ipairs{-1, 1} do
+    static{pos = {cx + s * 3.6, CURB + 5, cz - BZ / 2 + 5}, size = {2.4, 10, 2.4}, visible = false, tag = "building"}
+  end
+  static{mesh = "cylinder", pos = {cx, CURB + 0.3, cz}, size = {9, 0.6, 9}, color = stone, tag = "fountain"}
+  engine.spawn{mesh = "cylinder", pos = {cx, CURB + 0.62, cz}, size = {8, 0.04, 8}, color = WATER}
+end
+
+-- Central Park: two slabs either side of the transverse road, the
+-- reservoir with a running track, the lake, the meadow, and a lot of trees.
+local function central_park(L)
+  local x0, z0 = C.node(PARK.i0, PARK.j0)
+  local x1, z1 = C.node(PARK.i1 + 1, PARK.j1 + 1)
+  x0, x1, z0, z1 = x0 + AVE / 2, x1 - AVE / 2, z0 + ST / 2, z1 - ST / 2
+  local _, zt = C.node(0, PARK.transverse)
+  local r = rng(PARK.i0, PARK.j0)
+  for _, part in ipairs{{z0, zt - ST / 2}, {zt + ST / 2, z1}} do
+    local a, b = part[1], part[2]
+    static{mesh = "cube", pos = {(x0 + x1) / 2, CURB / 2, (a + b) / 2}, size = {x1 - x0, CURB, b - a},
+           color = {0.62, 0.62, 0.6}, tag = "sidewalk"}
+    grass((x0 + x1) / 2, (a + b) / 2, x1 - x0 - 2 * WALK, b - a - 2 * WALK)
+  end
+  local mx = (x0 + x1) / 2
+  -- The reservoir, ringed by a low wall and the track.
+  local rz, rw, rd = z0 + 85, 110, 70
+  grass(mx, rz, rw + 8, rd + 8, {0.7, 0.55, 0.42}, 1)
+  grass(mx, rz, rw, rd, WATER, 2)
+  for _, s in ipairs{-1, 1} do
+    static{mesh = "cube", pos = {mx + s * rw / 2, CURB + 0.4, rz}, size = {0.6, 0.8, rd + 0.6}, color = {0.6, 0.58, 0.54}, tag = "wall"}
+    static{mesh = "cube", pos = {mx, CURB + 0.4, rz + s * rd / 2}, size = {rw + 0.6, 0.8, 0.6}, color = {0.6, 0.58, 0.54}, tag = "wall"}
+  end
+  -- The lake: a few overlapping pools, and Bethesda Fountain on its shore.
+  local lz = zt + 50
+  local lake = {{mx - 25, lz, 50, 26}, {mx + 12, lz + 8, 40, 20}, {mx - 6, lz - 12, 22, 14}}
+  for _, p in ipairs(lake) do
+    grass(p[1], p[2], p[3], p[4], WATER, 2)
+  end
+  static{mesh = "cylinder", pos = {mx - 6, CURB + 0.35, lz - 26}, size = {7, 0.7, 7}, color = {0.82, 0.78, 0.7}, tag = "fountain"}
+  -- Sheep Meadow, down at the south end.
+  local meadow = {mx, z1 - 32, 90, 40}
+  grass(meadow[1], meadow[2], meadow[3], meadow[4], {0.42, 0.66, 0.32}, 1)
+  -- The park drive: a loop of road just inside the walls.
+  local path = {0.5, 0.5, 0.52}
+  for _, part in ipairs{{z0, zt - ST / 2}, {zt + ST / 2, z1}} do
+    local a, b = part[1] + 9, part[2] - 9
+    for _, s in ipairs{-1, 1} do
+      grass(mx + s * ((x1 - x0) / 2 - 9), (a + b) / 2, 4, b - a + 4, path, 1)
+    end
+    grass(mx, a, x1 - x0 - 14, 4, path, 1)
+    grass(mx, b, x1 - x0 - 14, 4, path, 1)
+  end
+  local avoid = {{mx, rz, rw + 10, rd + 10}, meadow, {mx, zt, x1 - x0, ST + 6}}
+  for _, p in ipairs(lake) do avoid[#avoid + 1] = {p[1], p[2], p[3] + 2, p[4] + 2} end
+  for _, s in ipairs{-1, 1} do
+    avoid[#avoid + 1] = {mx + s * ((x1 - x0) / 2 - 9), (z0 + z1) / 2, 6, z1 - z0}
+  end
+  for _, e in ipairs{z0 + 9, zt - ST / 2 - 9, zt + ST / 2 + 9, z1 - 9} do avoid[#avoid + 1] = {mx, e, x1 - x0, 6} end
+  trees(420, x0 + 4, x1 - 4, z0 + 4, z1 - 4, r, avoid)
+  -- Lamps round the outside.
+  for z = z0 + 20, z1 - 20, 40 do
+    for _, s in ipairs{-1, 1} do
+      local x = s < 0 and x0 + 1 or x1 - 1
+      static{mesh = "lamp", pos = {x, CURB, z}, yaw = s < 0 and -math.pi / 2 or math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
+    end
+  end
+  L.park = {x0 = x0, x1 = x1, z0 = z0, z1 = z1, transverse = zt}
+end
+
+-- ---- landmarks and features --------------------------------------------------------
 
 -- A ramp is just a tilted static box, buried at the low end so cars roll on.
 -- yaw is the direction it launches you; pitch is the incline in radians.
@@ -223,85 +615,174 @@ function C.ramp(x, z, yaw, width, length, incline)
 end
 
 function C.stunt_park(cx, cz)
-  engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.36, 0.36, 0.38}}
-  C.ramp(cx, cz - 4, 0, 7, 16, 0.3)              -- big kicker, launches north
+  engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.36, 0.36, 0.38}}
+  C.ramp(cx, cz - 4, 0, 7, 16, 0.3)              -- big kicker, launches south
   C.ramp(cx - 11, cz + 8, math.pi, 4, 8, 0.38)    -- small ones on the sides
   C.ramp(cx + 11, cz + 8, math.pi, 4, 8, 0.38)
 end
 
-function C.node(k, l) return O + k * P, O + l * P end
-function C.block_center(i, j) return O + (i + 0.5) * P, O + (j + 0.5) * P end
+-- How wide a strip in the middle of the block each feature takes.
+local FEATURE_W = {lot = 36, plaza = 36, stunt = 36, carpark = 36, tower = 36, empire = 46}
 
-function C.build()
-  local L = {N = N, P = P, road = ROAD, block = BLOCK, origin = O, size = N * P + ROAD, kinds = {}, curb = CURB}
-  local W = N * P + ROAD + 200
-
-  -- Ground and invisible boundary walls.
-  static{mesh = "cube", pos = {0, -0.5, 0}, size = {W, 1, W}, color = {0.22, 0.22, 0.24}, tag = "ground"}
-  local edge = N * P / 2 + ROAD / 2
-  for _, s in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
-    static{pos = {s[1] * edge, 5, s[2] * edge}, size = {s[1] == 0 and 2 * edge or 1, 10, s[2] == 0 and 2 * edge or 1}, visible = false, tag = "wall"}
+local function feature(kind, cx, cz, L)
+  local landmarks = require "lib.landmarks"
+  if kind == "tower" then L.landmarks[#L.landmarks + 1] = landmarks.tower(cx, cz)
+  elseif kind == "carpark" then L.landmarks[#L.landmarks + 1] = landmarks.carpark(cx, cz)
+  elseif kind == "empire" then L.landmarks[#L.landmarks + 1] = landmarks.empire(cx, cz)
+  elseif kind == "plaza" then
+    engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.75, 0.68, 0.55}}
+  elseif kind == "stunt" then C.stunt_park(cx, cz)
+  elseif kind == "lot" then
+    engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.3, 0.3, 0.32}}
+    for s = -3, 3 do
+      engine.spawn{mesh = "plane", pos = {cx + s * 4 + 2, CURB + 0.04, cz}, size = {0.15, 1, 6}, color = {0.9, 0.9, 0.9}}
+    end
   end
+end
 
-  -- Dashed yellow center lines along every street segment.
-  for k = 0, N do
-    for l = 0, N - 1 do
-      for dash = 0, 5 do
-        local t = (dash + 0.5) / 6
-        local a = O + (l + 0.15 + 0.7 * t) * P
-        local x = O + k * P
-        engine.spawn{mesh = "plane", pos = {x, 0.02, a}, size = {0.25, 1, 3}, color = {0.9, 0.75, 0.2}}
-        engine.spawn{mesh = "plane", pos = {a, 0.02, x}, size = {3, 1, 0.25}, color = {0.9, 0.75, 0.2}}
+-- ---- streets ---------------------------------------------------------------------------
+
+-- Center-line dashes and zebra crossings, baked into one mesh per grid
+-- line so the whole street network is a few dozen draw calls.
+local function markings()
+  local yellow, white = {0.9, 0.75, 0.2}, {0.88, 0.88, 0.86}
+  local function line(name, x, z, along_z, segs)
+    local parts = {}
+    for _, s in ipairs(segs) do
+      -- a, b: the segment's ends along the line, measured from (x, z).
+      local a, b, cross = s[1], s[2], s[3]
+      local function put(u, v, lu, lv, c)
+        if along_z then parts[#parts + 1] = {mesh = "cube", pos = {v, 0, u}, size = {lv, 0.02, lu}, color = c}
+        else parts[#parts + 1] = {mesh = "cube", pos = {u, 0, v}, size = {lu, 0.02, lv}, color = c} end
+      end
+      local u0, u1 = a + cross / 2 + 4, b - cross / 2 - 4
+      local n = math.max(1, math.floor((u1 - u0 + 3) / 6))
+      local step = (u1 - u0) / n
+      for k = 0, n - 1 do put(u0 + (k + 0.5) * step, 0, 3, 0.25, yellow) end
+      local width = along_z and AVE or ST
+      for _, e in ipairs{a + cross / 2 + 1.4, b - cross / 2 - 1.4} do
+        for q = -width / 2 + 1, width / 2 - 1, 1.4 do put(e, q, 2, 0.7, white) end
+      end
+    end
+    if #parts > 0 then
+      engine.mesh(name, parts)
+      engine.spawn{mesh = name, pos = {x, 0.02, z}, scale = 1, tag = "markings"}
+    end
+  end
+  for k = 0, NX do
+    local x = OX + k * PX
+    local segs = {}
+    for l = 0, NZ - 1 do
+      if C.road(k, l, 0, 1) then segs[#segs + 1] = {l * PZ + OZ, (l + 1) * PZ + OZ, ST} end
+    end
+    line("avenue" .. k, x, 0, true, segs)
+  end
+  for l = 0, NZ do
+    local z = OZ + l * PZ
+    local segs = {}
+    for k = 0, NX - 1 do
+      if C.road(k, l, 1, 0) then segs[#segs + 1] = {k * PX + OX, (k + 1) * PX + OX, AVE} end
+    end
+    line("street" .. l, 0, z, false, segs)
+  end
+end
+
+-- Water inside the grid: every block, road strip and junction off the
+-- island, each with an invisible wall so cars stay on land.
+local function harbor()
+  local function pool(x0, x1, z0, z1)
+    local x, z, w, d = (x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0
+    engine.spawn{mesh = "cube", pos = {x, 0.04, z}, size = {w, 0.08, d}, color = WATER_DEEP, tag = "water"}
+    static{pos = {x, 5, z}, size = {w, 10, d}, visible = false, tag = "wall"}
+  end
+  for i = 0, NX - 1 do
+    for j = 0, NZ - 1 do
+      if C.district(i, j) == "water" then
+        local cx, cz = C.block_center(i, j)
+        pool(cx - BX / 2, cx + BX / 2, cz - BZ / 2, cz + BZ / 2)
       end
     end
   end
+  local function park_road(k, l, dk) -- interior park roads are under the park, not water
+    if dk == 1 then return in_park(k, l - 1) and in_park(k, l) end
+    return in_park(k - 1, l) and in_park(k, l)
+  end
+  for k = 0, NX do
+    for l = 0, NZ do
+      local x, z = C.node(k, l)
+      if k < NX and not C.road(k, l, 1, 0) and not park_road(k, l, 1) then
+        pool(x + AVE / 2, x + PX - AVE / 2, z - ST / 2, z + ST / 2)
+      end
+      if l < NZ and not C.road(k, l, 0, 1) and not park_road(k, l, 0) then
+        pool(x - AVE / 2, x + AVE / 2, z + ST / 2, z + PZ - ST / 2)
+      end
+      if not C.on_road(k, l) and not (in_park(k - 1, l - 1) and in_park(k, l)) then
+        pool(x - AVE / 2, x + AVE / 2, z - ST / 2, z + ST / 2)
+      end
+    end
+  end
+end
 
-  L.plaza = {3, 4}
-  L.lot = {4, 3}
-  L.stunt = {5, 4}
-  L.tower = {4, 4}
-  L.carpark = {2, 4}
-  L.landmarks = {}
+-- ---- the city ----------------------------------------------------------------------------
+
+function C.build()
+  local sx, sz = NX * PX + AVE, NZ * PZ + ST
+  local L = {
+    NX = NX, NZ = NZ, PX = PX, PZ = PZ, bx = BX, bz = BZ, avenue = AVE, street = ST, walk = WALK,
+    ox = OX, oz = OZ, sx = sx, sz = sz, curb = CURB, kinds = {}, landmarks = {},
+  }
+
+  -- Pavement under the grid, the river a quay wall below it all round, and
+  -- invisible walls at the shore.
+  static{mesh = "cube", pos = {0, -1.5, 0}, size = {sx, 3, sz}, color = {0.22, 0.22, 0.24}, tag = "ground"}
+  engine.spawn{mesh = "cube", pos = {0, -1.7, 0}, size = {sx + 3000, 1, sz + 3000}, color = WATER_DEEP, tag = "water"}
+  for _, s in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
+    static{pos = {s[1] * sx / 2, 5, s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 10, s[2] == 0 and sz or 1}, visible = false, tag = "wall"}
+  end
+  harbor()
+  markings()
+
+  -- Named places other systems look up.
+  for key, kind in pairs(SPECIAL) do
+    local i, j = key:match("(%d+),(%d+)")
+    L[kind] = L[kind] or {tonumber(i), tonumber(j)}
+  end
+  L.hospital = {3, 15}
+
   engine.mesh("smokestack", {
     {mesh = "cylinder", size = {2.2, 28, 2.2}, color = {0.6, 0.55, 0.5}},
     {mesh = "cylinder", pos = {0, 11, 0}, size = {2.25, 2, 2.25}, color = {0.8, 0.15, 0.1}},
     {mesh = "cylinder", pos = {0, 6, 0}, size = {2.25, 2, 2.25}, color = {0.9, 0.9, 0.88}},
     {mesh = "cylinder", pos = {0, 13.6, 0}, size = {1.6, 0.8, 1.6}, color = {0.2, 0.2, 0.2}},
   })
-  for i = 0, N - 1 do
-    for j = 0, N - 1 do
-      local cx, cz = C.block_center(i, j)
-      static{mesh = "cube", pos = {cx, CURB / 2, cz}, size = {BLOCK, CURB, BLOCK}, color = {0.62, 0.62, 0.6}, tag = "sidewalk"}
-      local kind
-      if i == L.plaza[1] and j == L.plaza[2] then kind = "plaza"
-      elseif i == L.lot[1] and j == L.lot[2] then kind = "lot"
-      elseif i == L.stunt[1] and j == L.stunt[2] then kind = "stunt"
-      elseif math.random() < 0.12 then kind = "park"
-      else kind = "buildings" end
-      -- A landmark takes its block whatever the dice said, after rolling them the same way.
-      local landmark = (i == L.tower[1] and j == L.tower[2] and "tower") or (i == L.carpark[1] and j == L.carpark[2] and "carpark")
-      if landmark then
-        if kind == "buildings" then fill_buildings(cx, cz, i, j, true) elseif kind == "park" then park(cx, cz, true) end
-        kind = landmark
-      end
-      L.kinds[i .. "," .. j] = kind
-      if kind == "buildings" then fill_buildings(cx, cz, i, j)
-      elseif kind == "park" then park(cx, cz)
-      elseif kind == "tower" then L.landmarks[#L.landmarks + 1] = require("lib.landmarks").tower(cx, cz)
-      elseif kind == "carpark" then L.landmarks[#L.landmarks + 1] = require("lib.landmarks").carpark(cx, cz)
-      elseif kind == "plaza" then
-        engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.75, 0.68, 0.55}}
-      elseif kind == "stunt" then C.stunt_park(cx, cz)
-      elseif kind == "lot" then
-        engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {BLOCK - 4, 0.04, BLOCK - 4}, color = {0.3, 0.3, 0.32}}
-        for s = -3, 3 do
-          engine.spawn{mesh = "plane", pos = {cx + s * 4 + 2, CURB + 0.04, cz}, size = {0.15, 1, 6}, color = {0.9, 0.9, 0.9}}
+  central_park(L)
+  for i = 0, NX - 1 do
+    for j = 0, NZ - 1 do
+      local district = C.district(i, j)
+      local key = i .. "," .. j
+      local kind = district == "water" and "water" or district == "park" and "central_park" or SPECIAL[key] or "buildings"
+      L.kinds[key] = kind
+      if district ~= "water" and district ~= "park" then
+        local cx, cz = C.block_center(i, j)
+        local r = rng(i, j)
+        static{mesh = "cube", pos = {cx, CURB / 2, cz}, size = {BX, CURB, BZ}, color = {0.62, 0.62, 0.6}, tag = "sidewalk"}
+        local x0, x1, z0, z1 = cx - BX / 2 + WALK, cx + BX / 2 - WALK, cz - BZ / 2 + WALK, cz + BZ / 2 - WALK
+        if kind == "buildings" then
+          local built = fill(x0, x1, z0, z1, i, j, r, {true, true})
+          if i == TIMES.i and j == TIMES.j then billboards(built, r) end
+        elseif kind == "park" then pocket_park(cx, cz, r)
+        elseif kind == "square" then square(cx, cz, r)
+        else
+          local half = FEATURE_W[kind] / 2
+          fill(x0, cx - half, z0, z1, i, j, r, {true, false})
+          fill(cx + half, x1, z0, z1, i, j, r, {false, true})
+          feature(kind, cx, cz, L)
         end
-      end
-      -- Street lamps on the corners.
-      for _, c in ipairs{{1, 1}, {-1, 1}, {1, -1}, {-1, -1}} do
-        static{mesh = "lamp", pos = {cx + c[1] * (BLOCK / 2 - 1), CURB, cz + c[2] * (BLOCK / 2 - 1)},
-               yaw = math.atan(c[1], c[2]), size = {0.3, 10, 0.3}, tag = "lamp"}
+        -- Street lamps on the corners and halfway along the long sides.
+        for _, c in ipairs{{1, 1}, {-1, 1}, {1, -1}, {-1, -1}, {0, 1}, {0, -1}} do
+          static{mesh = "lamp", pos = {cx + c[1] * (BX / 2 - 1), CURB, cz + c[2] * (BZ / 2 - 1)},
+                 yaw = math.atan(c[1], c[2]), size = {0.3, 10, 0.3}, tag = "lamp"}
+        end
       end
     end
   end
