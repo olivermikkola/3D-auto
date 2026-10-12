@@ -36,42 +36,17 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
--- An intersection 70-130 m from where the cops think the player is.
+-- A junction 70-130 m from where the cops think the player is.
 local function spawn_point()
   local px, pz = wanted.center[1], wanted.center[2]
   for _ = 1, 10 do
-    local k, l = city.random_node(px, pz, 70, 130)
-    if not k then return end
-    local x, z = city.node(k, l)
+    local j = city.random_near(px, pz, 70, 130)
+    if not j then return end
+    local x, z = city.pos(j)
     if not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
   end
 end
 
--- Breadth-first search: a valid pursuit step may initially lead AWAY from
--- the target around water or the park. Greedy axes can bounce forever.
-function P.step_toward(k, l, gk, gl)
-  local start = k .. "," .. l
-  local queue, seen, first = {{k, l}}, {[start] = true}, {}
-  local i = 1
-  while i <= #queue do
-    local n = queue[i]
-    i = i + 1
-    if n[1] == gk and n[2] == gl then
-      local f = first[n[1] .. "," .. n[2]]
-      if f then return f[1], f[2] end
-      return k, l
-    end
-    for _, nb in ipairs(city.neighbors(n[1], n[2])) do
-      local key = nb[1] .. "," .. nb[2]
-      if not seen[key] then
-        seen[key] = true
-        first[key] = first[n[1] .. "," .. n[2]] or nb
-        queue[#queue + 1] = nb
-      end
-    end
-  end
-  return k, l
-end
 
 local function spawn_cop()
   local x, z, yaw = spawn_point()
@@ -144,19 +119,19 @@ local function drive_cop(c, dt)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
     want = dist < 12 and math.max(0, dist - 4) or 30
   else
-    -- Follow the grid one intersection at a time toward the player if seen,
+    -- Follow the roads one junction at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
-    local k, l = city.nearest_node(x, z)
-    local gk, gl = city.nearest_node(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
+    -- A route may start out away from them, round water or a park.
+    local at = city.nearest(x, z)
+    local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
     if not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
-      if k == gk and l == gl then
-        local opts = city.neighbors(k, l) -- there: search a street nearby
-        local n = opts[math.random(math.max(1, #opts))]
-        if n then k, l = n[1], n[2] end
+      if at == goal then
+        local opts = city.links(at) -- there: search a street nearby
+        at = opts[math.random(math.max(1, #opts))] or at
       else
-        k, l = P.step_toward(k, l, gk, gl)
+        at = city.step_toward(at, goal)
       end
-      c.goal = {city.node(k, l)}
+      c.goal = {city.pos(at)}
     end
     -- Drive in the right-hand lane, like traffic, so oncoming cars pass
     -- by; pull out into the other lane to overtake whatever's ahead in ours.

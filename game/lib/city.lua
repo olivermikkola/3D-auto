@@ -6,9 +6,12 @@
 --
 -- city.use(name) picks the map (main.lua does it first, so geometry and
 -- places work before anything is built); city.build() builds it and
--- returns the layout. Not every grid line is a road (the river, the park),
--- so walk the graph with C.road / C.neighbors rather than assuming a full
--- grid, and find things with C.place / C.route rather than grid indices.
+-- returns the layout. Systems that drive (traffic, police, the minimap)
+-- use the road graph: junctions by id, C.links / C.pos / C.nearest /
+-- C.roads. It doesn't care how the map was drawn, so curved roads and
+-- several districts joined by bridges can plug into it. The grid functions
+-- (C.node, C.neighbors, C.road, C.segments) are for building grid maps.
+-- Find things with C.place / C.route rather than grid indices.
 local C = {}
 
 local CURB, WALK, FLOOR = 0.2, 3, 3.5
@@ -18,7 +21,7 @@ local WATER_DEEP = {0.16, 0.3, 0.52}
 -- blocks between avenues and between streets, block size (sidewalk
 -- included), road widths, grid pitch, and where avenue 0 and street 0 are.
 local MAP, NX, NZ, BX, BZ, AVE, ST, PX, PZ, OX, OZ
-local PARK, SPECIAL, BILLBOARDS, roads
+local PARK, SPECIAL, BILLBOARDS, roads, GRAPH
 
 local palette = {
   {0.85, 0.82, 0.76}, {0.72, 0.68, 0.62}, {0.70, 0.45, 0.35}, {0.62, 0.66, 0.70},
@@ -51,7 +54,7 @@ function C.use(map)
     for _, b in ipairs(pairs_of(v)) do SPECIAL[b[1] .. "," .. b[2]] = kind end
   end
   for _, b in ipairs(map.billboards or {}) do BILLBOARDS[b[1] .. "," .. b[2]] = true end
-  roads = {}
+  roads, GRAPH = {}, nil
   C.check()
   return map
 end
@@ -126,7 +129,7 @@ function C.height(x, z)
   return best
 end
 
--- ---- the road graph ----------------------------------------------------------------
+-- ---- the grid --------------------------------------------------------------------------
 -- Nodes are intersections (k, l): avenue line k = 0..NX, street line l = 0..NZ.
 
 function C.node(k, l) return OX + k * PX, OZ + l * PZ end
@@ -227,6 +230,92 @@ function C.random_node(x, z, min, max)
   end
   local n = cands[math.random(math.max(1, #cands))]
   if n then return n[1], n[2] end
+end
+
+-- ---- the road graph ----------------------------------------------------------------
+-- Junctions are ids 1..n with a position; each road joins two of them. A
+-- grid map's junctions are its intersections with a road, in grid order
+-- (avenue by avenue, north to south), and its roads are C.segments() in
+-- order, so anything random over them picks what it always did.
+
+local function graph()
+  if GRAPH then return GRAPH end
+  local g = {pos = {}, links = {}, roads = {}, id = {}}
+  for _, n in ipairs(C.nodes()) do
+    local id = #g.pos + 1
+    g.pos[id] = {C.node(n[1], n[2])}
+    g.id[n[1] .. "," .. n[2]] = id
+  end
+  for _, n in ipairs(C.nodes()) do
+    local out = {}
+    for _, nb in ipairs(C.neighbors(n[1], n[2])) do out[#out + 1] = g.id[nb[1] .. "," .. nb[2]] end
+    g.links[g.id[n[1] .. "," .. n[2]]] = out
+  end
+  for _, s in ipairs(C.segments()) do
+    g.roads[#g.roads + 1] = {g.id[s[1] .. "," .. s[2]], g.id[(s[1] + s[3]) .. "," .. (s[2] + s[4])]}
+  end
+  GRAPH = g
+  return g
+end
+
+-- Where junction `id` is, as x, z.
+function C.pos(id)
+  local p = graph().pos[id]
+  return p[1], p[2]
+end
+
+-- The junctions one road away from `id`.
+function C.links(id) return graph().links[id] end
+
+-- Every junction id, and every road once, as {a, b}.
+function C.junctions()
+  local out = {}
+  for id = 1, #graph().pos do out[id] = id end
+  return out
+end
+function C.roads() return graph().roads end
+
+-- The junction at grid intersection (k, l), if it has a road.
+function C.junction(k, l) return graph().id[k .. "," .. l] end
+
+-- The nearest junction to (x, z).
+function C.nearest(x, z)
+  local g = graph()
+  local best, id = math.huge, 1
+  for i, p in ipairs(g.pos) do
+    local d = (p[1] - x) ^ 2 + (p[2] - z) ^ 2
+    if d < best then best, id = d, i end
+  end
+  return id
+end
+
+-- A random junction between min and max meters from (x, z), or nil.
+function C.random_near(x, z, min, max)
+  local cands = {}
+  for i, p in ipairs(graph().pos) do
+    local d = math.sqrt((p[1] - x) ^ 2 + (p[2] - z) ^ 2)
+    if d >= min and d <= max then cands[#cands + 1] = i end
+  end
+  return cands[math.random(math.max(1, #cands))]
+end
+
+-- The first junction on a shortest route from `from` to `to` (breadth
+-- first, so a route may start out away from the goal, round water or a
+-- park). `from` itself if it's already there or `to` can't be reached.
+function C.step_toward(from, to)
+  local queue, first, i = {from}, {[from] = false}, 1
+  while i <= #queue do
+    local n = queue[i]
+    i = i + 1
+    if n == to then return first[n] or from end
+    for _, nb in ipairs(C.links(n)) do
+      if first[nb] == nil then
+        first[nb] = first[n] or nb
+        queue[#queue + 1] = nb
+      end
+    end
+  end
+  return from
 end
 
 -- ---- deterministic randomness ------------------------------------------------------

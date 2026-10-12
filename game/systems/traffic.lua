@@ -1,5 +1,5 @@
--- Ambient traffic: cars wander the street grid in the right-hand lane,
--- turning at random at intersections and braking for obstacles. The city is
+-- Ambient traffic: cars wander the road graph in the right-hand lane,
+-- turning at random at junctions and braking for obstacles. The city is
 -- big, so traffic follows the player: cars that end up far away are moved
 -- to a street nearer them, out of sight.
 local G = require "lib.state"
@@ -11,8 +11,8 @@ local T = {cars = {}}
 local LANE, CRUISE = 3.2, 11
 
 local function lane_target(c)
-  local ax, az = city.node(c.from[1], c.from[2])
-  local bx, bz = city.node(c.to[1], c.to[2])
+  local ax, az = city.pos(c.from)
+  local bx, bz = city.pos(c.to)
   local yaw = math.atan(bx - ax, bz - az)
   local rx, rz = U.right(yaw)
   -- Aim a little before the intersection centre so turns cut the corner.
@@ -25,24 +25,23 @@ local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
 -- At a dead end (the shore, the park) turning back is the only way on.
 local function pick_next(c)
   local opts = {}
-  for _, n in ipairs(city.neighbors(c.to[1], c.to[2])) do
-    if n[1] ~= c.from[1] or n[2] ~= c.from[2] then opts[#opts + 1] = n end
+  for _, n in ipairs(city.links(c.to)) do
+    if n ~= c.from then opts[#opts + 1] = n end
   end
   c.from, c.to = c.to, opts[math.random(#opts)] or c.from
 end
 
 -- Place car c on a random street segment between `min_dist` and NEAR from
 -- the player (anywhere in town if there's no player).
-local segments
 local function place(c, min_dist)
-  segments = segments or city.segments()
+  local roads = city.roads()
   local px, _, pz = U.player_pos()
   for _ = 1, 40 do
-    local s = segments[math.random(#segments)]
-    c.from, c.to = {s[1], s[2]}, {s[1] + s[3], s[2] + s[4]}
+    local r = roads[math.random(#roads)]
+    c.from, c.to = r[1], r[2]
     if math.random() < 0.5 then c.from, c.to = c.to, c.from end
-    local ax, az = city.node(c.from[1], c.from[2])
-    local bx, bz = city.node(c.to[1], c.to[2])
+    local ax, az = city.pos(c.from)
+    local bx, bz = city.pos(c.to)
     local yaw = math.atan(bx - ax, bz - az)
     local rx, rz = U.right(yaw)
     local t = 0.3 + math.random() * 0.4
@@ -64,14 +63,14 @@ local function add_car(min_dist)
   T.cars[c.id] = c
 end
 
--- Hand a car to the traffic AI. It should stand on an intersection; it
--- drives off down one of its roads. Missions use it for cars they want to see wander town:
+-- Hand a car to the traffic AI. It should stand on a junction; it drives
+-- off down one of its roads. Missions use it for cars they want to see wander town:
 -- `keep` ones are never recycled out of sight, and `cruise` sets their pace.
 function T.adopt(id, opts)
   local x, _, z = engine.pos(id)
-  local k, l = city.nearest_node(x, z)
-  local ways = city.neighbors(k, l)
-  local c = {from = {k, l}, to = ways[math.random(math.max(1, #ways))] or {k, l}, speed = 0, stuck = 0}
+  local at = city.nearest(x, z)
+  local ways = city.links(at)
+  local c = {from = at, to = ways[math.random(math.max(1, #ways))] or at, speed = 0, stuck = 0}
   c.keep, c.cruise = opts and opts.keep, opts and opts.cruise
   vehicle.headlights(id)
   T.cars[id] = c

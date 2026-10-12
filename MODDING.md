@@ -37,9 +37,9 @@ Press G in game. That's the whole mod.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
 - **The game's modules:** `lib.state`, `lib.util`, `lib.input` (`move`, `drive`, `look`,
   `connected`), `lib.city` (named places: `place`, `route`, `has`, `map`; the road graph:
-  `road`, `neighbors`, `nodes`, `random_node`, `nearest_node`; and `district(i, j)`, `node`,
-  `block_center`. Maps differ, so find things by place name and walk the graph rather than
-  using grid positions), `lib.landmarks`,
+  `junctions`, `roads`, `pos`, `links`, `nearest`, `random_near`, `step_toward`; and, on grid
+  maps, `district(i, j)`, `node`, `block_center`. Maps differ, so find things by place name and
+  walk the graph rather than using grid positions), `lib.landmarks`,
   `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`,
   `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups`
   (`place`), `systems.weapons` (`defs`, add your own), `systems.carnage` (`explode`),
@@ -66,7 +66,7 @@ require("lib.mission").register{
     m:wait(function() return m:in_car() end)
     -- Some street corner 150-250 m away, on whatever map is loaded.
     local x, z = city.place("lot")
-    local door = m:marker(city.node(city.random_node(x, z, 150, 250)))
+    local door = m:marker(city.pos(city.random_near(x, z, 150, 250)))
     m:timer(45)
     m:wait(function() return m:near(door, 5) end)
   end,
