@@ -21,6 +21,7 @@ require "lib.stunts"
 require "lib.camera"
 require "lib.hud"
 require "systems.garage"
+require "lib.menu"
 
 engine.on("init", function()
   math.randomseed(1337)
@@ -58,6 +59,7 @@ if os.getenv("AUTO_TEST") then require "test.autoplay" end
 if os.getenv("SOAK") then require "test.soak" end
 if os.getenv("GARAGE_TEST") then require "test.garage" end
 if os.getenv("SAVE_TEST") then require "test.save" end
+if os.getenv("MENU_TEST") then require "test.menu" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)

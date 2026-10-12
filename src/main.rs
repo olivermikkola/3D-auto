@@ -139,6 +139,16 @@ fn newest_mtime(dir: &Path) -> Option<SystemTime> {
     best
 }
 
+/// The frame event's dt: zero while paused, so anything animated per frame holds still.
+fn frame_dt(eng: &Shared) -> f32 {
+    if eng.borrow().paused { 0.0 } else { (1.0 / TICK_HZ) as f32 }
+}
+
+/// Key events go to the game, or to menus while it's paused.
+fn key_event(eng: &Shared) -> &'static str {
+    if eng.borrow().paused { "menu_key" } else { "key" }
+}
+
 /// One simulation tick: scripts think, physics moves, contacts are reported.
 fn tick(eng: &Shared, script: &Script) {
     let dt = (1.0 / TICK_HZ) as f32;
@@ -172,9 +182,11 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
     let t0 = std::time::Instant::now();
     if let Some(s) = &script {
         for _ in 0..ticks {
-            tick(&eng, s);
+            if !eng.borrow().paused {
+                tick(&eng, s);
+            }
             eng.borrow_mut().hud.clear();
-            s.emit(&eng, "frame", (1.0 / TICK_HZ) as f32);
+            s.emit(&eng, "frame", frame_dt(&eng));
             eng.borrow_mut().update_audio();
             mixer.lock().unwrap().mix(&mut sink);
             if eng.borrow().quit {
@@ -206,6 +218,7 @@ struct App {
     quit_after: Option<u64>,
     ticks_per_frame: u32,
     closed: bool,
+    fullscreen: bool,
 }
 
 impl App {
@@ -223,15 +236,16 @@ impl App {
         if let Some(s) = &self.script {
             s.emit(&self.eng, "quit", ());
         }
-        let (root, screen, mixer, saves) = {
+        let (root, screen, mixer, saves, fullscreen) = {
             let mut e = self.eng.borrow_mut();
-            (e.root.clone(), e.screen, e.mixer.clone(), std::mem::take(&mut e.saves))
+            (e.root.clone(), e.screen, e.mixer.clone(), std::mem::take(&mut e.saves), e.fullscreen)
         };
         // Drop the old Lua state before building the new one.
         self.script = None;
         *self.eng.borrow_mut() = Engine::new(root, mixer);
         self.eng.borrow_mut().screen = screen;
         self.eng.borrow_mut().saves = saves;
+        self.eng.borrow_mut().fullscreen = fullscreen;
         self.script = load(&self.eng);
         self.acc = 0.0;
         println!("reloaded");
@@ -255,6 +269,10 @@ impl EventHandler for App {
             self.reload();
         }
         let Some(script) = &self.script else { return };
+        if self.eng.borrow().paused {
+            self.acc = 0.0;
+            return;
+        }
         // Fixed timestep; in screenshot mode advance exactly one tick per frame.
         self.acc += if self.shot.is_some() || self.quit_after.is_some() { self.ticks_per_frame as f64 / TICK_HZ } else { dt };
         while self.acc >= 1.0 / TICK_HZ {
@@ -271,7 +289,7 @@ impl EventHandler for App {
             e.hud.clear();
         }
         if let Some(s) = &self.script {
-            s.emit(&self.eng, "frame", (1.0 / TICK_HZ) as f32);
+            s.emit(&self.eng, "frame", frame_dt(&self.eng));
         }
         self.eng.borrow_mut().update_audio();
         {
@@ -281,6 +299,10 @@ impl EventHandler for App {
                 let msg: String = err.lines().take(12).collect::<Vec<_>>().join("\n");
                 e.hud_rect(0.0, 0.0, w, 20.0 + 18.0 * msg.lines().count() as f32, [0.3, 0.0, 0.0, 0.85]);
                 e.hud_text(&msg, 10.0, 10.0, 12.0, [1.0, 0.8, 0.8, 1.0]);
+            }
+            if e.fullscreen != self.fullscreen {
+                self.fullscreen = e.fullscreen;
+                window::set_fullscreen(self.fullscreen);
             }
             if e.mouse_grab != self.grabbed {
                 self.grabbed = e.mouse_grab;
@@ -321,7 +343,7 @@ impl EventHandler for App {
         }
         self.eng.borrow_mut().keys.insert(name.to_string());
         if let Some(s) = &self.script {
-            s.emit(&self.eng, "key", (name, true));
+            s.emit(&self.eng, key_event(&self.eng), (name, true));
         }
     }
 
@@ -329,7 +351,7 @@ impl EventHandler for App {
         let name = key_name(key);
         self.eng.borrow_mut().keys.remove(name);
         if let Some(s) = &self.script {
-            s.emit(&self.eng, "key", (name, false));
+            s.emit(&self.eng, key_event(&self.eng), (name, false));
         }
     }
 
@@ -339,6 +361,16 @@ impl EventHandler for App {
 
     fn mouse_button_up_event(&mut self, b: MouseButton, _x: f32, _y: f32) {
         self.mouse_button(b, false);
+    }
+
+    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.eng.borrow_mut().cursor = (x, y);
+    }
+
+    fn window_minimized_event(&mut self) {
+        if let Some(s) = &self.script {
+            s.emit(&self.eng, "minimized", ());
+        }
     }
 
     fn quit_requested_event(&mut self) {
@@ -366,7 +398,7 @@ impl App {
             self.eng.borrow_mut().keys.remove(name)
         };
         if let Some(s) = &self.script {
-            s.emit(&self.eng, "key", (name, down));
+            s.emit(&self.eng, key_event(&self.eng), (name, down));
         }
     }
 }
@@ -478,6 +510,7 @@ fn main() {
             shot: shot.map(|p| (p, frames.unwrap_or(120))),
             ticks_per_frame,
             closed: false,
+            fullscreen: false,
         })
     });
 }

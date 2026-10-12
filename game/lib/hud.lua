@@ -1,9 +1,9 @@
 -- Heads-up display: cash, speed, mission text, minimap, big messages.
 local G = require "lib.state"
 local U = require "lib.util"
+local settings = require "lib.settings"
 
 local M = {}
-local show_help = true
 
 local function shadow_text(s, x, y, size, r, g, b)
   engine.text(s, x + 2, y + 2, size, 0, 0, 0, 0.6)
@@ -55,7 +55,7 @@ local function minimap(sw, sh)
   end
 end
 
-engine.on("key", function(k, down) if k == "f1" and down then show_help = not show_help end end)
+engine.on("key", function(k, down) if k == "f1" and down then settings.set("help", not settings.get("help")) end end)
 
 engine.on("frame", function(dt)
   local w, h = engine.screen()
@@ -128,8 +128,8 @@ engine.on("frame", function(dt)
 
   minimap(w, h)
 
-  if show_help then
-    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nTAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC FREE MOUSE"
+  if settings.get("help") then
+    local lines = "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nTAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC PAUSE/SETTINGS"
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
   end

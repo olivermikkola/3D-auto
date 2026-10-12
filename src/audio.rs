@@ -22,6 +22,8 @@ struct Voice {
     looped: bool,
     world: Option<Vec3>,
     gains: (f32, f32),
+    /// Interface sounds keep playing while the game is paused.
+    ui: bool,
 }
 
 pub struct Mixer {
@@ -31,11 +33,13 @@ pub struct Mixer {
     pub listener: Vec3,
     pub listener_right: Vec3,
     pub master: f32,
+    /// Freezes every voice except `ui` ones, where they are.
+    pub paused: bool,
 }
 
 impl Default for Mixer {
     fn default() -> Mixer {
-        Mixer { voices: Vec::new(), next: 1, out_rate: RATE, listener: Vec3::ZERO, listener_right: Vec3::ZERO, master: 0.7 }
+        Mixer { voices: Vec::new(), next: 1, out_rate: RATE, listener: Vec3::ZERO, listener_right: Vec3::ZERO, master: 0.7, paused: false }
     }
 }
 
@@ -51,11 +55,11 @@ fn spatial(world: Option<Vec3>, listener: Vec3, right: Vec3) -> (f32, f32) {
 }
 
 impl Mixer {
-    pub fn play(&mut self, data: Samples, volume: f32, pitch: f32, looped: bool, world: Option<Vec3>) -> u32 {
+    pub fn play(&mut self, data: Samples, volume: f32, pitch: f32, looped: bool, world: Option<Vec3>, ui: bool) -> u32 {
         let id = self.next;
         self.next += 1;
         let gains = spatial(world, self.listener, self.listener_right);
-        self.voices.push(Voice { id, data, pos: 0.0, pitch, volume, looped, world, gains });
+        self.voices.push(Voice { id, data, pos: 0.0, pitch, volume, looped, world, gains, ui });
         id
     }
 
@@ -73,6 +77,7 @@ impl Mixer {
 
     pub fn stop_all(&mut self) {
         self.voices.clear();
+        self.paused = false;
     }
 
     pub fn playing(&self, id: u32) -> bool {
@@ -90,6 +95,9 @@ impl Mixer {
         let ratio = RATE as f64 / self.out_rate as f64;
         let (listener, right) = (self.listener, self.listener_right);
         for v in &mut self.voices {
+            if self.paused && !v.ui {
+                continue;
+            }
             let n = v.data.len();
             if n == 0 {
                 v.looped = false;
@@ -460,7 +468,7 @@ mod tests {
         m.listener_right = v3(-1.0, 0.0, 0.0); // camera looks down +Z
         let data: Samples = Arc::new(vec![0.5; 1000]);
         // A source on the listener's right (-X) is louder in the right channel.
-        let id = m.play(data.clone(), 1.0, 1.0, false, Some(v3(-5.0, 0.0, 0.0)));
+        let id = m.play(data.clone(), 1.0, 1.0, false, Some(v3(-5.0, 0.0, 0.0)), false);
         let mut out = vec![0.0; 2 * 256];
         m.mix(&mut out);
         let (l, r) = (out[200], out[201]);
@@ -471,11 +479,27 @@ mod tests {
         m.mix(&mut out);
         assert!(!m.playing(id));
         // Loops keep going; stop removes them.
-        let lp = m.play(data, 1.0, 1.0, true, None);
+        let lp = m.play(data, 1.0, 1.0, true, None, false);
         m.mix(&mut vec![0.0; 2 * 4096]);
         assert!(m.playing(lp));
         m.stop(lp);
         assert_eq!(m.voice_count(), 0);
+    }
+
+    #[test]
+    fn pausing_freezes_all_but_ui_voices() {
+        let mut m = Mixer::default();
+        let data: Samples = Arc::new(vec![0.5; 300]);
+        let game = m.play(data.clone(), 1.0, 1.0, false, None, false);
+        let click = m.play(data, 1.0, 1.0, false, None, true);
+        m.paused = true;
+        let mut out = vec![0.0; 2 * 400];
+        m.mix(&mut out);
+        assert!(out[0] > 0.0, "the ui voice is heard");
+        assert!(m.playing(game) && !m.playing(click), "the game voice waits, the ui voice finishes");
+        m.paused = false;
+        m.mix(&mut out);
+        assert!(!m.playing(game), "unpaused, the game voice resumes and finishes");
     }
 
     #[test]
