@@ -77,6 +77,7 @@ if phase == 1 then
     key("escape")
     select("QUIT GAME")
     G.cash = 123 -- progress must still save when quitting from the menu
+    print("MENU TEST PHASE 1 PASSED")
     key("enter")
   end
 elseif phase == 2 then

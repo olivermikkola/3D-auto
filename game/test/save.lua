@@ -63,6 +63,7 @@ if phase == 1 then
     local p = engine.load("progress")
     check(p and p.cash == 777 and p.missions["01_joyride"] == true, "progress autosaves a moment after it changes")
     G.cash = 778 -- changed right before quitting: only the quit event can save this
+    print("SAVE TEST PHASE 1 PASSED")
     engine.quit()
   end
 elseif phase == 2 then
@@ -77,6 +78,7 @@ elseif phase == 2 then
     check(G.cash == 0 and next(G.passed) == nil and not joyride().passed, "reset starts a new game")
     check(engine.load("progress").cash == 0, "and saves it")
     G.cash = 50
+    print("SAVE TEST PHASE 2 PASSED")
     engine.quit()
   end
 elseif phase == 3 then

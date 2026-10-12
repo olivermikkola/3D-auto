@@ -28,7 +28,11 @@ require "lib.menu"
 require "lib.shop"
 
 engine.on("init", function()
-  math.randomseed(1337)
+  -- Keep the default repeatable; SEED makes population/AI failures reproducible.
+  local seed = os.getenv("SEED")
+  seed = seed and assert(math.tointeger(tonumber(seed)), "SEED must be an integer") or 1337
+  math.randomseed(seed)
+  print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
   engine.fog(110, 380)
 
   prefabs.build()
@@ -70,6 +74,7 @@ if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
+if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

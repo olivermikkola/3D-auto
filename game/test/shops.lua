@@ -110,6 +110,7 @@ if phase == 1 then
     key("r")
     check(not menu.open and paint.refusal(G.vehicle) == "WE DON'T PAINT COP CARS", "no cop cars")
     G.cash = 777
+    print("SHOP TEST PHASE 1 PASSED")
     engine.quit()
   end
 elseif phase == 2 then

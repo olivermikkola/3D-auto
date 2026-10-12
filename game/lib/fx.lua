@@ -6,7 +6,8 @@ local MAX = 260
 local function add(e)
   if #FX.live >= MAX then
     local old = table.remove(FX.live, 1)
-    engine.despawn(old.id)
+    if old.id then engine.despawn(old.id) end
+    if old.light then engine.remove_light(old.light) end
   end
   FX.live[#FX.live + 1] = e
 end

@@ -47,18 +47,29 @@ local function spawn_point()
   end
 end
 
--- One intersection along the roads from (k, l) toward (gk, gl): along the
--- longer axis if that road exists, else the other, else any way that's open.
-local function step_toward(k, l, gk, gl)
-  local dk, dl = gk - k, gl - l
-  local sk, sl = dk > 0 and 1 or -1, dl > 0 and 1 or -1
-  local tries = math.abs(dk) >= math.abs(dl) and {{sk, 0, dk}, {0, sl, dl}} or {{0, sl, dl}, {sk, 0, dk}}
-  for _, t in ipairs(tries) do
-    if t[3] ~= 0 and city.road(k, l, t[1], t[2]) then return k + t[1], l + t[2] end
+-- Breadth-first search: a valid pursuit step may initially lead AWAY from
+-- the target around water or the park. Greedy axes can bounce forever.
+function P.step_toward(k, l, gk, gl)
+  local start = k .. "," .. l
+  local queue, seen, first = {{k, l}}, {[start] = true}, {}
+  local i = 1
+  while i <= #queue do
+    local n = queue[i]
+    i = i + 1
+    if n[1] == gk and n[2] == gl then
+      local f = first[n[1] .. "," .. n[2]]
+      if f then return f[1], f[2] end
+      return k, l
+    end
+    for _, nb in ipairs(city.neighbors(n[1], n[2])) do
+      local key = nb[1] .. "," .. nb[2]
+      if not seen[key] then
+        seen[key] = true
+        first[key] = first[n[1] .. "," .. n[2]] or nb
+        queue[#queue + 1] = nb
+      end
+    end
   end
-  local opts = city.neighbors(k, l)
-  local n = opts[math.random(math.max(1, #opts))]
-  if n then return n[1], n[2] end
   return k, l
 end
 
@@ -114,6 +125,10 @@ end
 
 -- ---- driving -------------------------------------------------------------
 
+-- Sight and driving must agree: ignoring a visible off-road target just
+-- because it is 50-90m away sends cars searching away from it.
+function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
+
 local function drive_cop(c, dt)
   local id = c.id
   local x, _, z = engine.pos(id)
@@ -123,7 +138,7 @@ local function drive_cop(c, dt)
   local dist = U.dist2d(x, z, px, pz)
   local tx, tz, want
 
-  if c.sees and dist < 50 then
+  if P.direct_pursuit(c.sees, dist) then
     -- Direct pursuit, leading the target a little.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
@@ -139,7 +154,7 @@ local function drive_cop(c, dt)
         local n = opts[math.random(math.max(1, #opts))]
         if n then k, l = n[1], n[2] end
       else
-        k, l = step_toward(k, l, gk, gl)
+        k, l = P.step_toward(k, l, gk, gl)
       end
       c.goal = {city.node(k, l)}
     end
