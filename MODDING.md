@@ -35,12 +35,13 @@ Press G in game. That's the whole mod.
   the mod's own keys (stored as `mod.<name>.<key>`), so mods can't read or overwrite the
   game's saves or each other's. A mod can hold 16 keys.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
-- **The game's modules:** `lib.state`, `lib.util`, `lib.city`, `lib.vehicle`, `lib.mission`,
-  `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`, `hurt_player`, `ragdoll`), `lib.fx`
-  (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups` (`place`), `systems.weapons`
-  (`defs`, add your own), `systems.carnage` (`explode`), `systems.police`, `systems.peds`,
-  `lib.daynight`, `lib.settings` (`get`), `lib.menu` (`add_page`, `show`), `lib.shop` (`add`, `pay`, `price`; see
-  the shops in `systems/` for examples), and so on.
+- **The game's modules:** `lib.state`, `lib.util`, `lib.city` (`district(i, j)`, `node`,
+  `block_center`), `lib.landmarks`, `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`,
+  `lib.health` (`damage`, `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`,
+  `explosion`), `lib.pickups` (`place`), `systems.weapons` (`defs`, add your own),
+  `systems.carnage` (`explode`), `systems.police`, `systems.peds`, `lib.daynight`,
+  `lib.settings` (`get`), `lib.menu` (`add_page`, `show`), `lib.shop` (`add`, `pay`, `price`;
+  see the shops in `systems/` for examples), and so on.
 - **The event bus:** the engine's `init`, `tick`, `frame`, `key` and `contact` events, the
   game's events (`vehicle_enter`, `carjacked`, `ped_down`, `damaged`, `killed`, `gunshot`,
   `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`, `busted`,

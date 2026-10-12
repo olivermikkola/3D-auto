@@ -28,6 +28,19 @@ local function minimap(sw, sh)
   local function map(wx, wz) return x0 + (wx + half) / L.size * S, y0 + (wz + half) / L.size * S end
   engine.rect(x0 - 4, y0 - 4, S + 8, S + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, S, S, 0.62, 0.62, 0.6, 0.85)
+  -- Districts: industry brown, houses green; downtown stays grey.
+  local city = require "lib.city"
+  local bw = L.block / L.size * S
+  for i = 0, L.N - 1 do
+    for j = 0, L.N - 1 do
+      local d = city.district(i, j)
+      if d ~= "downtown" then
+        local bx, by = map(L.origin + (i + 0.5) * L.P, L.origin + (j + 0.5) * L.P)
+        local c = d == "industrial" and {0.62, 0.5, 0.38} or {0.5, 0.66, 0.45}
+        engine.rect(bx - bw / 2, by - bw / 2, bw, bw, c[1], c[2], c[3], 0.9)
+      end
+    end
+  end
   local rw = L.road / L.size * S
   for k = 0, L.N do
     local a = map(L.origin + k * L.P, 0)
@@ -46,6 +59,11 @@ local function minimap(sw, sh)
       local px, py = map(x, z)
       engine.rect(px - 3, py - 3, 6, 6, m.color[1], m.color[2], m.color[3], 1)
     end
+  end
+  for _, lm in ipairs(L.landmarks or {}) do
+    local px, py = map(lm.x, lm.z)
+    engine.rect(px - 4, py - 4, 8, 8, 1, 1, 1, 1)
+    engine.text(lm.letter, px + 6, py - 6, 10, 1, 1, 1, 1)
   end
   engine.emit("minimap", map) -- other systems add blips
   local x, _, z = U.player_pos()

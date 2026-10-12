@@ -5,7 +5,8 @@ and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **
 into a tiny pub/sub bus, and scripts build the world on top of it.
 
 The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
-procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
+procedural city with downtown, industrial and residential districts, a TV tower and a car park
+you can drive to the top of, drivable cars that can jump and roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
 pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
 progress that's saved between sessions, a pause menu with settings, and shops to spend your
@@ -33,7 +34,7 @@ mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause an
 |---|---|---|
 | `src/math.rs` | ~250 | `Vec3`, `Quat`, column-major `Mat4`. Y up, right-handed. |
 | `src/mesh.rs` | ~250 | Flat-shaded unit primitives, OBJ+MTL loader, part baking. |
-| `src/physics.rs` | ~580 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses. |
+| `src/physics.rs` | ~700 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses, a grid broad phase. |
 | `src/audio.rs` | ~530 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
 | `src/script.rs` | ~740 | The `engine` Lua table and the event bus. |
@@ -159,6 +160,37 @@ touches them per frame. A full day lasts 8 minutes. `HOUR=22 auto game` starts a
 | | |
 |---|---|
 | ![Noon](docs/noon.png) | ![Dusk](docs/dusk.png) |
+
+## The city
+
+| | |
+|---|---|
+| ![Houses in the south](docs/homes.png) | ![Warehouses and containers in the east](docs/industry.png) |
+| ![The car park](docs/carpark.png) | ![The TV tower at dusk](docs/tower.png) |
+
+`lib/city.lua` builds an 8×8 grid of blocks, now in three districts (tinted on the minimap):
+
+- **Downtown** in the middle: office towers, taller toward the center.
+- **Industrial** along the east edge: warehouses with sawtooth roofs, yards of shipping
+  containers, and striped smokestacks.
+- **Residential** along the south: houses with pitched roofs, front yards and trees.
+
+Every lot makes the same `math.random` calls in the same order whatever it becomes; details like
+container colors use a hash of the block instead. So downtown, the street layout and everything
+placed after the city (traffic, pedestrians, pickups) are exactly what they were before the
+districts existed. CI's playthrough didn't need to change.
+
+`lib/landmarks.lua` adds two one-off places (`T` and `C` on the minimap):
+
+- **The TV tower,** 100 m tall next to the starting lot, floodlit at night with a red beacon on
+  top. You can steer by it from most of the city.
+- **The car park,** three decks with stacked ramps up the east and west sides, entered from the
+  south street. The roof has a kicker on its south edge.
+
+A bigger city meant more static boxes, and the physics compared every moving body against every
+box. It now keeps static bodies in a grid that is only rebuilt when one moves, and still visits
+pairs in the same order, so every test's simulation is bit-for-bit identical. A soak tick is about
+1.1 ms (it was 1.0 ms); what remains is mostly raycasts, which still scan every entity.
 
 ## Wanted level and police
 
@@ -334,7 +366,7 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
-`MENU_TEST=1` and `2` the pause menu and settings, and `SHOP_TEST=1` and `2` the shops (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, and `CITY_TEST=1` the districts and a drive up the car park (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing
