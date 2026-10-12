@@ -1,77 +1,129 @@
--- Procedural city laid out like Manhattan. Avenues run north-south (along z;
--- north is -z) and are wide and far apart, streets run east-west and are
--- narrow and close together, so blocks are long east-west strips. The island
--- narrows at both tips, Central Park takes a 2x7 run of blocks with one road
--- crossing it, and the skyline has two peaks: Midtown just south of the park
--- and the Financial District at the southern tip. Everything is boxes.
+-- Procedural city built from a map file (game/maps/<name>.lua): a grid of
+-- blocks between avenues (along z; north is -z) and streets (along x), an
+-- outline of land with river round it, an optional park whose inner streets
+-- are gone, district rules, skyline peaks, special blocks and named places.
+-- Everything is boxes. See maps/manhattan.lua for what a map holds.
 --
--- Returns the layout so other systems (traffic, police, peds, missions, the
--- minimap) can reason about streets. Not every grid line is a road: off the
--- island and inside the park there are gaps, so walk the graph with
--- C.road / C.neighbors rather than assuming a full grid.
+-- city.use(name) picks the map (main.lua does it first, so geometry and
+-- places work before anything is built); city.build() builds it and
+-- returns the layout. Not every grid line is a road (the river, the park),
+-- so walk the graph with C.road / C.neighbors rather than assuming a full
+-- grid, and find things with C.place / C.route rather than grid indices.
 local C = {}
 
-local NX, NZ = 6, 20           -- blocks between avenues, blocks between streets
-local BX, BZ = 84, 36          -- block size, sidewalk included
-local AVE, ST = 16, 12         -- avenue and street widths
-local PX, PZ = BX + AVE, BZ + ST
-local OX, OZ = -NX * PX / 2, -NZ * PZ / 2 -- avenue line 0, street line 0
 local CURB, WALK, FLOOR = 0.2, 3, 3.5
 local WATER_DEEP = {0.16, 0.3, 0.52}
 
--- Central Park; its interior roads are gone except one transverse.
-local PARK = {i0 = 2, i1 = 3, j0 = 4, j1 = 10, transverse = 8}
-
--- Blocks with something special in them. Most features take the middle
--- 36 m of their block and buildings fill the ends.
-local SPECIAL = {
-  ["2,15"] = "lot", ["3,16"] = "plaza", ["1,16"] = "stunt", ["1,15"] = "carpark", ["4,1"] = "tower",
-  ["3,13"] = "empire", ["2,17"] = "square", -- Washington Square
-  ["4,17"] = "park", ["1,19"] = "park",     -- Union Square, Battery Park
-}
-local TIMES = {i = 2, j = 11} -- billboards on every frontage
+-- The current map, and the numbers everything below is written in:
+-- blocks between avenues and between streets, block size (sidewalk
+-- included), road widths, grid pitch, and where avenue 0 and street 0 are.
+local MAP, NX, NZ, BX, BZ, AVE, ST, PX, PZ, OX, OZ
+local PARK, SPECIAL, BILLBOARDS, roads
 
 local palette = {
   {0.85, 0.82, 0.76}, {0.72, 0.68, 0.62}, {0.70, 0.45, 0.35}, {0.62, 0.66, 0.70},
   {0.90, 0.88, 0.80}, {0.55, 0.52, 0.50}, {0.78, 0.60, 0.45}, {0.68, 0.74, 0.78},
 }
 
--- ---- shape of the island -------------------------------------------------------
+-- Every (i, j) a special entry names: one pair, or a list of them.
+local function pairs_of(v)
+  return type(v[1]) == "table" and v or {v}
+end
 
--- First and last land block in row j: narrow at the northern tip, and
--- tapering to the Battery in the south.
+-- Load a map by name (from maps/) or use a map table directly.
+function C.use(map)
+  if type(map) == "string" then
+    local ok, m = pcall(require, "maps." .. map)
+    if not ok then error("no map named '" .. map .. "' in maps/: " .. tostring(m), 2) end
+    m.id = map
+    map = m
+  end
+  local g = assert(map.grid, "a map needs a grid")
+  MAP, NX, NZ, BX, BZ, AVE, ST = map, g.nx, g.nz, g.bx, g.bz, g.avenue, g.street
+  assert(BZ >= 36, "blocks must be at least 36 m deep: the lot, car park and stunt park need it")
+  assert(map.specials and map.specials.lot and map.places and map.places.hospital,
+         "a map needs a lot (where you start) and a hospital")
+  PX, PZ = BX + AVE, BZ + ST
+  OX, OZ = -NX * PX / 2, -NZ * PZ / 2
+  PARK = map.park
+  SPECIAL, BILLBOARDS = {}, {}
+  for kind, v in pairs(map.specials or {}) do
+    for _, b in ipairs(pairs_of(v)) do SPECIAL[b[1] .. "," .. b[2]] = kind end
+  end
+  for _, b in ipairs(map.billboards or {}) do BILLBOARDS[b[1] .. "," .. b[2]] = true end
+  roads = {}
+  C.check()
+  return map
+end
+
+-- Catch mistakes in a map early, with the name of what's wrong: places on
+-- intersections without a road, special blocks in the river or the park.
+function C.check()
+  local function fail(fmt, ...) error(string.format("map '%s': " .. fmt, MAP.name or "?", ...), 0) end
+  local function node_ok(n, what)
+    if not C.on_road(n[1], n[2]) then fail("%s is at intersection %d,%d, which has no road", what, n[1], n[2]) end
+  end
+  local function block_ok(b, what)
+    local d = C.district(b[1], b[2])
+    if d == "water" or d == "park" then fail("%s is on block %d,%d, which is %s", what, b[1], b[2], d) end
+  end
+  for kind, v in pairs(MAP.specials or {}) do
+    for _, b in ipairs(pairs_of(v)) do block_ok(b, kind) end
+  end
+  for name, p in pairs(MAP.places or {}) do
+    if p.node then node_ok(p.node, name) end
+    if p.block then block_ok(p.block, name) end
+    for _, n in ipairs(p.route or {}) do node_ok(n, name) end
+  end
+end
+
+function C.map() return MAP end
+
+-- ---- shape of the land -------------------------------------------------------
+
+-- First and last land block in row j.
 local function island(j)
-  if j == 0 then return 2, 5 end
-  if j == 1 then return 1, 5 end
-  if j == NZ - 2 then return 0, 4 end
-  if j == NZ - 1 then return 1, 3 end
+  local r = MAP.land and MAP.land[j]
+  if r then return r[1], r[2] end
   return 0, NX - 1
 end
 
-local function in_park(i, j) return i >= PARK.i0 and i <= PARK.i1 and j >= PARK.j0 and j <= PARK.j1 end
+local function in_park(i, j)
+  return PARK ~= nil and i >= PARK.i0 and i <= PARK.i1 and j >= PARK.j0 and j <= PARK.j1
+end
+
+local function within(v, range) return range == nil or (v >= range[1] and v <= range[2]) end
+
+-- The district rule a block falls under (nil for downtown).
+local function rule(i, j)
+  for _, r in ipairs(MAP.districts or {}) do
+    if within(i, r.i) and within(j, r.j) then return r end
+  end
+end
 
 function C.district(i, j)
   if i < 0 or i >= NX or j < 0 or j >= NZ then return "water" end
   local a, b = island(j)
   if i < a or i > b then return "water" end
   if in_park(i, j) then return "park" end
-  if i == 0 and j >= 13 and j <= 16 then return "industrial" end -- the old West Side yards
-  if j <= PARK.j1 then return "residential" end                   -- Harlem and the Upper Sides
-  return "downtown"
+  local r = rule(i, j)
+  return r and r[1] or "downtown"
 end
 
--- A block that faces streets: on the island and not in the park.
+-- A block that faces streets: on land and not in the park.
 local function street_block(i, j)
   local d = C.district(i, j)
   return d ~= "water" and d ~= "park"
 end
 
--- 0..1: how tall downtown grows here. Both peaks stretch across the
--- island's width more than along it, the way Midtown does.
+-- 0..1: how tall downtown grows here, from the map's skyline peaks.
 function C.height(x, z)
-  local a = 1 - math.sqrt((x / 1.8) ^ 2 + (z - (OZ + 12.8 * PZ)) ^ 2) / 200
-  local b = 0.9 * (1 - math.sqrt(((x + 40) / 1.5) ^ 2 + (z - (OZ + 18.8 * PZ)) ^ 2) / 140)
-  return math.max(a, b, 0)
+  local best = 0
+  for _, p in ipairs(MAP.skyline and MAP.skyline.peaks or {}) do
+    local dx, dz = x - (OX + p.k * PX), z - (OZ + p.l * PZ)
+    best = math.max(best, p.weight * (1 - math.sqrt((dx / (p.rx / p.rz)) ^ 2 + dz ^ 2) / p.rz))
+  end
+  return best
 end
 
 -- ---- the road graph ----------------------------------------------------------------
@@ -83,7 +135,7 @@ function C.block_center(i, j) return OX + (i + 0.5) * PX, OZ + (j + 0.5) * PZ en
 local function has_road(k, l, dk, dl)
   if k < 0 or l < 0 or k + dk > NX or l + dl > NZ then return false end
   if dk == 1 and dl == 0 then -- a street, between blocks (k, l-1) and (k, l)
-    if l == PARK.transverse and k >= PARK.i0 and k <= PARK.i1 then return true end
+    if PARK and l == PARK.transverse and k >= PARK.i0 and k <= PARK.i1 then return true end
     return street_block(k, l - 1) or street_block(k, l)
   elseif dk == 0 and dl == 1 then -- an avenue, between blocks (k-1, l) and (k, l)
     return street_block(k - 1, l) or street_block(k, l)
@@ -91,9 +143,9 @@ local function has_road(k, l, dk, dl)
   return false
 end
 
--- Is there a road from node (k, l) one step along (dk, dl)? The layout is
--- fixed, so answers are remembered: the police ask every tick.
-local roads = {}
+-- Is there a road from node (k, l) one step along (dk, dl)? A map's layout
+-- is fixed, so answers are remembered (until the next C.use): the police
+-- ask every tick.
 function C.road(k, l, dk, dl)
   if dk < 0 or dl < 0 then k, l, dk, dl = k + dk, l + dl, -dk, -dl end
   local key = ((k + 2) * 64 + l + 2) * 4 + dk * 2 + dl
@@ -419,14 +471,17 @@ local function lot(x, z, w, d, facing, avenue, district, i, j, r, name)
   local c = palette[r(1, #palette)]
   if district == "residential" then
     -- Brownstones mid-block, apartment houses on the avenues.
-    local brownstone = not avenue and r() < (j <= 3 and 0.75 or 0.55)
+    local brownstone = not avenue and r() < ((rule(i, j) or {}).brownstones or 0.5)
     if brownstone and facing ~= 0 then return rowhouses(x, z, w, d, facing, r, name) end
     return building(x, z, w, d, avenue and r(6, 12) or r(4, 7), "brick", c, r)
   end
   -- Downtown: avenue frontage builds taller than the side streets.
   local f = C.height(x, z)
   local floors = math.floor(r(3, 7) * (0.7 + 4.5 * f ^ 1.2) * (avenue and 1 or 0.8))
-  if f > 0.5 and r() < 0.4 * f then floors = r(30, 50) end -- the supertalls
+  if f > 0.5 and r() < 0.4 * f then -- the supertalls
+    local st = MAP.skyline and MAP.skyline.supertall or {30, 50}
+    floors = r(st[1], st[2])
+  end
   floors = math.max(3, floors)
   local square = math.max(w, d) / math.min(w, d) < 1.7
   local roll = r()
@@ -594,7 +649,7 @@ local function central_park(L)
       static{mesh = "lamp", pos = {x, CURB, z}, yaw = s < 0 and -math.pi / 2 or math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
     end
   end
-  L.park = {x0 = x0, x1 = x1, z0 = z0, z1 = z1, transverse = zt}
+  L.park_area = {x0 = x0, x1 = x1, z0 = z0, z1 = z1, transverse = zt}
 end
 
 -- ---- landmarks and features --------------------------------------------------------
@@ -725,29 +780,73 @@ end
 
 -- ---- the city ----------------------------------------------------------------------------
 
+-- ---- places --------------------------------------------------------------------------
+
+local SIDES = {n = {0, -1}, s = {0, 1}, e = {1, 0}, w = {-1, 0}}
+
+-- Does the map have all these places?
+function C.has(...)
+  for _, name in ipairs{...} do
+    if not ((MAP.places or {})[name] or (MAP.specials or {})[name]) then return false end
+  end
+  return true
+end
+
+-- Where a named place is, as x, z: an intersection, a block's center, or a
+-- point by one side of a block (see maps/manhattan.lua). Specials are
+-- places too, at their block's center.
+function C.place(name)
+  local p = (MAP.places or {})[name]
+  if not p then
+    local sp = (MAP.specials or {})[name]
+    if not sp then error(string.format("map '%s' has no place '%s'", MAP.name or "?", name), 2) end
+    p = {block = pairs_of(sp)[1]}
+  end
+  if p.node then return C.node(p.node[1], p.node[2]) end
+  if p.block then
+    local x, z = C.block_center(p.block[1], p.block[2])
+    if not p.side then return x, z end
+    local d = SIDES[p.side]
+    local reach = (d[1] ~= 0 and BX or BZ) / 2 + (p.out or 0)
+    local along = p.along or 0 -- toward +x on a north or south side, +z on east or west
+    return x + d[1] * reach + (d[1] == 0 and along or 0), z + d[2] * reach + (d[2] == 0 and along or 0)
+  end
+  error(string.format("place '%s' is a route; use city.route", name), 2)
+end
+
+-- A named route: the list of its intersections as {x, z}.
+function C.route(name)
+  local p = (MAP.places or {})[name]
+  if not (p and p.route) then error(string.format("map '%s' has no route '%s'", MAP.name or "?", name), 2) end
+  local out = {}
+  for _, n in ipairs(p.route) do out[#out + 1] = {C.node(n[1], n[2])} end
+  return out
+end
+
 function C.build()
   local sx, sz = NX * PX + AVE, NZ * PZ + ST
   local L = {
-    NX = NX, NZ = NZ, PX = PX, PZ = PZ, bx = BX, bz = BZ, avenue = AVE, street = ST, walk = WALK,
+    map = MAP.id or MAP.name, NX = NX, NZ = NZ, PX = PX, PZ = PZ, bx = BX, bz = BZ, avenue = AVE, street = ST, walk = WALK,
     ox = OX, oz = OZ, sx = sx, sz = sz, curb = CURB, kinds = {}, landmarks = {},
   }
 
-  -- Pavement under the grid, the river a quay wall below it all round, and
-  -- invisible walls at the shore.
+  -- Pavement under the grid, the river round it (four slabs framing the
+  -- grid, level with the water inside it, so nothing overlaps to z-fight
+  -- and no edge shows where they meet), and invisible walls at the shore.
   static{mesh = "cube", pos = {0, -1.5, 0}, size = {sx, 3, sz}, color = {0.22, 0.22, 0.24}, tag = "ground"}
-  engine.spawn{mesh = "cube", pos = {0, -1.7, 0}, size = {sx + 3000, 1, sz + 3000}, color = WATER_DEEP, tag = "water"}
+  local R = 1500
+  for _, f in ipairs{{0, -(sz + R) / 2, sx + 2 * R, R}, {0, (sz + R) / 2, sx + 2 * R, R},
+                     {-(sx + R) / 2, 0, R, sz}, {(sx + R) / 2, 0, R, sz}} do
+    engine.spawn{mesh = "cube", pos = {f[1], 0.04 - 0.5, f[2]}, size = {f[3], 1, f[4]}, color = WATER_DEEP, tag = "water"}
+  end
   for _, s in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
     static{pos = {s[1] * sx / 2, 5, s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 10, s[2] == 0 and sz or 1}, visible = false, tag = "wall"}
   end
   harbor()
   markings()
 
-  -- Named places other systems look up.
-  for key, kind in pairs(SPECIAL) do
-    local i, j = key:match("(%d+),(%d+)")
-    L[kind] = L[kind] or {tonumber(i), tonumber(j)}
-  end
-  L.hospital = {3, 15}
+  -- Each special's block, by kind (the first, for kinds with several).
+  for kind, v in pairs(MAP.specials or {}) do L[kind] = pairs_of(v)[1] end
 
   engine.mesh("smokestack", {
     {mesh = "cylinder", size = {2.2, 28, 2.2}, color = {0.6, 0.55, 0.5}},
@@ -755,7 +854,7 @@ function C.build()
     {mesh = "cylinder", pos = {0, 6, 0}, size = {2.25, 2, 2.25}, color = {0.9, 0.9, 0.88}},
     {mesh = "cylinder", pos = {0, 13.6, 0}, size = {1.6, 0.8, 1.6}, color = {0.2, 0.2, 0.2}},
   })
-  central_park(L)
+  if PARK then central_park(L) end
   for i = 0, NX - 1 do
     for j = 0, NZ - 1 do
       local district = C.district(i, j)
@@ -769,7 +868,7 @@ function C.build()
         local x0, x1, z0, z1 = cx - BX / 2 + WALK, cx + BX / 2 - WALK, cz - BZ / 2 + WALK, cz + BZ / 2 - WALK
         if kind == "buildings" then
           local built = fill(x0, x1, z0, z1, i, j, r, {true, true})
-          if i == TIMES.i and j == TIMES.j then billboards(built, r) end
+          if BILLBOARDS[key] then billboards(built, r) end
         elseif kind == "park" then pocket_park(cx, cz, r)
         elseif kind == "square" then square(cx, cz, r)
         else

@@ -12,9 +12,10 @@ engine.on("init", function()
   engine.mesh("taxi", parts)
   engine.synth("fare", {wave = "sine", notes = {1568, 2093}, note_len = 0.09, volume = 0.35})
 
-  -- The cab waits at the curb on the street south of the parking lot.
-  local x, z = city.block_center(2, 15)
-  cab.id = vehicle.spawn(x + 10, z + 20, -math.pi / 2, nil, "taxi")
+  -- The cab waits at the curb at the map's taxi rank (by the lot if it has none).
+  local x, z
+  if city.has("taxi_rank") then x, z = city.place("taxi_rank") else x, z = city.place("lot") end
+  cab.id = vehicle.spawn(x, z, -math.pi / 2, nil, "taxi")
 end)
 
 mission.register(require "job")

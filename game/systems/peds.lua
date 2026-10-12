@@ -131,7 +131,10 @@ end
 
 local function walk(id, p, dt)
   local x, _, z = engine.pos(id)
-  local _, vy = engine.vel(id)
+  local vx, vy, vz = engine.vel(id)
+  -- Read the previous physics result before replacing velocity with AI intent.
+  -- Sampling after set_vel always saw commanded walking speed, even at a wall.
+  local actual_speed2 = vx * vx + vz * vz
   local mx, mz, speed
   if p.state == "flee" then
     if engine.time() > p.until_t then
@@ -157,8 +160,7 @@ local function walk(id, p, dt)
     engine.set_yaw(id, yaw + U.angle_diff(yaw, math.atan(mx, mz)) * math.min(1, dt * 10))
   end
   -- Blocked (a lamp, a parked car, a crowd): turn around.
-  local vx, _, vz = engine.vel(id)
-  p.stuck = (speed > 0 and vx * vx + vz * vz < 0.1) and p.stuck + dt or 0
+  p.stuck = (speed > 0 and actual_speed2 < 0.1) and p.stuck + dt or 0
   if p.stuck > 2 and p.state == "walk" then
     p.stuck, p.dir = 0, -p.dir
     p.k = (p.k - 1 + p.dir) % 4 + 1

@@ -15,6 +15,7 @@ local P = {cops = {}, officers = {}}
 local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
+local LANE = 3.2 -- meters right of the center line, as traffic drives
 
 function P.build()
   local parts = require("lib.prefabs").car_parts({0.95, 0.95, 0.97})
@@ -46,18 +47,29 @@ local function spawn_point()
   end
 end
 
--- One intersection along the roads from (k, l) toward (gk, gl): along the
--- longer axis if that road exists, else the other, else any way that's open.
-local function step_toward(k, l, gk, gl)
-  local dk, dl = gk - k, gl - l
-  local sk, sl = dk > 0 and 1 or -1, dl > 0 and 1 or -1
-  local tries = math.abs(dk) >= math.abs(dl) and {{sk, 0, dk}, {0, sl, dl}} or {{0, sl, dl}, {sk, 0, dk}}
-  for _, t in ipairs(tries) do
-    if t[3] ~= 0 and city.road(k, l, t[1], t[2]) then return k + t[1], l + t[2] end
+-- Breadth-first search: a valid pursuit step may initially lead AWAY from
+-- the target around water or the park. Greedy axes can bounce forever.
+function P.step_toward(k, l, gk, gl)
+  local start = k .. "," .. l
+  local queue, seen, first = {{k, l}}, {[start] = true}, {}
+  local i = 1
+  while i <= #queue do
+    local n = queue[i]
+    i = i + 1
+    if n[1] == gk and n[2] == gl then
+      local f = first[n[1] .. "," .. n[2]]
+      if f then return f[1], f[2] end
+      return k, l
+    end
+    for _, nb in ipairs(city.neighbors(n[1], n[2])) do
+      local key = nb[1] .. "," .. nb[2]
+      if not seen[key] then
+        seen[key] = true
+        first[key] = first[n[1] .. "," .. n[2]] or nb
+        queue[#queue + 1] = nb
+      end
+    end
   end
-  local opts = city.neighbors(k, l)
-  local n = opts[math.random(math.max(1, #opts))]
-  if n then return n[1], n[2] end
   return k, l
 end
 
@@ -113,6 +125,10 @@ end
 
 -- ---- driving -------------------------------------------------------------
 
+-- Sight and driving must agree: ignoring a visible off-road target just
+-- because it is 50-90m away sends cars searching away from it.
+function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
+
 local function drive_cop(c, dt)
   local id = c.id
   local x, _, z = engine.pos(id)
@@ -122,7 +138,7 @@ local function drive_cop(c, dt)
   local dist = U.dist2d(x, z, px, pz)
   local tx, tz, want
 
-  if c.sees and dist < 50 then
+  if P.direct_pursuit(c.sees, dist) then
     -- Direct pursuit, leading the target a little.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
@@ -138,13 +154,25 @@ local function drive_cop(c, dt)
         local n = opts[math.random(math.max(1, #opts))]
         if n then k, l = n[1], n[2] end
       else
-        k, l = step_toward(k, l, gk, gl)
+        k, l = P.step_toward(k, l, gk, gl)
       end
       c.goal = {city.node(k, l)}
     end
-    tx, tz = c.goal[1], c.goal[2]
-    -- Slow for the corner coming up at the next intersection.
-    want = U.dist2d(x, z, tx, tz) < 22 and 13 or 30
+    -- Drive in the right-hand lane, like traffic, so oncoming cars pass
+    -- by; pull out into the other lane to overtake whatever's ahead in ours.
+    local gx, gz = c.goal[1], c.goal[2]
+    local rx, rz = U.right(math.atan(gx - x, gz - z))
+    local fx, fz = U.forward(yaw)
+    local hit, d = engine.raycast(x + fx * 2.5, 0.8, z + fz * 2.5, fx, 0, fz, 16, id)
+    local tag = hit and engine.tag(hit)
+    if (tag == "car" or tag == "cop") and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5 then c.overtake = 2 end
+    c.overtake = math.max(0, (c.overtake or 0) - dt)
+    local lane = c.overtake > 0 and -LANE or LANE
+    tx, tz = gx + rx * lane, gz + rz * lane
+    -- Slow for the corner coming up at the next intersection, and for
+    -- anything in the way.
+    want = U.dist2d(x, z, gx, gz) < 22 and 13 or 30
+    if hit and tag ~= "player" and d < 8 then want = math.min(want, 8) end
   end
 
   local diff = U.angle_diff(yaw, math.atan(tx - x, tz - z))

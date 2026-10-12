@@ -1,5 +1,5 @@
 -- Scripted playthrough: fakes the keyboard, checks the game reacts, quits.
--- Run: AUTO_TEST=1 auto game --headless 3000
+-- Run: AUTO_TEST=1 auto game --headless 9000
 local G = require "lib.state"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
@@ -23,6 +23,17 @@ local function at(sec, fn) steps[#steps + 1] = {at = sec, fn = fn} end
 local function after(sec, fn) steps[#steps + 1] = {after = sec, fn = fn} end
 local function until_(pred, timeout, what, fn) steps[#steps + 1] = {pred = pred, timeout = timeout, what = what, fn = fn} end
 
+-- The intersection with the longest straight run of road south of it.
+local function long_avenue()
+  local best, bk, bl = -1
+  for _, n in ipairs(city.nodes()) do
+    local run, l = 0, n[2]
+    while city.road(n[1], l, 0, 1) do run, l = run + 1, l + 1 end
+    if run >= best then best, bk, bl = run, n[1], n[2] end -- ties: the last (east-most)
+  end
+  return city.node(bk, bl)
+end
+
 local yaw0, car
 at(0.5, function()
   check(G.player and engine.grounded(G.player), "player spawned on the ground")
@@ -34,7 +45,7 @@ at(0.5, function()
   check(G.vehicle == id, "entered the nearest car")
   car = id
   -- Put it at the start of a long north-south avenue.
-  local ax, az = city.node(4, 0)
+  local ax, az = long_avenue()
   engine.set_pos(car, ax, 0.8, az + 10)
   engine.set_yaw(car, 0)
   yaw0 = 0
@@ -60,7 +71,7 @@ at(7.0, function()
 end)
 at(7.5, function()
   check(G.mission and G.mission.def.title == "Joyride", "mission starts at its marker")
-  local gx, gz = city.node(5, 12)
+  local gx, gz = city.place("joyride_garage")
   engine.set_pos(car, gx, 0.8, gz)
   engine.set_vel(car, 0, 0, 0)
 end)
@@ -69,9 +80,18 @@ engine.on("stunt", function() stunts = stunts + 1 end)
 at(8.5, function()
   check(G.mission == nil and G.cash == 250, "joyride passed, cash = " .. G.cash)
   check(engine.stats().voices > 0, "engine sounds playing (" .. engine.stats().voices .. " voices)")
-  -- Line up on the big kicker in the stunt park and floor it.
+  -- Use a separate healthy stunt car and an offset approach: still inside
+  -- the seven-meter kicker, but clear of the mid-side lamp at its entrance.
+  -- The damaged driving/mission car keeps its normal carnage lifecycle.
   local cx, cz = city.block_center(G.city.stunt[1], G.city.stunt[2])
-  engine.set_pos(car, cx, 0.8, cz - 26)
+  press("e")
+  check(G.player and not G.vehicle, "exited the driving car before the independent stunt")
+  car = vehicle.spawn(cx + 2, cz - 26, 0, 1)
+  engine.set_pos(G.player, cx + 2, 2.75, cz - 26)
+  press("e")
+  check(G.vehicle == car, "entered the separate stunt car with E")
+  check(require("lib.health").get(car) == require("lib.health").VEHICLE_HP, "stunt car starts healthy")
+  max_y = 0
   engine.orient(car, 0)
   engine.set_vel(car, 0, 0, 26)
   engine.set_angvel(car, 0, 0, 0)
@@ -104,8 +124,8 @@ end)
 
 -- ---- pedestrians ------------------------------------------------------------
 local peds = require "systems.peds"
-local downed, victim = 0, nil
-engine.on("ped_down", function(body) downed = downed + 1; victim = body end)
+local fixtures = require "test.fixtures"
+local runovers = fixtures.runovers()
 local function walking_peds()
   local n = 0
   for id in pairs(peds.peds) do
@@ -114,9 +134,9 @@ local function walking_peds()
   end
   return n
 end
--- Nearest ped in `state`, optionally only mid-block (on the sidewalk, away
--- from the corner lamps; not someone cutting through a block after a scare).
-local function nearest_ped(state, mid_block)
+-- Nearest ped in `state`, optionally on a clear mid-block sidewalk approach
+-- (not a corner, a lamp/car corridor, or a shortcut through a block).
+local function nearest_ped(state, mid_block, away_from)
   local px, _, pz = engine.pos(G.vehicle or G.player)
   local best, bid = math.huge
   for id, p in pairs(peds.peds) do
@@ -125,52 +145,70 @@ local function nearest_ped(state, mid_block)
     local ex, ez = math.abs(x - bx) - (G.city.bx / 2 - 2.2), math.abs(z - bz) - (G.city.bz / 2 - 2.2)
     local side = (math.abs(ex) < 1 and ez < -7) or (math.abs(ez) < 1 and ex < -7)
     local ok = not mid_block or side
+    -- A car is two meters wide: a center ray misses mid-side lamps.
+    -- Reserve the whole approach and the ped's flight along the sidewalk.
+    if ok and mid_block then
+      local nx, nz = fixtures.outward(x, z, bx, bz)
+      ok = fixtures.clear_approach(x, z, nx, nz, car)
+    end
     local d = (x - px) ^ 2 + (z - pz) ^ 2
+    if away_from and engine.exists(away_from) then
+      local ax, _, az = engine.pos(away_from)
+      ok = ok and (x - ax)^2 + (z - az)^2 > 35^2
+    end
     if p.state == state and ok and d < best then best, bid = d, id end
   end
-  return bid
+  return assert(bid, "no pedestrian with a clear approach in state " .. state)
 end
 local scared
 after(0.2, function()
   check(peds.count() >= 35, "pedestrians spawned (" .. peds.count() .. ")")
   check(walking_peds() >= 20, "pedestrians are walking (" .. walking_peds() .. " moving)")
-  -- Back in the car, parked next to someone, lean on the horn.
-  press("e")
-  check(G.vehicle == car, "back in the car")
-  -- Someone on a sidewalk, with the car out on the street beside them.
-  scared = nearest_ped("walk", true)
+  -- A new physical vehicle isolates this independent phase from the stunt
+  -- car's accumulated damage. Leave the old car/damage/explosion untouched;
+  -- choose the horn fixture beyond its blast range and enter with real E.
+  scared = nearest_ped("walk", true, car)
   local x, _, z = engine.pos(scared)
   local p = peds.peds[scared]
   local bx, bz = city.block_center(p.i, p.j)
-  local nx, nz = 0, 0
-  if math.abs(x - bx) / G.city.bx > math.abs(z - bz) / G.city.bz then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
-  engine.set_pos(car, x + nx * 6, 0.8, z + nz * 6)
-  engine.set_vel(car, 0, 0, 0)
+  local nx, nz = fixtures.outward(x, z, bx, bz)
+  check(G.player and not G.dead, "alive on foot before the pedestrian fixture")
+  car = vehicle.spawn(x + nx * 6, z + nz * 6, math.atan(-nx, -nz), 1)
+  local cx, cy, cz = engine.pos(car)
+  engine.set_pos(G.player, cx, cy + 2, cz)
+  press("e")
+  check(G.vehicle == car and engine.exists(car), "entered the separate pedestrian fixture car")
+  check(require("lib.health").get(car) == require("lib.health").VEHICLE_HP, "pedestrian fixture starts with a genuinely healthy car")
+  require("lib.wanted").clear()
+  require("systems.police").clear()
 end)
 after(0.3, function() press("h") end)
 until_(function() return peds.peds[scared] and peds.peds[scared].state == "flee" end, 1, "the horn makes a pedestrian run")
 after(5.0, function()
-  -- Line up behind a walker and drive straight through them.
+  check(engine.exists(car) and G.vehicle == car and not G.dead, "run-over attacker exists and is currently occupied")
+  check(require("lib.health").get(car) > 0 and not require("systems.carnage").burning[car], "run-over attacker is healthy and not burning")
   require("lib.wanted").clear()
-  -- Start out on the road and drive across the curb at them.
-  local id = nearest_ped("walk", true)
-  local x, _, z = engine.pos(id)
+  local line = fixtures.runover_spot(car)
+  check(line ~= nil, "run-over has a verified clear road approach and flight corridor")
+  local x, z, dx, dz = table.unpack(line)
+  local id = nearest_ped("walk", false)
   local p = peds.peds[id]
-  local bx, bz = city.block_center(p.i, p.j)
-  local nx, nz = 0, 0
-  if math.abs(x - bx) / G.city.bx > math.abs(z - bz) / G.city.bz then nx = x > bx and 1 or -1 else nz = z > bz and 1 or -1 end
-  engine.set_pos(car, x + nx * 9, 0.8, z + nz * 9)
-  engine.orient(car, math.atan(-nx, -nz))
+  engine.set_pos(id, x, 1.2, z)
+  p.tx, p.tz, p.crossing = x+dx*8, z+dz*8, false
+  runovers:start(car)
+  engine.set_pos(car, x - dx * 6, 0.8, z - dz * 6)
+  engine.orient(car, math.atan(dx, dz))
   engine.set_angvel(car, 0, 0, 0)
-  engine.set_vel(car, -nx * 16, 0, -nz * 16)
+  engine.set_vel(car, dx * 16, 0, dz * 16)
 end)
-until_(function() return downed >= 1 end, 3, "running someone over knocks them down", function()
+until_(function() return runovers.count >= 1 end, 3, "running someone over knocks them down", function()
   check(require("lib.wanted").stars() >= 1, "hitting a pedestrian is a crime (" .. require("lib.wanted").stars() .. " star)")
 end)
 until_(function()
-  local _, uy = engine.up(victim)
+  local _, uy = engine.up(runovers.victim)
   return uy < 0.7
 end, 3, "the victim tumbles (rigid body, no longer upright)", function()
+  runovers:stop()
   require("lib.wanted").clear()
   require("systems.police").clear()
   engine.set_vel(car, 0, 0, 0)
@@ -187,13 +225,21 @@ local function nearest_cop()
   local px, _, pz = engine.pos(G.vehicle or G.player)
   local best = math.huge
   for id in pairs(police.cops) do
-    local x, _, z = engine.pos(id)
-    best = math.min(best, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+    if engine.exists(id) then -- one blown up this tick is dropped from the list next tick
+      local x, _, z = engine.pos(id)
+      best = math.min(best, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+    end
   end
   return best
 end
 
 after(0.5, function()
+  -- The run-over left our own car beside the player, sometimes occluding
+  -- police sight. Start this independent chase on the nearest road node.
+  local x, _, z = engine.pos(G.player)
+  local k, l = city.nearest_node(x, z)
+  x, z = city.node(k, l)
+  engine.set_pos(G.player, x, 1.2, z)
   cash_before = G.cash
   wanted.set(1)
   check(wanted.stars() == 1, "wanted level set to 1 star")
@@ -280,6 +326,12 @@ end, 15, "a shot-up car catches fire and explodes", function()
 end)
 
 after(1.0, function()
+  -- Combat is independent of the exploded car's wreck and the lot canopy.
+  -- Police still spawn at distance and have to drive here normally.
+  local x, _, z = engine.pos(G.player)
+  local k, l = city.nearest_node(x, z)
+  x, z = city.node(k, l)
+  engine.set_pos(G.player, x, 1.2, z)
   H.heal_player(100)
   wanted.clear()
   police.clear()
@@ -287,20 +339,7 @@ after(1.0, function()
 end)
 until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, officers get out of their cars")
 until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
-  H.player.hp = 12 -- skip ahead
-  -- ...and stand in the open ten meters from an officer who can see us, so
-  -- this doesn't hang on long-range dice or one stuck behind a pillar.
-  local px, py, pz = engine.pos(G.player)
-  for id in pairs(police.officers) do
-    local x, y, z = engine.pos(id)
-    local dx, dy, dz = px - x, py + 0.4 - (y + 1), pz - z
-    local hit = engine.raycast(x, y + 1, z, dx, dy, dz, math.sqrt(dx * dx + dy * dy + dz * dz), id)
-    local d = math.sqrt(dx * dx + dz * dz)
-    if (hit == nil or hit == G.player) and d > 10 then
-      engine.set_pos(G.player, x + dx / d * 10, py, z + dz / d * 10)
-      break
-    end
-  end
+  H.player.hp = 12 -- two more real officer hits must still kill the player
 end)
 until_(function() return wastes == 1 end, 30, "out of health: WASTED")
 until_(function() return respawned end, 8, "respawned outside the hospital", function()

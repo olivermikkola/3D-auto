@@ -1,7 +1,8 @@
 -- The tutorial: steal a car and bring it to a garage across town.
 local city = require "lib.city"
+if not city.has("joyride_garage") then return false end -- this map has no garage for it
 
-local lx, lz = city.block_center(2, 15) -- the parking lot
+local lx, lz = city.place("lot")
 
 return {
   title = "Joyride",
@@ -11,7 +12,7 @@ return {
     m:say("Steal a car. Walk up to one and press E.")
     m:wait(function() return m:in_car() end)
 
-    local gx, gz = city.node(5, 12) -- across Midtown, on the East Side
+    local gx, gz = city.place("joyride_garage")
     local garage = m:marker(gx, gz)
     m:say("Drive it to the garage before the owner notices.")
     m:timer(75)

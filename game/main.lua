@@ -5,6 +5,9 @@ local G = require "lib.state"
 require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
+-- The map, before anything asks the city where things are. MAP=<name> picks
+-- another one from maps/.
+city.use(os.getenv("MAP") or "manhattan")
 local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
@@ -25,7 +28,11 @@ require "lib.menu"
 require "lib.shop"
 
 engine.on("init", function()
-  math.randomseed(1337)
+  -- Keep the default repeatable; SEED makes population/AI failures reproducible.
+  local seed = os.getenv("SEED")
+  seed = seed and assert(math.tointeger(tonumber(seed)), "SEED must be an integer") or 1337
+  math.randomseed(seed)
+  print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
   engine.fog(110, 380)
 
   prefabs.build()
@@ -48,8 +55,8 @@ engine.on("init", function()
   peds.start()
   pickups.start()
   -- The hospital: where you wake up after getting wasted.
-  local hx, hz = city.block_center(G.city.hospital[1], G.city.hospital[2])
-  G.hospital = {hx - G.city.bx / 2 + 1.5, 1.2, hz}
+  local hx, hz = city.place("hospital")
+  G.hospital = {hx, 1.2, hz}
   mission.load_all("missions")
   require("systems.garage").build()
   require("systems.gunshop").build()
@@ -67,6 +74,7 @@ if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
+if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

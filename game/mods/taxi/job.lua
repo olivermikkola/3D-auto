@@ -5,7 +5,7 @@ local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local cab = require "cab"
 
-local lx, lz = city.block_center(2, 15)
+local lx, lz = city.place("lot")
 
 -- A random street corner between `min` and 260 meters from (x, z).
 local function corner_far_from(x, z, min)

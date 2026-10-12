@@ -160,8 +160,13 @@ function M.load_all(dir)
     local name = f:match("^(.+)%.lua$")
     if name then
       local def = require(dir .. "." .. name)
-      def.id = name
-      M.register(def)
+      -- A mission returns false when the map lacks a place it needs.
+      if type(def) == "table" then
+        def.id = name
+        M.register(def)
+      else
+        print("mission " .. name .. " is not on this map")
+      end
     end
   end
   M.ready = true

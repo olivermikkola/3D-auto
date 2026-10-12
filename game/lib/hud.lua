@@ -53,7 +53,7 @@ local function map_base(L)
       end
     end
   end
-  local P = L.park
+  local P = L.park_area
   if P then
     add(P.x0, P.z0, P.x1, P.z1, COLORS.park)
     add(P.x0, P.transverse - S, P.x1, P.transverse + S, COLORS.road)

@@ -3,7 +3,9 @@ local G = require "lib.state"
 local city = require "lib.city"
 local U = require "lib.util"
 
-local px, pz = city.block_center(3, 16) -- the plaza
+if not city.has("plaza") then return false end
+
+local px, pz = city.place("plaza")
 
 return {
   title = "Demolition",

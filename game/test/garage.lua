@@ -17,6 +17,15 @@ local function setup()
   check(ok, "repair garage is available")
   garage = result
   check(#engine.find("garage") >= 4, "garage has visible bay and canopy")
+  -- The full playthrough can leave wreckage/bodies in this bay. Isolate
+  -- the repair fixture, not the garage's speed/on-wheels requirements.
+  engine.key = function() return false end
+  for _, tag in ipairs{"car", "ped_down", "wreck"} do
+    for _, id in ipairs(engine.find(tag)) do
+      local x, _, z = engine.pos(id)
+      if math.abs(x - garage.x) < 6 and math.abs(z - garage.z) < 9 then engine.despawn(id) end
+    end
+  end
   engine.despawn(G.player)
   G.player = nil
   car = vehicle.spawn(garage.x, garage.z)

@@ -214,7 +214,7 @@ sensitivity, invert camera Y) apply to the right stick too.
   sidewalk on both long sides, a continuous street wall, and avenue corners build taller than
   mid-block. Dashes and zebra crossings are baked into one mesh per grid line.
 - **The island:** it narrows at both tips; blocks off it are river, with invisible walls at the
-  shore, and the river sits a quay wall below the streets all round.
+  shore.
 - **Central Park:** 2 × 7 blocks with the reservoir and its running track, the lake and its
   fountain, the meadow, a loop drive and about 180 trees. Its inner streets are gone except one
   transverse road across the middle.
@@ -230,6 +230,23 @@ sensitivity, invert camera Y) apply to the right stick too.
 
 Each block draws from its own seeded generator, so the city never touches `math.random` and
 changing one block can't reshuffle the rest.
+
+### Maps
+
+The layout is data. `game/maps/manhattan.lua` holds the grid (block and road sizes), the outline
+of the land, the park, district rules, the skyline's peaks, the special blocks (lot, plaza,
+landmarks, small parks), and **named places**: the hospital, the taxi rank, each mission's
+intersections, the race route. `lib/city.lua` builds whatever map it's given and checks it as it
+loads, so a place on an intersection without a road, or a landmark in the river, is an error
+naming the place. `MAP=harbor auto game` plays the other map, Harbor Town: a smaller, squarer
+port with a bay, docks along it, one modest downtown and no big park.
+
+Nothing outside the map file uses grid positions. Missions, the gun shop, pickups, the hospital
+and the taxi mod ask for places by name (`city.place("bank")`, `city.route("race")`), and a
+mission whose places a map doesn't have sits that map out. CI plays the scripted run and the
+city test on both maps.
+
+![Harbor Town: the docks on the bay, downtown, the TV tower](docs/harbor.png)
 
 The street network has gaps (the river, the park), so `lib.city` exposes it as a graph:
 `city.road(k, l, dk, dl)`, `city.neighbors`, `city.nodes`, `city.segments`, `city.nearest_node`,
@@ -400,21 +417,27 @@ a taxi side job and a debug overlay (F3). See **[MODDING.md](MODDING.md)**.
 ![The demolition mission: physics crates and OBJ traffic cones](docs/mission.png)
 
 
-Drop a file in `game/missions/`. It's picked up on the next reload:
+Drop a file in `game/missions/`. It's picked up on the next reload. Find places by name, not
+grid position, so the mission works on any map (`lot` and `hospital` are on every map):
 
 ```lua
 local city = require "lib.city"
 return {
-  title = "Pizza Run", start = {city.node(2, 2)}, reward = 100,
+  title = "Pizza Run", start = {city.place("lot")}, reward = 100,
   run = function(m)
     m:say("Get a car")
     m:wait(function() return m:in_car() end)
-    local door = m:marker(city.node(6, 1))
+    -- Some street corner 150-250 m away, on whatever map is loaded.
+    local x, z = city.place("lot")
+    local door = m:marker(city.node(city.random_node(x, z, 150, 250)))
     m:timer(45)
     m:wait(function() return m:near(door, 5) end)
   end,
 }
 ```
+
+A mission that needs a place only some maps have checks first and returns `false` to sit this
+map out: `if not city.has("bank") then return false end`.
 
 ## Command line
 
@@ -423,12 +446,35 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 ```
 
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
-launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
-any failure. `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
+launches off the stunt ramp, gets busted by the police, then escapes them). `SEED=<integer>`
+controls population and AI randomness on either map; the default is 1337. For example,
+`MAP=harbor SEED=5 AUTO_TEST=1 auto game --headless 9000` reproduces that case.
+Lua errors exit non-zero, but reaching the tick budget without completing a test can exit zero.
+Acceptance therefore requires both `AUTOPLAY PASSED` and `GARAGE PASSED`, no Lua/FAILED
+messages, and exit zero. The maintained runner checks all three and preserves raw logs:
+
+```
+python tools/headless_tests.py --output headless-results --soak
+```
+
+Use a new output directory each time. Both autoplay AND focused reliability consume the same
+explicit map/seed pairs: Manhattan and Harbor each use `0, 1–12, 13, 17, 42, 99, 1337, 2026`.
+The runner deduplicates inputs, verifies each printed map/seed identity, and reconciles the exact
+pair set. Seed runs use three concurrent native processes by default (`--jobs 1` serializes).
+Focused checks cover police/attribution/corridor/chain-explosion regressions; the full suite also
+runs city and pad checks, isolated save/menu/shop restarts (including exact corrupt-save bytes),
+and, with `--soak`, five simulated minutes per map.
+`MAP=harbor SEED=17 RELIABILITY_TEST=1 auto game --headless 4000` runs one focused pair.
+CI reuses one build per platform: Linux and Windows run the full maintained seed set on both
+suites; macOS explicitly checks both suites/maps at 1337. Only Linux runs the soak. Raw logs and
+a reconciled results matrix are uploaded as CI artifacts even when a check fails.
+
+`SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
 pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
-`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the layout (a connected road graph with nothing built on it, the shore walls, the
-skyline's two peaks, the landmarks) and a drive up the car park, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the loaded map's layout (a connected road graph with nothing built on it, the
+shore walls, the skyline's peaks, the landmarks) and a drive up the car park, `MAP=harbor` any of
+these on the second map, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing

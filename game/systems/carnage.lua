@@ -85,9 +85,15 @@ end)
 local fx_t = 0
 engine.on("tick", function(dt)
   local now = engine.time()
-  for id, t in pairs(C.burning) do
+  -- Exploding emits callbacks and can ignite another car. Adding entries
+  -- during pairs() can rehash the table and invalidate Lua's next key.
+  -- Snapshot first; new chain fires are processed on the following tick.
+  local burning = {}
+  for id, t in pairs(C.burning) do burning[#burning + 1] = {id, t} end
+  for _, entry in ipairs(burning) do
+    local id, t = entry[1], entry[2]
     if not engine.exists(id) then C.burning[id] = nil
-    elseif now >= t then C.explode(id) end
+    elseif C.burning[id] == t and now >= t then C.explode(id) end
   end
   fx_t = fx_t - dt
   if fx_t > 0 then return end

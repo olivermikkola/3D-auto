@@ -42,8 +42,12 @@ jobs:
           rm -rf shop-test
           SHOP_TEST=1 ./target/release/auto game --headless 900 --save-dir shop-test
           SHOP_TEST=2 ./target/release/auto game --headless 900 --save-dir shop-test
-      - name: City districts and the car park drive
+      - name: City layout and the car park drive
         run: CITY_TEST=1 ./target/release/auto game --headless 2400
+      - name: The second map (scripted playthrough and city checks)
+        run: |
+          MAP=harbor AUTO_TEST=1 ./target/release/auto game --headless 9000
+          MAP=harbor CITY_TEST=1 ./target/release/auto game --headless 2400
       - name: Gamepad controls (a scripted pad)
         run: PAD_TEST=1 ./target/release/auto game --headless 3000
       - name: Soak (5 simulated minutes)

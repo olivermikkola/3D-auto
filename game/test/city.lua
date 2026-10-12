@@ -1,6 +1,6 @@
--- The Manhattan layout (island, park, road graph, skyline), its landmarks,
--- and a drive up the car park: every ramp is climbed with the real car
--- controls, then off the roof kicker.
+-- Whatever map is loaded (MAP=<name>): its layout (land, park, road graph,
+-- skyline), its landmarks, and a drive up the car park if it has one:
+-- every ramp is climbed with the real car controls, then off the roof kicker.
 -- CITY_TEST=1 auto game --headless 2400
 local G = require "lib.state"
 local city = require "lib.city"
@@ -34,26 +34,56 @@ local function top_at(x, z)
   return d and 400 - d or 0
 end
 
+-- Minimums for the maps we ship, beyond what any map must pass. A map
+-- without an entry just has to have one of each thing its data asks for.
+local EXPECT = {
+  manhattan = {
+    downtown = 40, residential = 30, over_100m = 15, peak_top = 140, terraces = 30, deco = 5, warehouses = 10,
+    containers = 8, rooftop = 40, billboards = 20, park_trees = 150,
+  },
+}
+
 local function setup()
-  local L = G.city
-  -- The island: districts, the park, water round the tips.
-  local count = {}
+  local L, M = G.city, city.map()
+  local want = EXPECT[L.map] or {}
+  local function at_least(key, n, what)
+    local need = want[key] or 1
+    check(n >= need, string.format("%d %s (at least %d)", n, what, need))
+  end
+  print("  map: " .. M.name)
+
+  -- Districts: the land, the park and every district the rules name.
+  local count, water = {}, 0
   for i = 0, L.NX - 1 do
     for j = 0, L.NZ - 1 do
       local d = city.district(i, j)
       count[d] = (count[d] or 0) + 1
     end
   end
-  check(count.park == 14 and count.industrial == 4, "Central Park is 2x7 blocks, 4 blocks of West Side yards")
-  check(count.water >= 6, count.water .. " blocks of the grid are river (the island narrows at the tips)")
-  check(count.downtown >= 40 and count.residential >= 30,
-        string.format("%d downtown and %d residential blocks", count.downtown, count.residential))
+  for j = 0, L.NZ - 1 do
+    local r = M.land and M.land[j]
+    if r then water = water + L.NX - (r[2] - r[1] + 1) end
+  end
+  check((count.water or 0) == water, (count.water or 0) .. " blocks of river, as the map's outline says")
+  if M.park then
+    local P = M.park
+    check(count.park == (P.i1 - P.i0 + 1) * (P.j1 - P.j0 + 1), "the park takes its " .. count.park .. " blocks")
+  end
+  local named = {}
+  for _, r in ipairs(M.districts or {}) do
+    if not named[r[1]] then
+      named[r[1]] = true
+      check((count[r[1]] or 0) > 0, string.format("%d %s blocks", count[r[1]] or 0, r[1]))
+    end
+  end
+  at_least("downtown", count.downtown or 0, "downtown blocks")
+  if want.residential then at_least("residential", count.residential or 0, "residential blocks") end
 
-  -- The road graph: one piece, no roads into the river or across the park
-  -- except the transverse, and nothing built on any of it.
+  -- The road graph: one piece, the park crossed only by its transverse,
+  -- and nothing built on any of it.
   local nodes = city.nodes()
-  local seen, queue, n = {}, {L.lot and {2, 15}}, 0
-  seen["2,15"] = true
+  local sk, sl = city.nearest_node(city.place("lot"))
+  local seen, queue, n = {[sk .. "," .. sl] = true}, {{sk, sl}}, 0
   while #queue > 0 do
     local q = table.remove(queue)
     n = n + 1
@@ -63,9 +93,14 @@ local function setup()
     end
   end
   check(n == #nodes, string.format("every one of the %d intersections is reachable by road", #nodes))
-  check(not city.road(0, 0, 1, 0) and not city.road(0, 19, 0, 1), "no roads off the island")
-  check(not city.road(3, 6, 0, 1) and not city.road(2, 6, 1, 0) and city.road(2, 8, 1, 0) and city.road(3, 8, 1, 0),
-        "the park interrupts the grid but for one transverse road")
+  if M.park then
+    local P = M.park
+    check(city.road(P.i0, P.transverse, 1, 0), "a transverse road crosses the park")
+    if P.j1 - P.j0 >= 2 then
+      local l = P.transverse == P.j0 + 1 and P.j0 + 2 or P.j0 + 1
+      check(not city.road(P.i0, l, 1, 0), "the park's other inner streets are gone")
+    end
+  end
   local solid = {building = true, container = true, landmark = true, wall = true, tree = true, lamp = true, carpark = true,
                  ramp = true, fountain = true}
   local blocked = 0
@@ -83,60 +118,80 @@ local function setup()
     end
   end
   check(blocked == 0, string.format("all %d road segments are clear to drive, in both lanes", #city.segments()))
-  local sx, sz = city.node(0, 10)
+  local edge
+  for l = 0, L.NZ do if city.on_road(0, l) then edge = edge or l end end
+  local sx, sz = city.node(0, edge)
   local hit = engine.raycast(sx, 1, sz, -1, 0, 0, 30)
   check(hit and engine.tag(hit) == "wall", "a wall at the shore keeps cars out of the river")
 
-  -- The skyline: two peaks, Midtown and the Financial District, over a low uptown.
-  local tall, rows = {}, {}
+  -- The skyline: the tallest buildings stand under the map's peaks, well
+  -- above the low-rise parts of town.
+  local low, low_n, over_100, peak_tops = 0, 0, 0, {}
   for _, id in ipairs(engine.find("building")) do
     local x, _, z = engine.pos(id)
-    local _, j = city.block_of(x, z)
     local h = top_at(x, z)
-    local band = j <= 3 and "uptown" or (j >= 11 and j <= 14) and "midtown" or j >= 18 and "fidi" or nil
-    if band then
-      rows[band] = rows[band] or {n = 0, sum = 0, max = 0}
-      local r = rows[band]
-      r.n, r.sum, r.max = r.n + 1, r.sum + h, math.max(r.max, h)
+    if h > 100 then over_100 = over_100 + 1 end
+    if city.height(x, z) == 0 then low, low_n = low + h, low_n + 1 end
+    for k, p in ipairs(M.skyline and M.skyline.peaks or {}) do
+      local dx, dz = x - (L.ox + p.k * L.PX), z - (L.oz + p.l * L.PZ)
+      if (dx / p.rx) ^ 2 + (dz / p.rz) ^ 2 < 0.25 then peak_tops[k] = math.max(peak_tops[k] or 0, h) end
     end
-    if h > 100 then tall[#tall + 1] = id end
   end
-  local avg = function(b) return rows[b].sum / rows[b].n end
-  check(rows.midtown.max > 140 and rows.fidi.max > 100,
-        string.format("supertalls in Midtown (%.0f m) and the Financial District (%.0f m)", rows.midtown.max, rows.fidi.max))
-  check(avg("midtown") > 2 * avg("uptown"),
-        string.format("Midtown averages %.0f m, uptown %.0f m", avg("midtown"), avg("uptown")))
-  check(#tall >= 15, #tall .. " buildings over 100 m")
+  local avg_low = low / math.max(1, low_n)
+  for k, top in pairs(peak_tops) do
+    check(top > 2.5 * avg_low and top > (want.peak_top or 0) * (M.skyline.peaks[k].weight),
+          string.format("peak %d tops out at %.0f m over a low-rise average of %.0f m", k, top, avg_low))
+  end
+  if want.over_100m then at_least("over_100m", over_100, "buildings over 100 m") end
 
-  -- What the blocks are made of.
-  local rows_n, sheds, decos = 0, 0, 0
+  -- What the blocks are made of, for each thing the map asks for.
+  local terraces, sheds, decos = 0, 0, 0
   for _, id in ipairs(engine.find("building")) do
     local m = engine.mesh_of(id) or ""
-    if m:find("^lot_") then rows_n = rows_n + 1
+    if m:find("^lot_") then terraces = terraces + 1
     elseif m:find("^warehouse") then sheds = sheds + 1
     elseif m:find("^deco") then decos = decos + 1 end
   end
-  check(rows_n >= 30, rows_n .. " terraces of brownstones uptown")
-  check(decos >= 5, decos .. " Art Deco setback towers")
-  check(sheds >= 10, sheds .. " warehouses in the yards")
-  check(#engine.find("container") >= 8, #engine.find("container") .. " yards of shipping containers")
-  check(#engine.find("rooftop") >= 40, #engine.find("rooftop") .. " water towers on the roofs")
-  check(#engine.find("billboard") >= 20, #engine.find("billboard") .. " billboards in Times Square")
-  local P, trees = L.park, 0
-  for _, id in ipairs(engine.find("tree")) do
-    local x, _, z = engine.pos(id)
-    if x > P.x0 and x < P.x1 and z > P.z0 and z < P.z1 then trees = trees + 1 end
+  if count.residential then at_least("terraces", terraces, "terraces of brownstones") end
+  if count.industrial then
+    at_least("warehouses", sheds, "warehouses in the yards")
+    at_least("containers", #engine.find("container"), "yards of shipping containers")
   end
-  check(trees >= 150, trees .. " trees in Central Park")
+  if want.deco then at_least("deco", decos, "Art Deco setback towers") end
+  at_least("rooftop", #engine.find("rooftop"), "water towers on the roofs")
+  if M.billboards then at_least("billboards", #engine.find("billboard"), "billboards") end
+  local P, trees = L.park_area, 0
+  if P then
+    for _, id in ipairs(engine.find("tree")) do
+      local x, _, z = engine.pos(id)
+      if x > P.x0 and x < P.x1 and z > P.z0 and z < P.z1 then trees = trees + 1 end
+    end
+    at_least("park_trees", trees, "trees in the park")
+  end
 
-  check(#L.landmarks == 3, "a TV tower, the Empire and a car park")
-  local tx, tz = city.block_center(L.tower[1], L.tower[2])
-  hit = engine.raycast(tx - 20, 60, tz, 1, 0, 0, 40)
-  check(hit and engine.tag(hit) == "landmark", "the TV tower is solid at 60 m up")
-  local ex, ez = city.block_center(L.empire[1], L.empire[2])
-  hit = engine.raycast(ex - 40, 150, ez, 1, 0, 0, 80)
-  check(hit and engine.tag(hit) == "landmark", "the Empire is solid at 150 m up")
-  check(top_at(ex, ez) > rows.midtown.max - 1, string.format("and it's the tallest thing in town (%.0f m)", top_at(ex, ez)))
+  -- Landmarks, for the ones the map has.
+  local sp = M.specials
+  local expected = (sp.tower and 1 or 0) + (sp.empire and 1 or 0) + (sp.carpark and 1 or 0)
+  check(#L.landmarks == expected, #L.landmarks .. " landmarks, one for each the map places")
+  if sp.tower then
+    local tx, tz = city.place("tower")
+    hit = engine.raycast(tx - 20, 60, tz, 1, 0, 0, 40)
+    check(hit and engine.tag(hit) == "landmark", "the TV tower is solid at 60 m up")
+  end
+  if sp.empire then
+    local ex, ez = city.place("empire")
+    hit = engine.raycast(ex - 40, 150, ez, 1, 0, 0, 80)
+    check(hit and engine.tag(hit) == "landmark", "the Empire is solid at 150 m up")
+    local tallest = 0
+    for _, top in pairs(peak_tops) do tallest = math.max(tallest, top) end
+    check(top_at(ex, ez) > tallest - 1, string.format("and it's the tallest thing in town (%.0f m)", top_at(ex, ez)))
+  end
+  if not sp.carpark then
+    print("CITY TEST PASSED")
+    stage = 5
+    engine.quit()
+    return
+  end
 
   cx, cz = city.block_center(L.carpark[1], L.carpark[2])
   D, CURB = landmarks.DECK, L.curb
