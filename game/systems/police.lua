@@ -119,6 +119,28 @@ end
 -- because it is 50-90m away sends cars searching away from it.
 function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
 
+-- On a map drawn as roads, a car out between junctions drives its own
+-- road to whichever end is fewer roads from the goal, rather than heading
+-- straight for the nearest junction (which may be across back gardens).
+local function road_route(x, z, goal)
+  local roadnet = require "lib.roadnet"
+  local hops, queue = {[goal] = 0}, {goal}
+  for _, q in ipairs(queue) do
+    for _, nb in ipairs(city.links(q)) do
+      if not hops[nb] then hops[nb] = hops[q] + 1; queue[#queue + 1] = nb end
+    end
+  end
+  local e, i = roadnet.nearest_edge(x, z)
+  local E = roadnet.net().edges[e]
+  local route = {}
+  if (hops[E.b] or math.huge) <= (hops[E.a] or math.huge) then
+    for k = i, #E.pts do route[#route + 1] = E.pts[k] end
+  else
+    for k = i - 1, 1, -1 do route[#route + 1] = E.pts[k] end
+  end
+  return route
+end
+
 local function drive_cop(c, dt)
   local id = c.id
   local x, _, z = engine.pos(id)
@@ -142,6 +164,10 @@ local function drive_cop(c, dt)
     if c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
       c.ri = c.ri + 1 -- round the next bend of this road
       c.goal = c.route[c.ri]
+    elseif city.network() and (not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9)
+        and U.dist2d(x, z, city.pos(at)) > 15 then
+      c.route, c.ri = road_route(x, z, goal), 1
+      c.goal = c.route[1]
     elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
       local from = at
       if at == goal then
@@ -183,7 +209,12 @@ local function drive_cop(c, dt)
 
   -- Wedged against something: back up with opposite lock for a second.
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
-  if c.stuck > 1.2 then c.reverse, c.stuck = 1.0, 0 end
+  if c.stuck > 1.2 then
+    c.reverse, c.stuck = 1.0, 0
+    -- Wedged again and again on a road map: think again about the way.
+    c.jams = (c.jams or 0) + 1
+    if c.jams >= 3 and city.network() then c.goal, c.jams = nil, 0 end
+  end
   if c.reverse > 0 then
     c.reverse = c.reverse - dt
     input = {throttle = -1, steer = -input.steer}

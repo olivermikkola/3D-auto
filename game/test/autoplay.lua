@@ -275,6 +275,26 @@ engine.on("ped_down", function(_, by) if by == G.player then kills = kills + 1 e
 engine.on("explosion", function() booms = booms + 1 end)
 engine.on("wasted", function() wastes = wastes + 1 end)
 engine.on("respawned", function() respawned = true end)
+-- Stand six meters from ped `id`, ahead along (dx, dz) if that's clear;
+-- on a curving pavement that can be round a corner behind a building, so
+-- then behind them or along the pavement: wherever nothing (no wall, no
+-- passing car) is between us and there's room to stand.
+local function stand_by(id, dx, dz)
+  local x, _, z = engine.pos(id)
+  local l = math.sqrt(dx * dx + dz * dz) + 1e-3
+  dx, dz = dx / l, dz / l
+  local nx, nz = peds.curb(id)
+  local sx, sz = x + dx * 6, z + dz * 6
+  for _, d in ipairs{{dx, dz}, {-dx, -dz}, {nz, -nx}, {-nz, nx}} do
+    local cx, cz = x + d[1] * 6, z + d[2] * 6
+    local ok = not engine.raycast(x, 1.5, z, d[1], 0, d[2], 7, id)
+    for _, w in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
+      ok = ok and not engine.raycast(cx - w[1] * 1.2, 1.5, cz - w[2] * 1.2, w[1], 0, w[2], 2.4)
+    end
+    if ok then sx, sz = cx, cz break end
+  end
+  engine.set_pos(G.player, sx, 1.2, sz)
+end
 local target, victim
 after(0.5, function()
   wanted.clear()
@@ -284,9 +304,7 @@ after(0.5, function()
   target = nearest_ped("walk", true)
   local x, _, z = engine.pos(target)
   local p = peds.peds[target]
-  local dx, dz = p.tx - x, p.tz - z
-  local l = math.sqrt(dx * dx + dz * dz) + 1e-3
-  engine.set_pos(G.player, x + dx / l * 6, 1.2, z + dz / l * 6)
+  stand_by(target, p.tx - x, p.tz - z)
   -- Arrange an actual witness: new scenery changes entity ids and the
   -- ambient population's iteration order, so proximity isn't guaranteed.
   for id in pairs(peds.peds) do
@@ -297,9 +315,26 @@ after(0.5, function()
   end
 end)
 until_(function()
-  if not peds.peds[target] then return true end
+  if kills >= 1 then return true end
+  if not peds.peds[target] then
+    -- Knocked down by something else (a passing car): try someone new.
+    target = nearest_ped("walk", true)
+    local p = peds.peds[target]
+    local x, _, z = engine.pos(target)
+    stand_by(target, p.tx - x, p.tz - z)
+    return false
+  end
   local x, y, z = engine.pos(target)
-  W.fire_at(x, y + 0.3, z)
+  -- Shoot unless a wall or a car is in the way (they've walked round a
+  -- corner, or traffic is passing); then step somewhere clear.
+  local px, py, pz = engine.pos(G.player)
+  local hit = engine.raycast(px, py + 0.5, pz, x - px, y + 0.3 - py - 0.5, z - pz, 40, G.player)
+  if hit and hit ~= target and engine.tag(hit) ~= "ped" then
+    local vx, _, vz = engine.vel(target)
+    stand_by(target, vx, vz)
+  else
+    W.fire_at(x, y + 0.3, z)
+  end
 end, 5, "shooting a pedestrian kills them", function()
   check(kills >= 1, "the kill is credited to the player")
   check(wanted.stars() >= 1, "murder raises the wanted level (" .. wanted.stars() .. " stars)")
