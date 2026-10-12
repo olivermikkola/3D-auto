@@ -341,6 +341,7 @@ until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, office
 until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
   H.player.hp = 12 -- two more real officer hits must still kill the player
 end)
+local last_hp, last_hit
 until_(function()
   -- This phase is about dying to gunfire, not being arrested: an officer
   -- who walks right up (they stop shooting inside 6 m) is sent back.
@@ -352,6 +353,26 @@ until_(function()
     if px and x and (x - px) ^ 2 + (z - pz) ^ 2 < 6 ^ 2 then
       engine.despawn(id)
       police.officers[id] = nil
+    end
+  end
+  -- Nor about hiding: if no officer has landed a shot for a while (out of
+  -- sight round a building), stand where one has a clear line of fire.
+  local now = engine.time()
+  if H.player.hp ~= last_hp then last_hp, last_hit = H.player.hp, now end
+  if px and now - last_hit > 8 then
+    for id in pairs(police.officers) do
+      if engine.exists(id) then
+        local ox, oy, oz = engine.pos(id)
+        for k = 0, 7 do
+          local a = k * math.pi / 4
+          local tx, tz = ox + math.sin(a) * 14, oz + math.cos(a) * 14
+          if not engine.raycast(ox, oy + 1, oz, tx - ox, 0, tz - oz, 14.5, id) and not engine.nearest(tx, 1, tz, 2) then
+            engine.set_pos(G.player, tx, 1.2, tz)
+            last_hit = now
+            return wastes == 1
+          end
+        end
+      end
     end
   end
   return wastes == 1
