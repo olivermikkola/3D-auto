@@ -1,21 +1,23 @@
 -- Third-person orbit camera with chase behaviour in cars and wall avoidance.
 local G = require "lib.state"
+local settings = require "lib.settings"
 local U = require "lib.util"
 
 local M = {}
-local SENS = 0.0025
 local last_look = -10
 local eye = nil
 
 engine.on("frame", function(dt)
   local id = G.vehicle or G.player
-  if not id or not engine.exists(id) then return end
+  if engine.paused() or not id or not engine.exists(id) then return end
   local mx, my = engine.mouse()
+  local sens = settings.get("sensitivity") * 0.0005
+  if settings.get("invert_y") then my = -my end
   local kx = (engine.key("left") and 1 or 0) - (engine.key("right") and 1 or 0)
   local ky = (engine.key("up") and 1 or 0) - (engine.key("down") and 1 or 0)
   if mx ~= 0 or my ~= 0 or kx ~= 0 or ky ~= 0 then last_look = engine.time() end
-  G.cam_yaw = G.cam_yaw - mx * SENS + kx * 2 * dt
-  G.cam_pitch = U.clamp(G.cam_pitch + my * SENS + ky * dt, -0.2, 1.2)
+  G.cam_yaw = G.cam_yaw - mx * sens + kx * 2 * dt
+  G.cam_pitch = U.clamp(G.cam_pitch + my * sens + ky * dt, -0.2, 1.2)
 
   local x, y, z = engine.pos(id)
   local dist, height = 6, 1.2
@@ -40,7 +42,8 @@ engine.on("frame", function(dt)
   if not eye then eye = want end
   local k = math.min(1, dt * 12)
   for i = 1, 3 do eye[i] = eye[i] + (want[i] - eye[i]) * k end
-  engine.camera(eye[1], eye[2], eye[3], tx, ty, tz, G.vehicle and 75 or 68)
+  local fov = settings.get("fov")
+  engine.camera(eye[1], eye[2], eye[3], tx, ty, tz, G.vehicle and fov + 7 or fov)
   G.cam_eye, G.cam_target = {eye[1], eye[2], eye[3]}, {tx, ty, tz}
 end)
 

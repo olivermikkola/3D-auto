@@ -8,7 +8,7 @@ The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. 
 procedural city, drivable cars that can jump and roll, a stunt park, on-foot movement,
 ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
 pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, four missions,
-and progress that's saved between sessions. Edit any `.lua` file while it runs and it hot-reloads.
+progress that's saved between sessions, and a pause menu with settings. Edit any `.lua` file while it runs and it hot-reloads.
 
 ![Night drive: headlights, street lamps, lit office floors](docs/night.png)
 
@@ -24,7 +24,7 @@ cargo run --release -- my_game   # any directory with a main.lua
 ```
 
 Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress ·
-mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the mouse.
+mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
 
 ## Design
 
@@ -33,11 +33,11 @@ mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` free the
 | `src/math.rs` | ~250 | `Vec3`, `Quat`, column-major `Mat4`. Y up, right-handed. |
 | `src/mesh.rs` | ~250 | Flat-shaded unit primitives, OBJ+MTL loader, part baking. |
 | `src/physics.rs` | ~580 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses. |
-| `src/audio.rs` | ~510 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
+| `src/audio.rs` | ~530 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
-| `src/script.rs` | ~720 | The `engine` Lua table and the event bus. |
+| `src/script.rs` | ~740 | The `engine` Lua table and the event bus. |
 | `src/save.rs` | ~570 | Save data: Lua values to readable files and back, parsed as data and never run. |
-| `src/main.rs` | ~470 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
+| `src/main.rs` | ~520 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
 
 Choices made to keep it small:
 
@@ -67,9 +67,11 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `init` | | after `main.lua` runs |
 | `tick` | `dt` | fixed 60 Hz, before physics |
 | `contact` | `a, b, speed` | each touching body pair after physics; `speed` = impact speed in m/s |
-| `frame` | `dt` | once per rendered frame; build the HUD and camera here |
+| `frame` | `dt` | once per rendered frame; build the HUD and camera here. `dt` is 0 while paused |
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
 | `quit` | | before the game closes, and before a hot reload replaces the scripts; save here |
+| `menu_key` | `name, down` | instead of `key` while the game is paused, so only menus see input |
+| `minimized` | | the window was minimized (the demo pauses) |
 
 Scripts subscribe with `engine.on(ev, fn)`, `engine.once`, `engine.off`, and can emit their
 own events. The demo's own events include `vehicle_enter`, `carjacked`, `ped_down`, `damaged`,
@@ -112,9 +114,9 @@ engine.set_light(id, {...})  engine.remove_light(id)  -- cone = half-angle in de
 engine.synth(name, {wave="square"|"saw"|"sine"|"triangle"|"noise", freq=440, freq_end=,
                     dur=0.3, attack=, release=, volume=0.5, lowpass=1, notes={...}, note_len=, loop=false})
 engine.load_wav(name, "assets/boom.wav")                  -- 8/16-bit PCM, any rate
-voice = engine.play(name[, {volume=1, pitch=1, loop=false, pos={x,y,z}, follow=id}])
+voice = engine.play(name[, {volume=1, pitch=1, loop=false, pos={x,y,z}, follow=id, ui=false}])  -- ui: plays while paused
 engine.set_voice(voice, {volume=, pitch=, pos=})  engine.stop(voice)  engine.playing(voice)
-engine.volume(master)
+engine.volume([master]) -> master
 
 -- world
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
@@ -122,6 +124,8 @@ engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g) 
 
 -- input & HUD (pixels, origin top-left)
 engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.screen() -> w,h
+engine.cursor() -> x,y      -- mouse position in pixels, for clicking on menus
+engine.pause(bool)  engine.paused()   engine.fullscreen([bool]) -> bool
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
 
 -- saves (one plain value per key: tables, strings, numbers, booleans; see "Saves")
@@ -180,6 +184,25 @@ The cyan `R` on the minimap marks its location, and the bay shows the price or w
 service is unavailable. Repairs restore vehicle health and stop smoke/fire, including
 cancelling a burning car's pending explosion. Already healthy cars aren't charged;
 wanted drivers must lose the cops first. Repairs don't restore player health or wrecks.
+
+## Pause menu and settings
+
+![The settings page](docs/settings.png)
+
+`Esc` pauses (so does minimizing the window). `lib/menu.lua` and `lib/settings.lua` are about
+230 lines of Lua on four small engine additions: `engine.pause`, `engine.cursor`,
+`engine.fullscreen` and `ui` sounds.
+
+- **Pausing really stops the game.** The engine skips ticks, so physics, the clock, mission
+  timers and police all wait, and game sounds freeze where they are. `frame` keeps coming,
+  with `dt = 0`, so the HUD and menu still draw and per-frame effects hold still.
+- **Input goes to the menu.** While paused, key events arrive as `menu_key`, not `key`, so
+  pressing `E` in the menu doesn't get you out of a car. Keys held when you pause are released
+  to the game first, so a held trigger or accelerator doesn't stick.
+- **Settings:** volume, mouse sensitivity, invert mouse Y, field of view, fullscreen and the
+  help overlay (`F1` changes it too). They're saved in the `settings` save as you change them
+  and applied on the next start. The menu works with arrows/WASD + Enter, or the mouse.
+- **Quit Game** in the menu saves progress like closing the window does.
 
 ## Saves
 
@@ -285,8 +308,8 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
-test, and `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts (see
-`.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
+`MENU_TEST=1` and `2` the pause menu and settings (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing

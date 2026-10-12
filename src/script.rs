@@ -31,6 +31,14 @@ function engine.off(ev, fn)
   for _, f in ipairs(handlers[ev] or {}) do if f ~= fn then t[#t + 1] = f end end
   handlers[ev] = t
 end
+-- Pausing stops ticks, and key events arrive as "menu_key" instead of "key"
+-- until resumed. Keys held at the moment of pausing are released to the game
+-- first, so a held trigger or accelerator doesn't stick through the menu.
+local set_paused = engine._pause
+engine._pause = nil
+function engine.pause(on)
+  for _, k in ipairs(set_paused(on == true)) do engine.emit("key", k, false) end
+end
 function engine.once(ev, fn)
   local function w(...) engine.off(ev, w); return fn(...) end
   return engine.on(ev, w)
@@ -511,7 +519,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         if let Some(f) = follow {
             world = e.get(f).map(|x| x.pos);
         }
-        let id = e.mixer.lock().unwrap().play(data, volume, pitch, looped, world);
+        let ui = t.as_ref().map_or(Ok(None), |t| t.get::<Option<bool>>("ui"))?.unwrap_or(false);
+        let id = e.mixer.lock().unwrap().play(data, volume, pitch, looped, world, ui);
         if let Some(f) = follow {
             e.follow.push((id, f));
         }
@@ -527,7 +536,13 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     f!("stop", |e, _lua, id: u32| Ok(e.mixer.lock().unwrap().stop(id)));
     f!("playing", |e, _lua, id: u32| Ok(e.mixer.lock().unwrap().playing(id)));
-    f!("volume", |e, _lua, v: f32| Ok(e.mixer.lock().unwrap().master = v));
+    f!("volume", |e, _lua, v: Option<f32>| {
+        let mut m = e.mixer.lock().unwrap();
+        if let Some(v) = v {
+            m.master = v.clamp(0.0, 4.0);
+        }
+        Ok(m.master)
+    });
 
     // ---- lights -------------------------------------------------------------
     fn apply_light(l: &mut crate::engine::Light, t: &Table) -> Result<()> {
@@ -620,6 +635,15 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("key", |e, _lua, k: String| Ok(e.keys.contains(&k)));
     f!("mouse", |e, _lua, (): ()| Ok(e.mouse_delta));
     f!("grab_mouse", |e, _lua, g: bool| Ok(e.mouse_grab = g));
+    f!("cursor", |e, _lua, (): ()| Ok(e.cursor));
+    f!("_pause", |e, _lua, on: bool| Ok(e.set_paused(on)));
+    f!("paused", |e, _lua, (): ()| Ok(e.paused));
+    f!("fullscreen", |e, _lua, on: Option<bool>| {
+        if let Some(on) = on {
+            e.fullscreen = on;
+        }
+        Ok(e.fullscreen)
+    });
 
     // ---- HUD ------------------------------------------------------------
     f!("screen", |e, _lua, (): ()| Ok(e.screen));

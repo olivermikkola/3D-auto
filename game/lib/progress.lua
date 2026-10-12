@@ -98,7 +98,7 @@ engine.on("key", function(k, down)
 end)
 
 engine.on("frame", function(dt)
-  if not shown then return end
+  if not shown or engine.paused() then return end
   hold = engine.key("backspace") and hold + dt or 0
   if hold >= RESET_HOLD then
     hold, shown = 0, false

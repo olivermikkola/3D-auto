@@ -112,6 +112,11 @@ pub struct Engine {
     pub follow: Vec<(u32, u32)>,
     /// Save data; carried across script reloads like the mixer.
     pub saves: crate::save::Store,
+    /// While paused there are no ticks: physics, the clock and game sounds stop.
+    pub paused: bool,
+    pub fullscreen: bool,
+    /// Mouse position in window pixels, for clicking on menus.
+    pub cursor: (f32, f32),
 }
 
 impl Engine {
@@ -154,6 +159,9 @@ impl Engine {
             sounds: HashMap::new(),
             follow: Vec::new(),
             saves: Default::default(),
+            paused: false,
+            fullscreen: false,
+            cursor: (0.0, 0.0),
         };
         for (name, m) in mesh::builtins() {
             e.add_mesh(name, m);
@@ -202,6 +210,19 @@ impl Engine {
             None => Some((l.pos, l.dir)),
             Some(id) => self.get(id).map(|e| (e.pos + e.rot.rotate(l.pos), e.rot.rotate(l.dir))),
         }
+    }
+
+    /// Pause or resume. Pausing returns the keys that were held, now released,
+    /// so scripts can be told they went up (nothing stays "held" through a menu).
+    pub fn set_paused(&mut self, on: bool) -> Vec<String> {
+        let mut released = Vec::new();
+        if on && !self.paused {
+            released = self.keys.drain().collect();
+            released.sort();
+        }
+        self.paused = on;
+        self.mixer.lock().unwrap().paused = on;
+        released
     }
 
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {
@@ -256,5 +277,21 @@ impl Engine {
     pub fn text_width(s: &str, size: f32) -> f32 {
         let longest = s.lines().map(|l| l.chars().count()).max().unwrap_or(0);
         longest as f32 * font::ADVANCE * size / 7.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pausing_releases_held_keys_once() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        e.keys.extend(["w".to_string(), "mouse1".to_string()]);
+        assert_eq!(e.set_paused(true), vec!["mouse1", "w"]);
+        assert!(e.paused && e.keys.is_empty() && e.mixer.lock().unwrap().paused);
+        e.keys.insert("down".into()); // menu navigation while paused
+        assert!(e.set_paused(true).is_empty(), "pausing again releases nothing");
+        assert!(e.set_paused(false).is_empty() && !e.paused && !e.mixer.lock().unwrap().paused);
     }
 }
