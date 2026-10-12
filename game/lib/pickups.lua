@@ -37,18 +37,12 @@ local function show(s)
 end
 
 function P.start()
-  -- A few spots on the avenue sidewalks, around where you start and uptown.
-  local function spot(kind, i, j, sx, sz)
+  -- The map's spots, on the avenue sidewalks near a corner of their block.
+  for _, s in ipairs(city.map().pickups or {}) do
+    local kind, i, j, sx, sz = table.unpack(s)
     local cx, cz = city.block_center(i, j)
     P.place(kind, cx + sx * (G.city.bx / 2 - 1.2), cz + sz * (G.city.bz / 2 - 6))
   end
-  spot("health", 2, 15, -1, -1)
-  spot("ammo", 2, 15, 1, -1)
-  spot("health", 3, 16, 1, 1)
-  spot("ammo", 1, 16, -1, 1)
-  spot("smg", 4, 12, 1, 1)
-  spot("health", 1, 6, -1, -1)
-  spot("ammo", 4, 18, 1, 1)
   for _, s in ipairs(P.spots) do show(s) end
 end
 

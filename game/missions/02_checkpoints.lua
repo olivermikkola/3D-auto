@@ -1,20 +1,20 @@
 -- Street race through checkpoints. One at a time, against the clock.
 local city = require "lib.city"
 local U = require "lib.util"
+if not city.has("race", "race_start") then return false end
 
--- A lap of the blocks around the lot: up the West Side, across, down the East Side.
-local route = {{1, 14}, {1, 17}, {4, 17}, {4, 14}, {3, 14}, {3, 16}}
+local route = city.route("race")
 
 return {
   title = "Street Race",
-  start = {city.node(2, 14)},
+  start = {city.place("race_start")},
   reward = 600,
   run = function(m)
     m:say("You need wheels for this one.")
     m:wait(function() return m:in_car() end)
     m:timer(90)
     for i, n in ipairs(route) do
-      local x, z = city.node(n[1], n[2])
+      local x, z = n[1], n[2]
       local cp = m:marker(x, z, {0.2, 0.8, 1.0})
       m:say(string.format("Checkpoint %d of %d", i, #route))
       m:wait(function()

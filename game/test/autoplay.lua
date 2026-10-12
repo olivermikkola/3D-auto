@@ -23,6 +23,17 @@ local function at(sec, fn) steps[#steps + 1] = {at = sec, fn = fn} end
 local function after(sec, fn) steps[#steps + 1] = {after = sec, fn = fn} end
 local function until_(pred, timeout, what, fn) steps[#steps + 1] = {pred = pred, timeout = timeout, what = what, fn = fn} end
 
+-- The intersection with the longest straight run of road south of it.
+local function long_avenue()
+  local best, bk, bl = -1
+  for _, n in ipairs(city.nodes()) do
+    local run, l = 0, n[2]
+    while city.road(n[1], l, 0, 1) do run, l = run + 1, l + 1 end
+    if run >= best then best, bk, bl = run, n[1], n[2] end -- ties: the last (east-most)
+  end
+  return city.node(bk, bl)
+end
+
 local yaw0, car
 at(0.5, function()
   check(G.player and engine.grounded(G.player), "player spawned on the ground")
@@ -34,7 +45,7 @@ at(0.5, function()
   check(G.vehicle == id, "entered the nearest car")
   car = id
   -- Put it at the start of a long north-south avenue.
-  local ax, az = city.node(4, 0)
+  local ax, az = long_avenue()
   engine.set_pos(car, ax, 0.8, az + 10)
   engine.set_yaw(car, 0)
   yaw0 = 0
@@ -60,7 +71,7 @@ at(7.0, function()
 end)
 at(7.5, function()
   check(G.mission and G.mission.def.title == "Joyride", "mission starts at its marker")
-  local gx, gz = city.node(5, 12)
+  local gx, gz = city.place("joyride_garage")
   engine.set_pos(car, gx, 0.8, gz)
   engine.set_vel(car, 0, 0, 0)
 end)
@@ -187,8 +198,10 @@ local function nearest_cop()
   local px, _, pz = engine.pos(G.vehicle or G.player)
   local best = math.huge
   for id in pairs(police.cops) do
-    local x, _, z = engine.pos(id)
-    best = math.min(best, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+    if engine.exists(id) then -- one blown up this tick is dropped from the list next tick
+      local x, _, z = engine.pos(id)
+      best = math.min(best, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+    end
   end
   return best
 end

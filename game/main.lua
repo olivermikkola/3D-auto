@@ -5,6 +5,9 @@ local G = require "lib.state"
 require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
+-- The map, before anything asks the city where things are. MAP=<name> picks
+-- another one from maps/.
+city.use(os.getenv("MAP") or "manhattan")
 local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
@@ -48,8 +51,8 @@ engine.on("init", function()
   peds.start()
   pickups.start()
   -- The hospital: where you wake up after getting wasted.
-  local hx, hz = city.block_center(G.city.hospital[1], G.city.hospital[2])
-  G.hospital = {hx - G.city.bx / 2 + 1.5, 1.2, hz}
+  local hx, hz = city.place("hospital")
+  G.hospital = {hx, 1.2, hz}
   mission.load_all("missions")
   require("systems.garage").build()
   require("systems.gunshop").build()

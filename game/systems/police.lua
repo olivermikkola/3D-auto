@@ -15,6 +15,7 @@ local P = {cops = {}, officers = {}}
 local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
+local LANE = 3.2 -- meters right of the center line, as traffic drives
 
 function P.build()
   local parts = require("lib.prefabs").car_parts({0.95, 0.95, 0.97})
@@ -142,9 +143,21 @@ local function drive_cop(c, dt)
       end
       c.goal = {city.node(k, l)}
     end
-    tx, tz = c.goal[1], c.goal[2]
-    -- Slow for the corner coming up at the next intersection.
-    want = U.dist2d(x, z, tx, tz) < 22 and 13 or 30
+    -- Drive in the right-hand lane, like traffic, so oncoming cars pass
+    -- by; pull out into the other lane to overtake whatever's ahead in ours.
+    local gx, gz = c.goal[1], c.goal[2]
+    local rx, rz = U.right(math.atan(gx - x, gz - z))
+    local fx, fz = U.forward(yaw)
+    local hit, d = engine.raycast(x + fx * 2.5, 0.8, z + fz * 2.5, fx, 0, fz, 16, id)
+    local tag = hit and engine.tag(hit)
+    if (tag == "car" or tag == "cop") and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5 then c.overtake = 2 end
+    c.overtake = math.max(0, (c.overtake or 0) - dt)
+    local lane = c.overtake > 0 and -LANE or LANE
+    tx, tz = gx + rx * lane, gz + rz * lane
+    -- Slow for the corner coming up at the next intersection, and for
+    -- anything in the way.
+    want = U.dist2d(x, z, gx, gz) < 22 and 13 or 30
+    if hit and tag ~= "player" and d < 8 then want = math.min(want, 8) end
   end
 
   local diff = U.angle_diff(yaw, math.atan(tx - x, tz - z))

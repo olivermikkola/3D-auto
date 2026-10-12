@@ -27,16 +27,16 @@ end
 page.items[#page.items + 1] = {label = "LEAVE", act = function() menu.close() end}
 menu.add_page("gunshop", page)
 
--- The first ordinary building block near the lot gets the shop on its
--- south face (the street wall is flush with the sidewalk), facing the street.
-local CANDIDATES = {{2, 14}, {3, 14}, {3, 15}, {1, 14}}
-
+-- The first ordinary downtown block of the map's candidates gets the shop
+-- on its south face (the street wall is flush with the sidewalk), facing the
+-- street. No candidate, no gun shop.
 function M.build()
   local L = G.city
-  local bi, bj = 2, 14
-  for _, c in ipairs(CANDIDATES) do
+  local bi, bj
+  for _, c in ipairs(city.map().gunshop or {}) do
     if L.kinds[c[1] .. "," .. c[2]] == "buildings" and city.district(c[1], c[2]) == "downtown" then bi, bj = c[1], c[2] break end
   end
+  if not bi then return end
   local cx, cz = city.block_center(bi, bj)
   local face = cz + L.bz / 2 - L.walk -- buildings' south wall
   local x = cx

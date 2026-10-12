@@ -36,9 +36,10 @@ Press G in game. That's the whole mod.
   game's saves or each other's. A mod can hold 16 keys.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
 - **The game's modules:** `lib.state`, `lib.util`, `lib.input` (`move`, `drive`, `look`,
-  `connected`), `lib.city` (`district(i, j)`, `node`, `block_center`, and the road graph:
-  `road`, `neighbors`, `nodes`, `random_node`, `nearest_node`; not every grid line is a road, so
-  walk the graph), `lib.landmarks`,
+  `connected`), `lib.city` (named places: `place`, `route`, `has`, `map`; the road graph:
+  `road`, `neighbors`, `nodes`, `random_node`, `nearest_node`; and `district(i, j)`, `node`,
+  `block_center`. Maps differ, so find things by place name and walk the graph rather than
+  using grid positions), `lib.landmarks`,
   `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`,
   `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups`
   (`place`), `systems.weapons` (`defs`, add your own), `systems.carnage` (`explode`),
@@ -59,11 +60,13 @@ Press G in game. That's the whole mod.
 
 ```lua
 require("lib.mission").register{
-  title = "Pizza Run", start = {city.node(2, 2)}, reward = 100,
+  title = "Pizza Run", start = {city.place("lot")}, reward = 100,
   run = function(m)
     m:say("Get a car")
     m:wait(function() return m:in_car() end)
-    local door = m:marker(city.node(6, 1))
+    -- Some street corner 150-250 m away, on whatever map is loaded.
+    local x, z = city.place("lot")
+    local door = m:marker(city.node(city.random_node(x, z, 150, 250)))
     m:timer(45)
     m:wait(function() return m:near(door, 5) end)
   end,
