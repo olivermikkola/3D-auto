@@ -54,9 +54,19 @@ local function fixtures()
   end)
   city.links = links -- restore even if a negative fails
   check(ok, "coherent forced road detour: " .. (ok and "completed" or tostring(err)))
-  -- Check every shipped junction against independent distance fields.
+  -- Check every shipped junction against independent distance fields. Each
+  -- step is a search of its own, so on a big town (real Raisio has
+  -- thousands of junctions) check an evenly spread sample of goals and
+  -- starts instead of every pair.
   local junctions = city.junctions()
-  for _, goal in ipairs(junctions) do
+  local function spread(list, n)
+    if #list <= n then return list end
+    local out = {}
+    for k = 1, n do out[k] = list[math.floor((k - 1) * #list / n) + 1] end
+    return out
+  end
+  local starts = spread(junctions, 60)
+  for _, goal in ipairs(spread(junctions, 300 > #junctions and #junctions or 40)) do
     local distance, queue = {[goal] = 0}, {goal}
     local i = 1
     while i <= #queue do
@@ -68,7 +78,7 @@ local function fixtures()
         end
       end
     end
-    for _, n in ipairs(junctions) do
+    for _, n in ipairs(#junctions <= 300 and junctions or starts) do
       local nxt = city.step_toward(n, goal)
       local d = distance[n]
       if d > 0 then
@@ -76,7 +86,8 @@ local function fixtures()
       else assert(nxt == n) end
     end
   end
-  check(true, "every shipped pursuit step is a shortest-path road edge")
+  check(true, #junctions <= 300 and "every shipped pursuit step is a shortest-path road edge"
+              or "sampled pursuit steps across the town are shortest-path road edges")
 
   local car = vehicle.spawn(0,0,0)
   local ambient = vehicle.spawn(20,0,0)

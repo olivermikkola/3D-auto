@@ -105,6 +105,8 @@ pub struct Engine {
     pub time: f64,
     pub tick: u64,
     pub quit: bool,
+    /// A script asked for a fresh start (engine.reload), as F5 does.
+    pub reload: bool,
     pub error: Option<String>,
     /// Shared with the audio thread; survives script reloads.
     pub mixer: Arc<Mutex<Mixer>>,
@@ -158,6 +160,7 @@ impl Engine {
             time: 0.0,
             tick: 0,
             quit: false,
+            reload: false,
             error: None,
             mixer,
             sounds: HashMap::new(),

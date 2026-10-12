@@ -685,6 +685,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("time", |e, _lua, (): ()| Ok(e.time));
     f!("ticks", |e, _lua, (): ()| Ok(e.tick));
     f!("quit", |e, _lua, (): ()| Ok(e.quit = true));
+    f!("reload", |e, _lua, (): ()| Ok(e.reload = true));
     f!("stats", |e, lua, (): ()| {
         let t = lua.create_table()?;
         t.set("entities", e.live)?;

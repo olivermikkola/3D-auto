@@ -199,6 +199,20 @@ local function road_layout(L, M, want, at_least)
   end
   local hit = engine.raycast(wx, 1, wz, -1, 0, 0, 60)
   check(hit and engine.tag(hit) == "wall", "a wall at the shore keeps cars out of the sea")
+  local water = (M.cover or {}).water
+  if water and #water > 0 then
+    local big = water[1]
+    for _, st in ipairs(water) do
+      if (st[3] - st[1]) * (st[4] - st[2]) > (big[3] - big[1]) * (big[4] - big[2]) then big = st end
+    end
+    local wet = 0
+    for _, j in ipairs(city.junctions()) do
+      local x, z = city.pos(j)
+      if roadnet.wet(x, z) then wet = wet + 1 end
+    end
+    check(roadnet.wet((big[1] + big[3]) / 2, (big[2] + big[4]) / 2) and wet == 0,
+          "the surveyed water stops you, and no junction (bridges included) is in it")
+  end
   local houses, apartments, sheds = 0, 0, 0
   for _, id in ipairs(engine.find("building")) do
     local m = engine.mesh_of(id) or ""

@@ -267,7 +267,8 @@ impl EventHandler for App {
                 self.mtime = m;
             }
         }
-        if std::mem::take(&mut self.reload) {
+        let asked = std::mem::take(&mut self.eng.borrow_mut().reload);
+        if std::mem::take(&mut self.reload) || asked {
             self.reload();
         }
         self.poll_pads(now);

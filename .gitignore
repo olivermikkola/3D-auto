@@ -2,3 +2,4 @@
 *.ppm
 __pycache__/
 /headless-results/
+/tools/osm_cache/

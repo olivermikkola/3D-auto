@@ -93,6 +93,21 @@ end
 
 function C.map() return MAP end
 
+-- The cities the pause menu offers, and the one picked there last (kept in
+-- the "city" save; MAP=<name> overrides it for a run).
+C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}}
+function C.chosen()
+  local v = engine.load("city")
+  for _, m in ipairs(C.MAPS) do if m[1] == v then return v end end
+end
+
+-- Switch city: remember it, and start the game afresh there.
+function C.choose(name)
+  local ok, err = engine.save("city", name)
+  if not ok then print("city: " .. tostring(err)) end
+  engine.reload()
+end
+
 -- ---- shape of the land -------------------------------------------------------
 
 -- First and last land block in row j.
