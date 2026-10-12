@@ -4,7 +4,7 @@ use crate::audio::{Mixer, Samples};
 use crate::font;
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{self, Body, Contact, WarmCache};
+use crate::physics::{self, Body, Broad, Contact, WarmCache};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -87,6 +87,7 @@ pub struct Engine {
     pub live: usize,
     pub lights: Vec<Option<Light>>,
     warm: WarmCache,
+    broad: Broad,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -127,6 +128,7 @@ impl Engine {
             ents: Vec::new(),
             live: 0,
             warm: WarmCache::new(),
+            broad: Broad::default(),
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -228,7 +230,7 @@ impl Engine {
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {
         self.tick += 1;
         self.time += dt as f64;
-        physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm)
+        physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm, &mut self.broad)
     }
 
     /// Put the listener at the camera and move entity-following voices.

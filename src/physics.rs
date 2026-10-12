@@ -129,13 +129,98 @@ fn body(ents: &[Option<Entity>], i: usize) -> (&Entity, &Body) {
     (e, e.body.as_ref().unwrap())
 }
 
-pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmCache) -> Vec<Contact> {
-    // 1. Forces.
+/// Broad phase. Static bodies sit in a uniform grid over XZ that persists
+/// between steps and is rebuilt only when one is added, removed or moved.
+/// Dynamic and kinematic bodies, and anything huge (the ground), are checked
+/// against everyone. Candidates come back in ascending entity order, the
+/// order a full scan visits them, so the solver sees the same sequence.
+#[derive(Default)]
+pub struct Broad {
+    cells: HashMap<(i32, i32), Vec<usize>>,
+    big: Vec<usize>,
+    /// Each static's AABB, and the pose it had when the grid was built.
+    boxes: Vec<Option<(Vec3, Vec3)>>,
+    poses: Vec<Option<[f32; 10]>>,
+    statics: usize,
+    pub rebuilds: u64,
+}
+
+impl Broad {
+    const CELL: f32 = 16.0;
+    /// Bodies spanning more than this many cells skip the grid.
+    const BIG: i32 = 6;
+
+    fn range(c: Vec3, h: Vec3) -> (i32, i32, i32, i32) {
+        let f = |v: f32| (v / Self::CELL).floor() as i32;
+        (f(c.x - h.x), f(c.x + h.x), f(c.z - h.z), f(c.z + h.z))
+    }
+
+    fn pose(p: Vec3, r: Quat, h: Vec3) -> [f32; 10] {
+        [p.x, p.y, p.z, r.x, r.y, r.z, r.w, h.x, h.y, h.z]
+    }
+
+    fn rebuild(&mut self, ents: &[Option<Entity>]) {
+        self.cells.clear();
+        self.big.clear();
+        self.boxes = vec![None; ents.len()];
+        self.poses = vec![None; ents.len()];
+        self.statics = 0;
+        self.rebuilds += 1;
+        for (i, e) in ents.iter().enumerate() {
+            let Some(e) = e else { continue };
+            let Some(b) = &e.body else { continue };
+            if b.kind != Kind::Static {
+                continue;
+            }
+            let (c, h) = (e.pos, extents(b.half, e.rot));
+            self.boxes[i] = Some((c, h));
+            self.poses[i] = Some(Self::pose(e.pos, e.rot, b.half));
+            self.statics += 1;
+            let (x0, x1, z0, z1) = Self::range(c, h);
+            if x1 - x0 > Self::BIG || z1 - z0 > Self::BIG {
+                self.big.push(i);
+                continue;
+            }
+            for x in x0..=x1 {
+                for z in z0..=z1 {
+                    self.cells.entry((x, z)).or_default().push(i);
+                }
+            }
+        }
+    }
+
+    /// Entities near the box: statics from its cells, big ones and `movers`, sorted.
+    fn near(&self, (c, h): (Vec3, Vec3), movers: &[usize], out: &mut Vec<usize>) {
+        out.clear();
+        out.extend_from_slice(&self.big);
+        out.extend_from_slice(movers);
+        let (x0, x1, z0, z1) = Self::range(c, h);
+        for x in x0..=x1 {
+            for z in z0..=z1 {
+                if let Some(v) = self.cells.get(&(x, z)) {
+                    out.extend_from_slice(v);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+    }
+}
+
+pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmCache, broad: &mut Broad) -> Vec<Contact> {
+    // 1. Forces. Also notice whether any static body changed since the grid was built.
     let mut dynamic = Vec::new();
-    let mut solid = Vec::new();
+    let mut movers = Vec::new();
+    let (mut statics, mut stale) = (0, false);
     for (i, e) in ents.iter_mut().enumerate() {
         let Some(e) = e else { continue };
         let Some(b) = &mut e.body else { continue };
+        if b.kind == Kind::Static {
+            statics += 1;
+            stale = stale || broad.poses.get(i).copied().flatten() != Some(Broad::pose(e.pos, e.rot, b.half));
+            continue;
+        }
+        movers.push(i);
         if b.kind == Kind::Dynamic {
             b.vel.y += gravity * b.gravity * dt;
             b.ang_vel = b.ang_vel * (1.0 / (1.0 + 0.3 * dt));
@@ -145,23 +230,30 @@ pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmC
             b.grounded = false;
             dynamic.push(i);
         }
-        solid.push(i);
+    }
+    if stale || statics != broad.statics {
+        broad.rebuild(ents);
     }
 
-    // 2. Narrow phase over a flat AABB cache.
+    // 2. Narrow phase. Moving bodies' AABBs are computed fresh; statics' come from the grid.
     let aabb = |e: &Entity| (e.pos, extents(e.body.as_ref().unwrap().half, e.rot));
-    let boxes: Vec<(Vec3, Vec3)> = solid.iter().map(|&i| aabb(ents[i].as_ref().unwrap())).collect();
-    let slot: HashMap<usize, usize> = solid.iter().enumerate().map(|(s, &i)| (i, s)).collect();
+    let mut moving: HashMap<usize, (Vec3, Vec3)> = HashMap::with_capacity(movers.len());
+    for &i in &movers {
+        moving.insert(i, aabb(ents[i].as_ref().unwrap()));
+    }
+    let bounds = |j: usize| moving.get(&j).copied().or_else(|| broad.boxes[j]).unwrap();
     let mut manifolds = Vec::new();
     let mut touching = Vec::new();
     let mut seen = HashSet::new();
+    let mut near = Vec::new();
     for &i in &dynamic {
-        let si = slot[&i];
-        for (sj, &j) in solid.iter().enumerate() {
+        let bi = moving[&i];
+        broad.near(bi, &movers, &mut near);
+        for &j in &near {
             if i == j {
                 continue;
             }
-            let ((ca, ha), (cb, hb)) = (boxes[si], boxes[sj]);
+            let ((ca, ha), (cb, hb)) = (bi, bounds(j));
             let (d, h) = ((ca - cb).abs(), ha + hb);
             if d.x >= h.x || d.y >= h.y || d.z >= h.z {
                 continue;
@@ -487,14 +579,34 @@ mod tests {
     }
 
     fn run(w: &mut [Option<Entity>], seconds: f32) {
-        let mut warm = WarmCache::new();
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
         for _ in 0..(seconds * 60.0) as usize {
-            step(w, 1.0 / 60.0, -20.0, &mut warm);
+            step(w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
         }
     }
 
     fn get(w: &[Option<Entity>], i: usize) -> &Entity {
         w[i].as_ref().unwrap()
+    }
+
+    #[test]
+    fn broad_phase_notices_statics_moving() {
+        // A crate resting on a platform falls when the platform is moved away,
+        // and the grid is only rebuilt when a static actually changes.
+        let platform = ent(v3(40., 3.0, 0.), Kind::Static, v3(2., 0.5, 2.));
+        let mut w = vec![ground(), platform, ent(v3(40., 4.0, 0.), Kind::Dynamic, v3(0.5, 0.5, 0.5))];
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        for _ in 0..120 {
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+        }
+        assert!((get(&w, 2).pos.y - 4.0).abs() < 0.05, "crate rests on the platform");
+        assert_eq!(broad.rebuilds, 1, "nothing static changed, so one build");
+        w[1].as_mut().unwrap().pos.x = 80.0;
+        for _ in 0..60 {
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+        }
+        assert_eq!(broad.rebuilds, 2, "moving the platform rebuilt the grid");
+        assert!(get(&w, 2).pos.y < 1.0, "and the crate fell to the ground (y = {})", get(&w, 2).pos.y);
     }
 
     #[test]
@@ -563,10 +675,10 @@ mod tests {
             b.step = step_h;
             b.lock_rotation = true;
             b.set_mass(1.0);
-            let mut warm = WarmCache::new();
+            let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
             for _ in 0..90 {
                 w[2].as_mut().unwrap().body.as_mut().unwrap().vel.x = 4.0;
-                step(&mut w, 1.0 / 60.0, -20.0, &mut warm);
+                step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
             }
             get(&w, 2).pos
         };
