@@ -9,6 +9,7 @@ use crate::engine::{Engine, Entity};
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
 use crate::physics::{self, Body, Kind};
+use crate::save;
 use mlua::{Function, IntoLuaMulti, Lua, LuaOptions, MultiValue, Result, StdLib, Table, Value};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -98,12 +99,26 @@ function engine.load_mod(dir)
   env._G = env
 
   -- engine, with file access rooted in the mod's folder
-  local api = setmetatable({}, {__index = engine})
+  local api = setmetatable({}, {__index = engine, __metatable = false})
   for _, f in ipairs{"load_obj", "load_wav"} do
     api[f] = function(n, path, ...) return engine[f](n, dir .. "/" .. path, ...) end
   end
   for _, f in ipairs{"files", "dirs"} do
     api[f] = function(path) return engine[f](dir .. "/" .. (path or ".")) end
+  end
+  -- saves, namespaced as "mod.<name>.<key>" so mods can't touch each other's or the game's
+  local function mod_key(k)
+    if type(k) ~= "string" then error("save key must be a string", 3) end
+    return "mod." .. name .. "." .. k
+  end
+  api.save = function(k, v) return engine.save(mod_key(k), v) end
+  api.load = function(k) return engine.load(mod_key(k)) end
+  api.saves = function()
+    local mine, prefix = {}, "mod." .. name .. "."
+    for _, k in ipairs(engine.saves()) do
+      if k:sub(1, #prefix) == prefix then mine[#mine + 1] = k:sub(#prefix + 1) end
+    end
+    return mine
   end
   api.mod_name = name
   env.engine = api
@@ -653,6 +668,49 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             })?,
         )?;
     }
+    // ---- saves ----------------------------------------------------------
+    // One plain value per key. Bad keys or unsavable values are script bugs
+    // and raise; disk trouble returns nil, message so the game can carry on.
+    f!("save", |e, _lua, (key, v): (String, Value)| {
+        save::check_key(&key).map_err(mlua::Error::runtime)?;
+        let text = match v {
+            Value::Nil => None,
+            v => Some(save::encode(&v).map_err(|err| mlua::Error::runtime(format!("save '{key}': {err}")))?),
+        };
+        let keys = e.saves.keys();
+        if text.is_some() && !keys.contains(&key) {
+            if keys.len() >= save::MAX_KEYS {
+                return Err(mlua::Error::runtime(format!("save '{key}': already {} saved keys", save::MAX_KEYS)));
+            }
+            // Mod keys are "mod.<name>.<key>"; one mod gets a quarter of the room.
+            if let Some(m) = key.strip_prefix("mod.").and_then(|k| k.split_once('.')).map(|(m, _)| format!("mod.{m}."))
+                && keys.iter().filter(|k| k.starts_with(&m)).count() >= save::MAX_KEYS / 4
+            {
+                return Err(mlua::Error::runtime(format!("save '{key}': this mod already has {} saved keys", save::MAX_KEYS / 4)));
+            }
+        }
+        Ok(match e.saves.write(&key, text.as_deref()) {
+            Ok(()) => (true, None),
+            Err(err) => (false, Some(format!("save '{key}': {err}"))),
+        })
+    });
+    f!("load", |e, lua, key: String| {
+        save::check_key(&key).map_err(mlua::Error::runtime)?;
+        let text = match e.saves.read(&key) {
+            Ok(Some(t)) => t,
+            Ok(None) => return Ok((Value::Nil, None)),
+            Err(err) => return Ok((Value::Nil, Some(format!("load '{key}': {err}")))),
+        };
+        Ok(match save::decode(lua, &text) {
+            Ok(v) => (v, None),
+            Err(err) => {
+                let moved = e.saves.quarantine(&key).map_or(String::new(), |p| format!("; moved it to {}", p.display()));
+                (Value::Nil, Some(format!("load '{key}': {err}{moved}")))
+            }
+        })
+    });
+    f!("saves", |e, _lua, (): ()| Ok(e.saves.keys()));
+
     f!("_error", |e, _lua, (ev, msg): (String, String)| {
         eprintln!("[lua:{ev}] {msg}");
         e.error = Some(format!("{ev}: {msg}"));

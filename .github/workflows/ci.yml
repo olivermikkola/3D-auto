@@ -24,6 +24,14 @@ jobs:
       - run: cargo build --release
       - name: Headless autoplay (scripted playthrough, mods, sandbox)
         run: AUTO_TEST=1 ./target/release/auto game --headless 9000
+      - name: Saves across restarts (write, reload, corrupt)
+        run: |
+          rm -rf saves-test
+          SAVE_TEST=1 ./target/release/auto game --headless 600 --save-dir saves-test
+          SAVE_TEST=2 ./target/release/auto game --headless 600 --save-dir saves-test
+          echo 'return { cash = ' > saves-test/progress.lua
+          SAVE_TEST=3 ./target/release/auto game --headless 600 --save-dir saves-test
+          test -f saves-test/progress.lua.bad
       - name: Soak (5 simulated minutes)
         if: runner.os == 'Linux'
         run: SOAK=1 ./target/release/auto game --headless 18000

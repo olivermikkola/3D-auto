@@ -1,7 +1,7 @@
 //! auto: a minimal 3D sandbox kernel. The binary renders, simulates and
 //! forwards input; the game is whatever Lua scripts the data directory holds.
 //!
-//!   auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH]
+//!   auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH] [--save-dir DIR]
 
 mod audio;
 mod engine;
@@ -10,6 +10,7 @@ mod math;
 mod mesh;
 mod physics;
 mod render;
+mod save;
 mod script;
 
 use engine::{Engine, TICK_HZ};
@@ -28,10 +29,19 @@ struct Opts {
     frames: Option<u64>,
     ticks_per_frame: u32,
     size: (i32, i32),
+    save_dir: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Opts, String> {
-    let mut o = Opts { root: PathBuf::from("game"), headless: None, screenshot: None, frames: None, ticks_per_frame: 1, size: (1280, 720) };
+    let mut o = Opts {
+        root: PathBuf::from("game"),
+        headless: None,
+        screenshot: None,
+        frames: None,
+        ticks_per_frame: 1,
+        size: (1280, 720),
+        save_dir: None,
+    };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut val = |name: &str| args.next().ok_or(format!("{name} needs a value"));
@@ -40,6 +50,7 @@ fn parse_args() -> Result<Opts, String> {
             "--screenshot" => o.screenshot = Some(val("--screenshot")?),
             "--frames" => o.frames = Some(val("--frames")?.parse().map_err(|_| "bad frame count")?),
             "--ticks-per-frame" => o.ticks_per_frame = val("--ticks-per-frame")?.parse().map_err(|_| "bad tick count")?,
+            "--save-dir" => o.save_dir = Some(PathBuf::from(val("--save-dir")?)),
             "--size" => {
                 let v = val("--size")?;
                 let (w, h) = v.split_once('x').ok_or("size is WxH")?;
@@ -51,7 +62,7 @@ fn parse_args() -> Result<Opts, String> {
             }
             "-h" | "--help" => {
                 println!(
-                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH]"
+                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR]"
                 );
                 std::process::exit(0);
             }
@@ -70,6 +81,14 @@ fn parse_args() -> Result<Opts, String> {
         return Err(format!("no main.lua in {}", o.root.display()));
     }
     o.root = plain_path(o.root.canonicalize().map_err(|e| e.to_string())?);
+    if let Some(d) = &o.save_dir {
+        // Saves inside the game folder would trip hot reload on every autosave.
+        let d = std::path::absolute(d).map_err(|e| format!("--save-dir {}: {e}", d.display()))?;
+        if d.starts_with(&o.root) {
+            return Err(format!("--save-dir {} is inside the game folder; put saves somewhere else", d.display()));
+        }
+        o.save_dir = Some(d);
+    }
     Ok(o)
 }
 
@@ -79,6 +98,34 @@ fn plain_path(p: PathBuf) -> PathBuf {
     match p.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
         Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
         _ => p,
+    }
+}
+
+/// Saves go to the user's data folder when a person is playing. Headless,
+/// screenshot and timed runs keep them in memory so tests and docs never read
+/// or overwrite real progress, unless `--save-dir` names a folder.
+fn save_store(o: &Opts) -> save::Store {
+    let dir = match &o.save_dir {
+        Some(d) => Some(d.clone()),
+        None if o.headless.is_some() || o.screenshot.is_some() || o.frames.is_some() => None,
+        None => {
+            let game = o
+                .root
+                .file_name()
+                .map_or("game".into(), |n| n.to_string_lossy().replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_"));
+            let d = save::user_dir(&game);
+            if d.is_none() {
+                eprintln!("saves: no user data folder found; progress won't be kept");
+            }
+            d
+        }
+    };
+    match dir {
+        Some(d) => {
+            println!("saves: {}", d.display());
+            save::Store::Dir(d)
+        }
+        None => save::Store::default(),
     }
 }
 
@@ -115,9 +162,10 @@ fn load(eng: &Shared) -> Option<Script> {
     }
 }
 
-fn run_headless(root: PathBuf, ticks: u64) {
+fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
     let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
     let eng: Shared = Rc::new(RefCell::new(Engine::new(root, mixer.clone())));
+    eng.borrow_mut().saves = saves;
     // Mix (and discard) audio in step with ticks so headless runs exercise it too.
     let mut sink = vec![0.0f32; 2 * (audio::RATE as f64 / TICK_HZ) as usize];
     let script = load(&eng);
@@ -133,6 +181,7 @@ fn run_headless(root: PathBuf, ticks: u64) {
                 break;
             }
         }
+        s.emit(&eng, "quit", ());
     }
     let e = eng.borrow();
     println!("headless: {} ticks in {:.1} ms, {} entities, {} meshes", e.tick, t0.elapsed().as_secs_f64() * 1e3, e.live, e.meshes.len());
@@ -156,18 +205,33 @@ struct App {
     shot: Option<(String, u64)>,
     quit_after: Option<u64>,
     ticks_per_frame: u32,
+    closed: bool,
 }
 
 impl App {
+    /// Tell scripts the game is closing (once), so they can save.
+    fn close(&mut self) {
+        if !std::mem::replace(&mut self.closed, true)
+            && let Some(s) = &self.script
+        {
+            s.emit(&self.eng, "quit", ());
+        }
+    }
+
     fn reload(&mut self) {
-        let (root, screen, mixer) = {
-            let e = self.eng.borrow();
-            (e.root.clone(), e.screen, e.mixer.clone())
+        // The old scripts get to save before they're replaced.
+        if let Some(s) = &self.script {
+            s.emit(&self.eng, "quit", ());
+        }
+        let (root, screen, mixer, saves) = {
+            let mut e = self.eng.borrow_mut();
+            (e.root.clone(), e.screen, e.mixer.clone(), std::mem::take(&mut e.saves))
         };
         // Drop the old Lua state before building the new one.
         self.script = None;
         *self.eng.borrow_mut() = Engine::new(root, mixer);
         self.eng.borrow_mut().screen = screen;
+        self.eng.borrow_mut().saves = saves;
         self.script = load(&self.eng);
         self.acc = 0.0;
         println!("reloaded");
@@ -233,10 +297,12 @@ impl EventHandler for App {
                 Ok(()) => println!("screenshot: {path} ({} draw calls)", self.gfx.draw_calls),
                 Err(e) => eprintln!("screenshot failed: {e}"),
             }
+            self.close();
             window::order_quit();
         }
         self.gfx.commit();
         if self.eng.borrow().quit || self.quit_after == Some(self.frame) {
+            self.close();
             window::order_quit();
         }
     }
@@ -273,6 +339,10 @@ impl EventHandler for App {
 
     fn mouse_button_up_event(&mut self, b: MouseButton, _x: f32, _y: f32) {
         self.mouse_button(b, false);
+    }
+
+    fn quit_requested_event(&mut self) {
+        self.close();
     }
 
     fn raw_mouse_motion(&mut self, dx: f32, dy: f32) {
@@ -372,8 +442,9 @@ fn main() {
             std::process::exit(2);
         }
     };
+    let saves = save_store(&o);
     if let Some(ticks) = o.headless {
-        return run_headless(o.root, ticks);
+        return run_headless(o.root, ticks, saves);
     }
     let conf = conf::Conf {
         window_title: "auto".into(),
@@ -388,6 +459,7 @@ fn main() {
         let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
         let out = audio::start(mixer.clone());
         let eng: Shared = Rc::new(RefCell::new(Engine::new(root.clone(), mixer)));
+        eng.borrow_mut().saves = saves;
         let script = load(&eng);
         let mtime = newest_mtime(&root);
         Box::new(App {
@@ -405,6 +477,7 @@ fn main() {
             quit_after: if shot.is_none() { frames } else { None },
             shot: shot.map(|p| (p, frames.unwrap_or(120))),
             ticks_per_frame,
+            closed: false,
         })
     });
 }

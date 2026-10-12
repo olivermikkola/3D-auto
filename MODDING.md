@@ -31,7 +31,9 @@ Press G in game. That's the whole mod.
 
 - **The engine API:** everything in the README's "Lua API" section, plus `engine.mod_name`.
   File paths (`load_obj`, `load_wav`, `files`, `dirs`) are relative to the mod's own folder,
-  so ship assets next to `init.lua`.
+  so ship assets next to `init.lua`. `engine.save`, `engine.load` and `engine.saves` work on
+  the mod's own keys (stored as `mod.<name>.<key>`), so mods can't read or overwrite the
+  game's saves or each other's. A mod can hold 16 keys.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
 - **The game's modules:** `lib.state`, `lib.util`, `lib.city`, `lib.vehicle`, `lib.mission`,
   `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`, `hurt_player`, `ragdoll`), `lib.fx`
@@ -41,7 +43,8 @@ Press G in game. That's the whole mod.
 - **The event bus:** the engine's `init`, `tick`, `frame`, `key` and `contact` events, the
   game's events (`vehicle_enter`, `carjacked`, `ped_down`, `damaged`, `killed`, `gunshot`,
   `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`, `busted`,
-  `mission_passed`, `stunt`, `minimap`), and any you `engine.emit` yourself.
+  `mission_passed`, `stunt`, `minimap`), the engine's `quit` (a good time to save), and any
+  you `engine.emit` yourself.
 - **Safe standard library:** `math`, `string`, `table`, `coroutine`, `utf8`, and `os.time`,
   `os.clock` and `os.date`.
 
@@ -72,6 +75,8 @@ Mods are other people's code, so they don't get the keys to your computer:
   bytecode.
 - **Paths:** anything given to the engine is relative to the game folder, and `..` or
   absolute paths are refused.
+- **Saves:** a mod only sees its own save keys, saves are parsed as data rather than run, and
+  keys can't contain path separators.
 - **Isolation:** a mod's files only ever run inside its sandbox. Neither the game's `require`
   nor another mod can load them as trusted code.
 - **Shared state:** mods share the game's Lua state, so they *can* break the game (replace a

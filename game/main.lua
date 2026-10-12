@@ -2,6 +2,7 @@
 --   init, tick(dt), frame(dt), key(name, down), contact(a, b, speed)
 -- Everything below is ordinary game code; change it and it hot-reloads.
 local G = require "lib.state"
+require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
 local player = require "lib.player"
@@ -56,6 +57,7 @@ end)
 if os.getenv("AUTO_TEST") then require "test.autoplay" end
 if os.getenv("SOAK") then require "test.soak" end
 if os.getenv("GARAGE_TEST") then require "test.garage" end
+if os.getenv("SAVE_TEST") then require "test.save" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)
