@@ -8,6 +8,7 @@ mod engine;
 mod font;
 mod math;
 mod mesh;
+mod pad;
 mod physics;
 mod render;
 mod save;
@@ -219,6 +220,7 @@ struct App {
     ticks_per_frame: u32,
     closed: bool,
     fullscreen: bool,
+    pads: pad::Pads,
 }
 
 impl App {
@@ -268,6 +270,7 @@ impl EventHandler for App {
         if std::mem::take(&mut self.reload) {
             self.reload();
         }
+        self.poll_pads(now);
         let Some(script) = &self.script else { return };
         if self.eng.borrow().paused {
             self.acc = 0.0;
@@ -341,18 +344,11 @@ impl EventHandler for App {
         if repeat || name.is_empty() {
             return;
         }
-        self.eng.borrow_mut().keys.insert(name.to_string());
-        if let Some(s) = &self.script {
-            s.emit(&self.eng, key_event(&self.eng), (name, true));
-        }
+        self.press(name, true);
     }
 
     fn key_up_event(&mut self, key: KeyCode, _m: KeyMods) {
-        let name = key_name(key);
-        self.eng.borrow_mut().keys.remove(name);
-        if let Some(s) = &self.script {
-            s.emit(&self.eng, key_event(&self.eng), (name, false));
-        }
+        self.press(key_name(key), false);
     }
 
     fn mouse_button_down_event(&mut self, b: MouseButton, _x: f32, _y: f32) {
@@ -385,6 +381,39 @@ impl EventHandler for App {
 }
 
 impl App {
+    /// A key, mouse button or pad button went down or up.
+    fn press(&mut self, name: &str, down: bool) {
+        if down {
+            self.eng.borrow_mut().keys.insert(name.to_string());
+        } else {
+            self.eng.borrow_mut().keys.remove(name);
+        }
+        if let Some(s) = &self.script {
+            s.emit(&self.eng, key_event(&self.eng), (name, down));
+        }
+    }
+
+    /// Gamepad buttons arrive as keys; sticks and triggers are read with engine.pad().
+    fn poll_pads(&mut self, now: f64) {
+        let mut events = Vec::new();
+        self.pads.poll(now, &mut events);
+        self.eng.borrow_mut().pad = self.pads.state().cloned();
+        for ev in events {
+            let (name, connected) = match ev {
+                pad::Event::Button(name, down) => {
+                    self.press(name, down);
+                    continue;
+                }
+                pad::Event::Connected(name) => (name, true),
+                pad::Event::Disconnected(name) => (name, false),
+            };
+            println!("gamepad {}: {name}", if connected { "connected" } else { "disconnected" });
+            if let Some(s) = &self.script {
+                s.emit(&self.eng, if connected { "pad_connected" } else { "pad_disconnected" }, name.as_str());
+            }
+        }
+    }
+
     fn mouse_button(&mut self, b: MouseButton, down: bool) {
         let name = match b {
             MouseButton::Left => "mouse1",
@@ -392,14 +421,7 @@ impl App {
             MouseButton::Middle => "mouse3",
             MouseButton::Unknown => return,
         };
-        if down {
-            self.eng.borrow_mut().keys.insert(name.into())
-        } else {
-            self.eng.borrow_mut().keys.remove(name)
-        };
-        if let Some(s) = &self.script {
-            s.emit(&self.eng, key_event(&self.eng), (name, down));
-        }
+        self.press(name, down);
     }
 }
 
@@ -511,6 +533,7 @@ fn main() {
             ticks_per_frame,
             closed: false,
             fullscreen: false,
+            pads: pad::Pads::new(),
         })
     });
 }

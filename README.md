@@ -27,6 +27,7 @@ cargo run --release -- my_game   # any directory with a main.lua
 
 Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress · `R` shops and the garage ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
+A gamepad works too (see [Gamepads](#gamepads)).
 
 ## Design
 
@@ -39,7 +40,8 @@ mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause an
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
 | `src/script.rs` | ~740 | The `engine` Lua table and the event bus. |
 | `src/save.rs` | ~570 | Save data: Lua values to readable files and back, parsed as data and never run. |
-| `src/main.rs` | ~520 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
+| `src/main.rs` | ~540 | Fixed 60 Hz tick, input, hot reload, headless + screenshot modes. |
+| `src/pad.rs` | ~480 | Gamepads: evdev read directly on Linux, gilrs elsewhere. |
 
 Choices made to keep it small:
 
@@ -70,7 +72,8 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `tick` | `dt` | fixed 60 Hz, before physics |
 | `contact` | `a, b, speed` | each touching body pair after physics; `speed` = impact speed in m/s |
 | `frame` | `dt` | once per rendered frame; build the HUD and camera here. `dt` is 0 while paused |
-| `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ... |
+| `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ..., and gamepad buttons `pad_a`, `pad_b`, `pad_x`, `pad_y`, `pad_lb`, `pad_rb`, `pad_lt`, `pad_rt`, `pad_back`, `pad_start`, `pad_l3`, `pad_r3`, `pad_up`/`down`/`left`/`right` |
+| `pad_connected` / `pad_disconnected` | `name` | a gamepad was plugged in or pulled out |
 | `quit` | | before the game closes, and before a hot reload replaces the scripts; save here |
 | `menu_key` | `name, down` | instead of `key` while the game is paused, so only menus see input |
 | `minimized` | | the window was minimized (the demo pauses) |
@@ -128,6 +131,7 @@ engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g) 
 -- input & HUD (pixels, origin top-left)
 engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.screen() -> w,h
 engine.cursor() -> x,y      -- mouse position in pixels, for clicking on menus
+engine.pad() -> {name, lx, ly, rx, ry, lt, rt} | nil   -- sticks -1..1 (up/right +), triggers 0..1
 engine.pause(bool)  engine.paused()   engine.fullscreen([bool]) -> bool
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
 
@@ -160,6 +164,38 @@ touches them per frame. A full day lasts 8 minutes. `HOUR=22 auto game` starts a
 | | |
 |---|---|
 | ![Noon](docs/noon.png) | ![Dusk](docs/dusk.png) |
+
+## Gamepads
+
+Plug in a controller and play; the help overlay switches to show its buttons.
+
+| | on foot | driving |
+|---|---|---|
+| left stick | move (analog: a light push walks slowly) | steer (analog) |
+| right stick | camera | camera |
+| RT | fire | accelerate (analog) |
+| LT | | brake, then reverse (analog) |
+| A | jump | handbrake |
+| B | run | horn |
+| Y | get in a car | get out |
+| X | use a shop | use the spray shop or garage |
+| LB / RB | previous / next weapon | |
+| Back / Start | progress / pause | |
+
+In menus, the D-pad or left stick moves, A picks and B goes back. Pulling the controller out
+pauses the game.
+
+The engine turns buttons into ordinary key names (`pad_a`, `pad_start`, ...), so they arrive as
+`key` events, `engine.key("pad_a")` works, and while paused they go to `menu_key` like
+everything else. `engine.pad()` gives the sticks and triggers. `lib/input.lua` (~110 lines)
+merges keyboard and pad into analog move, drive and look values and maps the buttons onto the
+keys the game already used, so no other system had to change.
+
+On Linux, `src/pad.rs` reads `/dev/input/event*` directly through the kernel's gamepad API, so
+there's still no build dependency (no libudev); any controller whose driver follows that API
+(Xbox, PlayStation, Switch Pro and most others) works, and it notices pads plugged in later. On
+Windows and macOS it uses [gilrs](https://crates.io/crates/gilrs). The analog settings (mouse
+sensitivity, invert camera Y) apply to the right stick too.
 
 ## The city
 
@@ -366,7 +402,7 @@ auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-
 launches off the stunt ramp, gets busted by the police, then escapes them) and exits non-zero on
 any failure. `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
-`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, and `CITY_TEST=1` the districts and a drive up the car park (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
+`MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the districts and a drive up the car park, and `PAD_TEST=1` the gamepad controls (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
 
 ## Releasing

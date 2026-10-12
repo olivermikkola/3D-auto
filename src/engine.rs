@@ -118,6 +118,8 @@ pub struct Engine {
     pub fullscreen: bool,
     /// Mouse position in window pixels, for clicking on menus.
     pub cursor: (f32, f32),
+    /// The first connected gamepad's sticks and triggers.
+    pub pad: Option<crate::pad::State>,
 }
 
 impl Engine {
@@ -164,6 +166,7 @@ impl Engine {
             paused: false,
             fullscreen: false,
             cursor: (0.0, 0.0),
+            pad: None,
         };
         for (name, m) in mesh::builtins() {
             e.add_mesh(name, m);

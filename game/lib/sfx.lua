@@ -50,7 +50,7 @@ local function update_engines()
     if v then
       local speed = math.abs(vehicle.speed(id))
       local mine = id == G.vehicle
-      local rev = mine and engine.key("w") and 0.25 or 0
+      local rev = mine and require("lib.input").drive() > 0.1 and 0.25 or 0
       local air = mine and not vehicle.on_wheels(id) and 0.35 or 0 -- free-spinning wheels
       engine.set_voice(v, {pitch = 0.7 + speed / vehicle.MAX_SPEED * 1.6 + rev + air, volume = mine and 0.8 or 0.35})
     end

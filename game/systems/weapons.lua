@@ -113,11 +113,12 @@ engine.on("key", function(k, down)
   if k == "mouse1" or k == "f" then held = down end
   if not down then return end
   if k == "1" then W.select("fists") elseif k == "2" then W.select("pistol") elseif k == "3" then W.select("smg")
-  elseif k == "q" then
-    local i = 1
+  elseif k == "q" or k == "q_back" then
+    -- Next weapon you have (the gamepad's LB goes the other way).
+    local i, dir = 1, k == "q" and 1 or -1
     for n, w in ipairs(W.order) do if w == G.weapon then i = n end end
     for step = 1, #W.order do
-      local w = W.order[(i + step - 1) % #W.order + 1]
+      local w = W.order[(i - 1 + dir * step) % #W.order + 1]
       if W.has(w) then G.weapon = w break end
     end
   end

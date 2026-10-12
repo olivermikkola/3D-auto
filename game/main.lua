@@ -66,6 +66,7 @@ if os.getenv("SAVE_TEST") then require "test.save" end
 if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
+if os.getenv("PAD_TEST") then require "test.pad" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)

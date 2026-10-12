@@ -44,6 +44,8 @@ jobs:
           SHOP_TEST=2 ./target/release/auto game --headless 900 --save-dir shop-test
       - name: City districts and the car park drive
         run: CITY_TEST=1 ./target/release/auto game --headless 2400
+      - name: Gamepad controls (a scripted pad)
+        run: PAD_TEST=1 ./target/release/auto game --headless 3000
       - name: Soak (5 simulated minutes)
         if: runner.os == 'Linux'
         run: SOAK=1 ./target/release/auto game --headless 18000

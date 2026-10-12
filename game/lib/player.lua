@@ -2,6 +2,7 @@
 local G = require "lib.state"
 local U = require "lib.util"
 local vehicle = require "lib.vehicle"
+local input = require "lib.input"
 
 local M = {}
 local WALK, RUN, JUMP = 5, 10, 8
@@ -14,21 +15,22 @@ end
 
 local function walk(dt)
   local id = G.player
-  local f = (engine.key("w") and 1 or 0) - (engine.key("s") and 1 or 0)
-  local s = (engine.key("d") and 1 or 0) - (engine.key("a") and 1 or 0)
+  local f, s = input.move()
   local _, vy = engine.vel(id)
-  local speed = engine.key("shift") and RUN or WALK
+  local speed = input.running() and RUN or WALK
   local fx, fz = U.forward(G.cam_yaw)
   local rx, rz = U.right(G.cam_yaw)
   local mx, mz = fx * f + rx * s, fz * f + rz * s
   local len = math.sqrt(mx * mx + mz * mz)
   if len > 0 then
-    mx, mz = mx / len * speed, mz / len * speed
+    -- Full speed on keys; a stick pushed part way walks slower.
+    local push = math.min(1, len)
+    mx, mz = mx / len * speed * push, mz / len * speed * push
     -- Turn the body toward the direction of travel.
     local yaw = engine.yaw(id)
     engine.set_yaw(id, yaw + U.angle_diff(yaw, math.atan(mx, mz)) * math.min(1, dt * 12))
   end
-  if engine.key("space") and engine.grounded(id) then vy = JUMP end
+  if input.jumping() and engine.grounded(id) then vy = JUMP end
   engine.set_vel(id, mx, vy, mz)
 end
 
@@ -74,11 +76,8 @@ end)
 
 engine.on("tick", function(dt)
   if G.vehicle then
-    vehicle.drive(G.vehicle, dt, {
-      throttle = (engine.key("w") and 1 or 0) - (engine.key("s") and 1 or 0),
-      steer = (engine.key("a") and 1 or 0) - (engine.key("d") and 1 or 0),
-      handbrake = engine.key("space"),
-    })
+    local throttle, steer, handbrake = input.drive()
+    vehicle.drive(G.vehicle, dt, {throttle = throttle, steer = steer, handbrake = handbrake})
   elseif G.player then
     walk(dt)
   end
