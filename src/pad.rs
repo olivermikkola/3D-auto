@@ -253,7 +253,7 @@ mod evdev {
                 match file.read(&mut buf) {
                     Ok(0) => return false,
                     Ok(n) => {
-                        for ev in buf[..n].chunks_exact(EVENT_SIZE) {
+                        for ev in buf[..n].as_chunks::<EVENT_SIZE>().0 {
                             let t = EVENT_SIZE - 8;
                             let ty = u16::from_ne_bytes([ev[t], ev[t + 1]]);
                             let code = u16::from_ne_bytes([ev[t + 2], ev[t + 3]]);
