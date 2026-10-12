@@ -35,19 +35,21 @@ Press G in game. That's the whole mod.
   the mod's own keys (stored as `mod.<name>.<key>`), so mods can't read or overwrite the
   game's saves or each other's. A mod can hold 16 keys.
 - **Its own modules:** `require "jobs"` loads `mods/<name>/jobs.lua`, sandboxed.
-- **The game's modules:** `lib.state`, `lib.util`, `lib.city` (`district(i, j)`, `node`,
-  `block_center`), `lib.landmarks`, `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`,
-  `lib.health` (`damage`, `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`,
-  `explosion`), `lib.pickups` (`place`), `systems.weapons` (`defs`, add your own),
-  `systems.carnage` (`explode`), `systems.police`, `systems.peds`, `lib.daynight`,
-  `lib.settings` (`get`), `lib.menu` (`add_page`, `show`), `lib.shop` (`add`, `pay`, `price`;
-  see the shops in `systems/` for examples), and so on.
-- **The event bus:** the engine's `init`, `tick`, `frame`, `key` and `contact` events, the
-  game's events (`vehicle_enter`, `carjacked`, `ped_down`, `damaged`, `killed`, `gunshot`,
-  `explosion`, `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`, `busted`,
-  `mission_passed`, `stunt`, `purchase`, `resprayed`, `car_bought`, `minimap`), the engine's
-  `quit` (a good time to save), and any you `engine.emit` yourself. While the game is paused, keys arrive as `menu_key` instead of
-  `key`, and `frame`'s `dt` is 0.
+- **The game's modules:** `lib.state`, `lib.util`, `lib.input` (`move`, `drive`, `look`,
+  `connected`), `lib.city` (`district(i, j)`, `node`, `block_center`), `lib.landmarks`,
+  `lib.vehicle`, `lib.mission`, `lib.wanted`, `lib.prefabs`, `lib.health` (`damage`,
+  `hurt_player`, `ragdoll`), `lib.fx` (`burst`, `tracer`, `flash`, `explosion`), `lib.pickups`
+  (`place`), `systems.weapons` (`defs`, add your own), `systems.carnage` (`explode`),
+  `systems.police`, `systems.peds`, `lib.daynight`, `lib.settings` (`get`), `lib.menu`
+  (`add_page`, `show`), `lib.shop` (`add`, `pay`, `price`; see the shops in `systems/` for
+  examples), and so on.
+- **The event bus:** the engine's `init`, `tick`, `frame`, `key`, `contact`, `quit` (a good
+  time to save), `pad_connected` and `pad_disconnected` events, the game's events
+  (`vehicle_enter`, `carjacked`, `ped_down`, `damaged`, `killed`, `gunshot`, `explosion`,
+  `player_hurt`, `wasted`, `respawned`, `pickup`, `wanted_changed`, `busted`, `mission_passed`,
+  `stunt`, `purchase`, `resprayed`, `car_bought`, `minimap`), and any you `engine.emit`
+  yourself. Gamepad buttons arrive as keys named `pad_a`, `pad_start` and so on. While the game
+  is paused, keys arrive as `menu_key` instead of `key`, and `frame`'s `dt` is 0.
 - **Safe standard library:** `math`, `string`, `table`, `coroutine`, `utf8`, and `os.time`,
   `os.clock` and `os.date`.
 

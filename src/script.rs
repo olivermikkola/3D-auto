@@ -648,6 +648,16 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("mouse", |e, _lua, (): ()| Ok(e.mouse_delta));
     f!("grab_mouse", |e, _lua, g: bool| Ok(e.mouse_grab = g));
     f!("cursor", |e, _lua, (): ()| Ok(e.cursor));
+    // The first gamepad: sticks -1..1 (up and right positive), triggers 0..1. Nil without one.
+    f!("pad", |e, lua, (): ()| {
+        let Some(p) = &e.pad else { return Ok(Value::Nil) };
+        let t = lua.create_table()?;
+        t.set("name", p.name.as_str())?;
+        for (k, v) in [("lx", p.lx), ("ly", p.ly), ("rx", p.rx), ("ry", p.ry), ("lt", p.lt), ("rt", p.rt)] {
+            t.set(k, v)?;
+        }
+        Ok(Value::Table(t))
+    });
     f!("_pause", |e, _lua, on: bool| Ok(e.set_paused(on)));
     f!("paused", |e, _lua, (): ()| Ok(e.paused));
     f!("fullscreen", |e, _lua, on: Option<bool>| {

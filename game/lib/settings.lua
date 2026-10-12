@@ -6,7 +6,7 @@ local M = {}
 M.list = {
   {key = "volume", label = "VOLUME", min = 0, max = 100, step = 10, default = 70, fmt = "%d%%"},
   {key = "sensitivity", label = "MOUSE SENSITIVITY", min = 1, max = 10, step = 1, default = 5},
-  {key = "invert_y", label = "INVERT MOUSE Y", default = false},
+  {key = "invert_y", label = "INVERT CAMERA Y", default = false},
   {key = "fov", label = "FIELD OF VIEW", min = 55, max = 100, step = 5, default = 70},
   {key = "fullscreen", label = "FULLSCREEN", default = false},
   {key = "help", label = "HELP OVERLAY", default = true},

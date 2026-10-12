@@ -1,6 +1,7 @@
 -- Third-person orbit camera with chase behaviour in cars and wall avoidance.
 local G = require "lib.state"
 local settings = require "lib.settings"
+local input = require "lib.input"
 local U = require "lib.util"
 
 local M = {}
@@ -13,11 +14,13 @@ engine.on("frame", function(dt)
   local mx, my = engine.mouse()
   local sens = settings.get("sensitivity") * 0.0005
   if settings.get("invert_y") then my = -my end
-  local kx = (engine.key("left") and 1 or 0) - (engine.key("right") and 1 or 0)
-  local ky = (engine.key("up") and 1 or 0) - (engine.key("down") and 1 or 0)
+  local kx, ky = input.look()
+  if settings.get("invert_y") then ky = -ky end
+  -- Sticks turn at up to 2.5 rad/s, scaled by the sensitivity setting like the mouse.
+  local stick = 2.5 * settings.get("sensitivity") / 5
   if mx ~= 0 or my ~= 0 or kx ~= 0 or ky ~= 0 then last_look = engine.time() end
-  G.cam_yaw = G.cam_yaw - mx * sens + kx * 2 * dt
-  G.cam_pitch = U.clamp(G.cam_pitch + my * sens + ky * dt, -0.2, 1.2)
+  G.cam_yaw = G.cam_yaw - mx * sens + kx * stick * dt
+  G.cam_pitch = U.clamp(G.cam_pitch + my * sens + ky * stick * 0.6 * dt, -0.2, 1.2)
 
   local x, y, z = engine.pos(id)
   local dist, height = 6, 1.2
