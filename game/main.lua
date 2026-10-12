@@ -45,7 +45,7 @@ engine.on("init", function()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0) end
   G.spawn = {lx - 6, 1.2, lz - 15}
   player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)

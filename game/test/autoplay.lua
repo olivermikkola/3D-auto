@@ -23,15 +23,22 @@ local function at(sec, fn) steps[#steps + 1] = {at = sec, fn = fn} end
 local function after(sec, fn) steps[#steps + 1] = {after = sec, fn = fn} end
 local function until_(pred, timeout, what, fn) steps[#steps + 1] = {pred = pred, timeout = timeout, what = what, fn = fn} end
 
--- The intersection with the longest straight run of road south of it.
+-- The junction with the longest run of straight road due south of it.
 local function long_avenue()
-  local best, bk, bl = -1
-  for _, n in ipairs(city.nodes()) do
-    local run, l = 0, n[2]
-    while city.road(n[1], l, 0, 1) do run, l = run + 1, l + 1 end
-    if run >= best then best, bk, bl = run, n[1], n[2] end -- ties: the last (east-most)
+  local function south(j)
+    local x, z = city.pos(j)
+    for _, n in ipairs(city.links(j)) do
+      local nx, nz = city.pos(n)
+      if nx == x and nz > z then return n end
+    end
   end
-  return city.node(bk, bl)
+  local best, bj = -1
+  for _, j in ipairs(city.junctions()) do
+    local run, at = 0, south(j)
+    while at do run, at = run + 1, south(at) end
+    if run >= best then best, bj = run, j end -- ties: the last (east-most)
+  end
+  return city.pos(bj)
 end
 
 local yaw0, car
@@ -83,7 +90,7 @@ at(8.5, function()
   -- Use a separate healthy stunt car and an offset approach: still inside
   -- the seven-meter kicker, but clear of the mid-side lamp at its entrance.
   -- The damaged driving/mission car keeps its normal carnage lifecycle.
-  local cx, cz = city.block_center(G.city.stunt[1], G.city.stunt[2])
+  local cx, cz = city.place("stunt")
   press("e")
   check(G.player and not G.vehicle, "exited the driving car before the independent stunt")
   car = vehicle.spawn(cx + 2, cz - 26, 0, 1)
@@ -235,10 +242,9 @@ end
 
 after(0.5, function()
   -- The run-over left our own car beside the player, sometimes occluding
-  -- police sight. Start this independent chase on the nearest road node.
+  -- police sight. Start this independent chase on the nearest junction.
   local x, _, z = engine.pos(G.player)
-  local k, l = city.nearest_node(x, z)
-  x, z = city.node(k, l)
+  x, z = city.pos(city.nearest(x, z))
   engine.set_pos(G.player, x, 1.2, z)
   cash_before = G.cash
   wanted.set(1)
@@ -253,12 +259,12 @@ end)
 
 after(1.0, function() wanted.set(1) end)
 until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star", function()
-  -- Teleport to whichever intersection in town is farthest from the cop.
+  -- Teleport to whichever junction in town is farthest from the cop.
   local cop = next(police.cops)
   local cx, _, cz = engine.pos(cop)
   local best, bx, bz = -1
-  for _, n in ipairs(city.nodes()) do
-    local x, z = city.node(n[1], n[2])
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
     local d = (x - cx) ^ 2 + (z - cz) ^ 2
     if d > best then best, bx, bz = d, x, z end
   end
@@ -311,7 +317,7 @@ after(0.3, function()
   wanted.clear()
   police.clear()
   -- A parked car in the lot, from nine meters away.
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   victim = engine.nearest(lx, 1, lz, 30, "car")
   local x, _, z = engine.pos(victim)
   engine.set_pos(G.player, x, 1.4, z - 9)
@@ -329,8 +335,7 @@ after(1.0, function()
   -- Combat is independent of the exploded car's wreck and the lot canopy.
   -- Police still spawn at distance and have to drive here normally.
   local x, _, z = engine.pos(G.player)
-  local k, l = city.nearest_node(x, z)
-  x, z = city.node(k, l)
+  x, z = city.pos(city.nearest(x, z))
   engine.set_pos(G.player, x, 1.2, z)
   H.heal_player(100)
   wanted.clear()

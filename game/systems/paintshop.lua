@@ -48,7 +48,7 @@ page.items[#page.items + 1] = {label = "LEAVE", act = function() menu.close() en
 menu.add_page("paintshop", page)
 
 function M.build()
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   M.x, M.z = lx + 9, lz + 10
   local x, z = M.x, M.z
   engine.spawn{mesh = "plane", pos = {x, 0.27, z}, size = {6, 1, 9}, color = {0.55, 0.15, 0.55}, tag = "shop"}

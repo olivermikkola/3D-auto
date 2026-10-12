@@ -75,7 +75,7 @@ at(186, function()
   tap("pad_lb")
   check(G.weapon == "pistol", "LB: back the other way")
   -- Walk up to a parked car and get in with Y.
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   engine.set_pos(G.player, lx - 8 - 2.5, 1.2, lz)
 end)
 at(200, function()

@@ -39,7 +39,7 @@ page.items[#page.items + 1] = {label = "LEAVE", act = function() menu.close() en
 menu.add_page("dealer", page)
 
 function M.build()
-  local lx, lz = city.block_center(G.city.lot[1], G.city.lot[2])
+  local lx, lz = city.place("lot")
   M.space = {lx - 9, lz + 11}
   M.x, M.z = lx - 13, lz + 4
   -- The sales booth, and your space with a blue outline.

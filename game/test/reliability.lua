@@ -106,7 +106,7 @@ local function fixtures()
   engine.despawn(car); engine.despawn(ambient)
   wanted.clear(); P.clear()
 
-  local bx,bz = city.block_center(G.city.lot[1],G.city.lot[2])
+  local bx,bz = city.place("lot")
   local z = bz - (G.city.bz / 2 - 2.2)
   check(not F.clear_approach(bx,z,0,-1), "mid-side lamp blocks the full car-width corridor")
   -- Search for a true positive premise instead of assuming bx+8 is empty.

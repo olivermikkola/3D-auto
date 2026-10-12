@@ -912,6 +912,30 @@ function C.route(name)
   return out
 end
 
+-- Where the map's health, ammo and weapon pickups go, as {kind, x, z}: on
+-- the avenue sidewalks near the named corner of their block.
+function C.pickup_spots()
+  local out = {}
+  for _, s in ipairs(MAP.pickups or {}) do
+    local kind, i, j, sx, sz = table.unpack(s)
+    local cx, cz = C.block_center(i, j)
+    out[#out + 1] = {kind, cx + sx * (BX / 2 - 1.2), cz + sz * (BZ / 2 - 6)}
+  end
+  return out
+end
+
+-- Where the gun shop's door goes: x, z on a building's street wall, facing
+-- south (+z). The first ordinary downtown block of the map's candidates
+-- gets it; nil if none qualifies. Call after C.build().
+function C.gunshop_spot(L)
+  for _, c in ipairs(MAP.gunshop or {}) do
+    if L.kinds[c[1] .. "," .. c[2]] == "buildings" and C.district(c[1], c[2]) == "downtown" then
+      local cx, cz = C.block_center(c[1], c[2])
+      return cx, cz + BZ / 2 - WALK
+    end
+  end
+end
+
 function C.build()
   local sx, sz = NX * PX + AVE, NZ * PZ + ST
   local L = {

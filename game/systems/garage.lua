@@ -13,7 +13,7 @@ function garage.inside(id)
 end
 
 function garage.build()
-  local x, z = city.block_center(G.city.lot[1], G.city.lot[2])
+  local x, z = city.place("lot")
   garage.x, garage.z = x, z - 10
   -- Open north/south entrances; tucked behind the parked cars, beside spawn.
   engine.spawn{mesh = "plane", pos = {x, 0.27, garage.z}, size = {6, 1, 9}, color = {0.1, 0.65, 0.7}, tag = "garage"}
