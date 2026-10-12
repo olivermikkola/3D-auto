@@ -266,10 +266,14 @@ To ship your city as its own game, copy the `game/` folder (say to `raisio/`), c
 map in its `main.lua` (`city.use(os.getenv("MAP") or "manhattan")`), and run `auto raisio`. The
 engine runs whatever game folder it's given. Give it your own name too (see [License](#license)).
 
-The street network has gaps (the river, the park), so `lib.city` exposes it as a graph:
-`city.road(k, l, dk, dl)`, `city.neighbors`, `city.nodes`, `city.segments`, `city.nearest_node`,
-`city.random_node(x, z, min, max)` and `city.block_of(x, z)`. Traffic, police and pedestrians walk
-it instead of assuming a full grid, and the minimap draws it. The city is about 600 × 970 m, so
+The street network has gaps (the river, the park), so `lib.city` exposes it as a road graph of
+junctions and the roads between them: `city.junctions()`, `city.roads()` (each as `{a, b}`),
+`city.pos(id)`, `city.links(id)`, `city.nearest(x, z)`, `city.random_near(x, z, min, max)` and
+`city.step_toward(from, to)` (the first junction on a shortest route). Traffic, police and the
+minimap use only the graph, never grid positions, so they'll follow whatever road layout a map
+draws. Grid maps build the graph from their intersections; `city.node(k, l)`, `city.road`,
+`city.neighbors`, `city.segments` and `city.block_of` are the grid underneath, which the city
+builder and pedestrians (who walk round blocks) still use. The city is about 600 × 970 m, so
 traffic follows the player: cars that end up more than 330 m away are moved to a street nearer,
 out of sight, and pedestrians spawn on the blocks around you.
 
@@ -447,7 +451,7 @@ return {
     m:wait(function() return m:in_car() end)
     -- Some street corner 150-250 m away, on whatever map is loaded.
     local x, z = city.place("lot")
-    local door = m:marker(city.node(city.random_node(x, z, 150, 250)))
+    local door = m:marker(city.pos(city.random_near(x, z, 150, 250)))
     m:timer(45)
     m:wait(function() return m:near(door, 5) end)
   end,

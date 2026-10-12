@@ -35,14 +35,14 @@ local function map_base(L)
     rects[#rects + 1] = {(x0 + L.sx / 2) / L.sx, (z0 + L.sz / 2) / L.sz, (x1 - x0) / L.sx, (z1 - z0) / L.sz, c}
   end
   local A, S = L.avenue / 2, L.street / 2
-  for _, n in ipairs(city.nodes()) do
-    local x, z = city.node(n[1], n[2])
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
     add(x - A, z - S, x + A, z + S, COLORS.road)
   end
-  for _, s in ipairs(city.segments()) do
-    local ax, az = city.node(s[1], s[2])
-    local bx, bz = city.node(s[1] + s[3], s[2] + s[4])
-    add(ax - A, az - S, bx + A, bz + S, COLORS.road)
+  for _, r in ipairs(city.roads()) do
+    local ax, az = city.pos(r[1])
+    local bx, bz = city.pos(r[2])
+    add(math.min(ax, bx) - A, math.min(az, bz) - S, math.max(ax, bx) + A, math.max(az, bz) + S, COLORS.road)
   end
   for i = 0, L.NX - 1 do
     for j = 0, L.NZ - 1 do

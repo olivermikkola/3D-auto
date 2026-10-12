@@ -33,54 +33,47 @@ local function fixtures()
         "visible 50-90m targets are pursued; occluded or distant targets still use roads")
   -- A forced detour: neither greedy axis toward the target exists at the
   -- start. There is exactly one shortest path, initially away from target.
-  local neighbors, road = city.neighbors, city.road
-  local graph = {
-    ["1,1"] = {{0,1}}, ["0,1"] = {{1,1},{0,2}},
-    ["0,2"] = {{0,1},{1,2}}, ["1,2"] = {{0,2},{2,2}}, ["2,2"] = {{1,2}},
-  }
-  city.neighbors = function(k,l) return graph[k .. "," .. l] or {} end
-  city.road = function(k,l,dk,dl)
-    for _, nb in ipairs(city.neighbors(k,l)) do
-      if nb[1] == k+dk and nb[2] == l+dl then return true end
-    end
+  -- Junctions 1..5 are grid points (1,1) (0,1) (0,2) (1,2) (2,2).
+  local links = city.links
+  local graph = {{2}, {1, 3}, {2, 4}, {3, 5}, {4}}
+  local function linked(a, b)
+    for _, nb in ipairs(city.links(a)) do if nb == b then return true end end
     return false
   end
+  city.links = function(id) return graph[id] or {} end
   local ok, err = pcall(function()
-    local k,l,visited = 1,1,{}
-    while k ~= 2 or l ~= 2 do
-      local key = k .. "," .. l
-      assert(not visited[key], "pursuit must not loop on a coherent forced road detour")
-      visited[key] = true
-      local nk,nl = P.step_toward(k,l,2,2)
-      assert(city.road(k,l,nk-k,nl-l), "detour step must use a synthetic road edge")
-      k,l = nk,nl
+    local at, visited = 1, {}
+    while at ~= 5 do
+      assert(not visited[at], "pursuit must not loop on a coherent forced road detour")
+      visited[at] = true
+      local nxt = city.step_toward(at, 5)
+      assert(linked(at, nxt), "detour step must use a synthetic road edge")
+      at = nxt
     end
-    assert(visited["0,1"] and visited["0,2"], "detour must initially lead away from target")
+    assert(visited[2] and visited[3], "detour must initially lead away from target")
   end)
-  city.neighbors, city.road = neighbors, road -- restore even if a negative fails
+  city.links = links -- restore even if a negative fails
   check(ok, "coherent forced road detour: " .. (ok and "completed" or tostring(err)))
-  -- Check every shipped intersection against independent distance fields.
-  local nodes = city.nodes()
-  for _, goal in ipairs(nodes) do
-    local distance, queue = {[goal[1] .. "," .. goal[2]] = 0}, {goal}
+  -- Check every shipped junction against independent distance fields.
+  local junctions = city.junctions()
+  for _, goal in ipairs(junctions) do
+    local distance, queue = {[goal] = 0}, {goal}
     local i = 1
     while i <= #queue do
       local n = queue[i]; i = i + 1
-      for _, nb in ipairs(city.neighbors(n[1],n[2])) do
-        local key = nb[1] .. "," .. nb[2]
-        if distance[key] == nil then
-          distance[key] = distance[n[1] .. "," .. n[2]] + 1
+      for _, nb in ipairs(city.links(n)) do
+        if distance[nb] == nil then
+          distance[nb] = distance[n] + 1
           queue[#queue + 1] = nb
         end
       end
     end
-    for _, n in ipairs(nodes) do
-      local nk,nl = P.step_toward(n[1],n[2],goal[1],goal[2])
-      local d = distance[n[1] .. "," .. n[2]]
+    for _, n in ipairs(junctions) do
+      local nxt = city.step_toward(n, goal)
+      local d = distance[n]
       if d > 0 then
-        assert(city.road(n[1],n[2],nk-n[1],nl-n[2]) and distance[nk .. "," .. nl] == d-1,
-               "pursuit step must reduce shortest road distance")
-      else assert(nk == n[1] and nl == n[2]) end
+        assert(linked(n, nxt) and distance[nxt] == d - 1, "pursuit step must reduce shortest road distance")
+      else assert(nxt == n) end
     end
   end
   check(true, "every shipped pursuit step is a shortest-path road edge")

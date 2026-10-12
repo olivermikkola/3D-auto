@@ -9,9 +9,7 @@ local lx, lz = city.place("lot")
 
 -- A random street corner between `min` and 260 meters from (x, z).
 local function corner_far_from(x, z, min)
-  local k, l = city.random_node(x, z, min, 260)
-  if k then return city.node(k, l) end
-  return city.node(city.nearest_node(x, z))
+  return city.pos(city.random_near(x, z, min, 260) or city.nearest(x, z))
 end
 
 return {
