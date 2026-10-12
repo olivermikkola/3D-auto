@@ -1,3 +1,4 @@
+-- © 2026 Oliver Mikkola. CC BY-NC 4.0, not MIT: see LICENSE in this folder.
 -- Manhattan: an island of long blocks between wide avenues, Central Park,
 -- and a skyline with two peaks. A map is plain data; lib/city builds it.
 -- Coordinates are grid indices: block (i, j) sits between avenues i and

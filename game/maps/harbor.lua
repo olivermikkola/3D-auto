@@ -1,3 +1,4 @@
+-- © 2026 Oliver Mikkola. CC BY-NC 4.0, not MIT: see LICENSE in this folder.
 -- Harbor Town: a small port on a squarer grid, with a bay cut into the
 -- south-east corner, docks along the water, one modest downtown and no big
 -- park. See maps/manhattan.lua for what each field means.
