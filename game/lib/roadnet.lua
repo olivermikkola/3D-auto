@@ -89,11 +89,33 @@ function R.load(map)
       end
     end
   end
+  n.grid = R.index(n.edges)
   NET = n
   return n
 end
 
 function R.net() return NET end
+
+-- Every stretch of road by the grid cells its bounding box touches: cell
+-- key -> {{edge, bend}, ...}, so lookups only look nearby.
+local CELL = 64
+local function cell_key(i, j) return i * 100003 + j end
+function R.index(edges)
+  local g = {}
+  for ei, e in ipairs(edges) do
+    for i = 2, #e.pts do
+      local a, b = e.pts[i - 1], e.pts[i]
+      for ci = math.floor(math.min(a[1], b[1]) / CELL), math.floor(math.max(a[1], b[1]) / CELL) do
+        for cj = math.floor(math.min(a[2], b[2]) / CELL), math.floor(math.max(a[2], b[2]) / CELL) do
+          local k = cell_key(ci, cj)
+          g[k] = g[k] or {}
+          table.insert(g[k], {ei, i})
+        end
+      end
+    end
+  end
+  return g
+end
 
 -- The bends from junction a to b, as {x, z} points, a and b included.
 function R.path(a, b) return NET.paths[a][b] end
@@ -102,11 +124,29 @@ function R.path(a, b) return NET.paths[a][b] end
 -- edge it's on.
 function R.nearest_edge(x, z, walkable)
   local best, be, bi, bx, bz = math.huge
-  for ei, e in ipairs(NET.edges) do
-    for i = (walkable and e.kind == "highway") and math.huge or 2, #e.pts do
-      local d, cx, cz = dist_seg(x, z, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2])
-      if d < best then best, be, bi, bx, bz = d, ei, i, cx, cz end
+  local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+  local function try(list)
+    for _, it in ipairs(list) do
+      local e = NET.edges[it[1]]
+      if not (walkable and e.kind == "highway") then
+        local a, b = e.pts[it[2] - 1], e.pts[it[2]]
+        local d, cx, cz = dist_seg(x, z, a[1], a[2], b[1], b[2])
+        if d < best then best, be, bi, bx, bz = d, it[1], it[2], cx, cz end
+      end
     end
+  end
+  -- Rings of cells outward, until the nearest found is closer than the
+  -- next ring can be.
+  for r = 0, 400 do
+    for i = ci - r, ci + r do
+      for j = cj - r, cj + r do
+        if math.max(math.abs(i - ci), math.abs(j - cj)) == r then
+          local list = NET.grid[cell_key(i, j)]
+          if list then try(list) end
+        end
+      end
+    end
+    if best <= r * CELL then break end
   end
   return be, bi, bx, bz, best
 end
@@ -116,18 +156,19 @@ end
 function R.check(map)
   local name = map.name or "?"
   local function fail(fmt, ...) error(string.format("map '%s': " .. fmt, name, ...), 0) end
-  -- Roads may only meet at junctions (a bridge passes over).
+  -- Roads may only meet at junctions (a bridge passes over). Only stretches
+  -- sharing a grid cell can cross.
   local E = NET.edges
-  for i = 1, #E do
-    for j = i + 1, #E do
-      local a, b = E[i], E[j]
-      if not (a.bridge or b.bridge) then
-        for p = 2, #a.pts do
-          for q = 2, #b.pts do
-            local x, z = crossing(a.pts[p - 1][1], a.pts[p - 1][2], a.pts[p][1], a.pts[p][2],
-                                  b.pts[q - 1][1], b.pts[q - 1][2], b.pts[q][1], b.pts[q][2])
-            if x then fail("%s crosses %s at (%.0f, %.0f) without a junction", a.name, b.name, x, z) end
-          end
+  for _, list in pairs(NET.grid) do
+    for p = 1, #list do
+      for q = p + 1, #list do
+        local ea, eb = list[p][1], list[q][1]
+        local a, b = E[ea], E[eb]
+        if ea ~= eb and not (a.bridge or b.bridge) then
+          local i, k = list[p][2], list[q][2]
+          local x, z = crossing(a.pts[i - 1][1], a.pts[i - 1][2], a.pts[i][1], a.pts[i][2],
+                                b.pts[k - 1][1], b.pts[k - 1][2], b.pts[k][1], b.pts[k][2])
+          if x then fail("%s crosses %s at (%.0f, %.0f) without a junction", a.name, b.name, x, z) end
         end
       end
     end
@@ -235,8 +276,8 @@ local function free(H, x, z, r)
   end)
 end
 
-local function add_seg(H, ax, az, bx, bz, clear)
-  H.add({seg = true, ax = ax, az = az, bx = bx, bz = bz, clear = clear},
+local function add_seg(H, ax, az, bx, bz, clear, edge, width)
+  H.add({seg = true, ax = ax, az = az, bx = bx, bz = bz, clear = clear, edge = edge, width = width},
         math.min(ax, bx) - clear, math.min(az, bz) - clear, math.max(ax, bx) + clear, math.max(az, bz) + clear)
 end
 
@@ -279,7 +320,7 @@ end
 
 -- Bake a list of parts in world space into one mesh around their middle,
 -- and spawn it (scenery: no collider).
-local function bake(name, parts, y)
+local function bake(name, parts, y, tag)
   if #parts == 0 then return end
   local x0, x1, z0, z1 = math.huge, -math.huge, math.huge, -math.huge
   for _, p in ipairs(parts) do
@@ -289,8 +330,34 @@ local function bake(name, parts, y)
   local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
   for _, p in ipairs(parts) do p.pos = {p.pos[1] - cx, p.pos[2] - y, p.pos[3] - cz} end
   engine.mesh(name, parts)
-  engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = "road"}
+  engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = tag or "road"}
 end
+
+-- Parts grouped by which CHUNK x CHUNK square they're in, baked one mesh a
+-- square, so what's out of sight is culled a square at a time.
+local CHUNK = 300
+local function chunked()
+  local c = {}
+  function c.add(x, z, part)
+    local k = math.floor(x / CHUNK) .. "," .. math.floor(z / CHUNK)
+    c[k] = c[k] or {}
+    table.insert(c[k], part)
+  end
+  function c.bake(prefix, tag)
+    local keys = {}
+    for k, v in pairs(c) do if type(v) == "table" then keys[#keys + 1] = k end end
+    table.sort(keys)
+    for _, k in ipairs(keys) do bake(prefix .. k, c[k], 0, tag) end
+  end
+  return c
+end
+
+-- Ground cover drawn under everything, in this order, each a little above
+-- the last; the color and a tree every so many square meters (nil: none).
+local COVER = {
+  {"field", {0.5, 0.56, 0.3}}, {"forest", {0.2, 0.33, 0.17}, 700}, {"park", {0.34, 0.52, 0.27}, 2500},
+  {"works", {0.46, 0.45, 0.43}}, {"parking", {0.3, 0.3, 0.32}}, {"water", WATER},
+}
 
 -- A strip along a polyline: a box per segment and a disc at each bend, so
 -- curves have no gaps.
@@ -423,9 +490,13 @@ function R.build(map, kit)
     dashes(parts, e.pts, 0.09)
     bake("road" .. ei, parts, 0)
     for i = 2, #e.pts do
-      add_seg(H, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2], e.width / 2 + (walk and SIDEWALK or 1.5))
+      add_seg(H, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2], e.width / 2 + (walk and SIDEWALK or 1.5), ei, e.width)
     end
-    -- Street lamps along the pavement, alternating sides.
+  end
+  -- Street lamps along the pavement, alternating sides, once every road is
+  -- known: none on another road's asphalt.
+  for ei, e in ipairs(NET.edges) do
+    local walk = e.kind ~= "highway"
     if walk then
       local side = 1
       for i = 2, #e.pts do
@@ -433,10 +504,15 @@ function R.build(map, kit)
         local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
         local yaw = math.atan(bx - ax, bz - az)
         local rx, rz = math.cos(yaw), -math.sin(yaw)
-        for s = 14, len - 14, 38 do
+        for s = 14, len - 14, map.lamp_every or 38 do
           local t, o = s / len, (e.width / 2 + SIDEWALK - 0.6) * side
-          kit.static{mesh = "lamp", pos = {ax + (bx - ax) * t + rx * o, 0.05, az + (bz - az) * t + rz * o},
-                     yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
+          local lx, lz = ax + (bx - ax) * t + rx * o, az + (bz - az) * t + rz * o
+          local on_road = H.near(lx, lz, 40, function(it)
+            return it.edge and it.edge ~= ei and dist_seg(lx, lz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 1.5
+          end)
+          if not on_road then
+            kit.static{mesh = "lamp", pos = {lx, 0.05, lz}, yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
+          end
           side = -side
         end
       end
@@ -448,6 +524,31 @@ function R.build(map, kit)
       engine.spawn{mesh = "cylinder", pos = {p[1], 0.1, p[2]}, size = {ring, 0.04, ring}, color = {0.35, 0.55, 0.28}, tag = "island"}
       engine.spawn{mesh = "cylinder", pos = {p[1], 0.11, p[2]}, size = {ring + 1, 0.03, ring + 1}, color = PAVE}
     end
+  end
+
+  -- Ground cover from the map's survey: fields, forest, water... as strips.
+  for k, c in ipairs(COVER) do
+    local strips = (map.cover or {})[c[1]]
+    if strips and #strips > 0 then
+      local ch = chunked()
+      for _, st in ipairs(strips) do
+        local x, z = (st[1] + st[3]) / 2, (st[2] + st[4]) / 2
+        ch.add(x, z, {mesh = "cube", pos = {x, k * 0.006 - 0.005, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2]})
+      end
+      ch.bake("cover_" .. c[1], c[1] == "water" and "water" or "cover")
+    end
+  end
+  -- Service roads and paved paths: drawn, not driven by the AI.
+  if map.paved then
+    local ch = chunked()
+    for _, p in ipairs(map.paved) do
+      local pts = {}
+      for i = 3, #p do pts[#pts + 1] = p[i] end
+      local parts = {}
+      strip(parts, pts, p[1], p[2] and 0.047 or 0.044, p[2] and ROAD or {0.56, 0.55, 0.52}, true)
+      for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
+    end
+    ch.bake("paved", "cover")
   end
 
   -- Pads for the game's features (the lot, the stunt park...).
@@ -476,6 +577,7 @@ function R.build(map, kit)
   for _, a in ipairs(map.areas or {}) do
     if a[1] == "open" or a[1] == "park" then add_circle(H, a.x, a.z, a.r) end
   end
+  for _, lb in ipairs(map.labels or {}) do L.labels[#L.labels + 1] = lb end
   -- The gun shop's door is on the south wall of a small block of its own.
   if map.gunshop then
     local gx, gz = map.gunshop[1], map.gunshop[2]
@@ -485,9 +587,42 @@ function R.build(map, kit)
     add_circle(H, gx, gz - 6, 10)
   end
 
-  -- Everything else lines the roads, by district.
+  -- Surveyed buildings, each a box (or a few), clear of what's placed.
   local count = 0
-  for _, e in ipairs(NET.edges) do
+  for i, f in ipairs(map.footprints or {}) do
+    local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
+    local fx, fz = math.cos(yaw), -math.sin(yaw)
+    local circles = box_circles(x, z, fx, fz, w, d)
+    local ok = true
+    for _, c in ipairs(circles) do
+      ok = ok and not H.near(c[1], c[2], c[3] + 40, function(it)
+        return not it.seg and (c[1] - it.x) ^ 2 + (c[2] - it.z) ^ 2 < (c[3] + it.r) ^ 2 and it.r > 8
+      end)
+    end
+    if ok then
+      if kind == "house" or kind == "terrace" then
+        local floors = h < 4.5 and 1 or 2
+        kit.static{mesh = house_mesh(1 + i % #HOUSE, floors), pos = {x, floors * 1.45, z}, yaw = yaw,
+                   size = {w, floors * 2.9, d}, scale = {w, 1, d}, tag = "building"}
+      elseif kind == "shed" then
+        kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = HOUSE[1 + i % #HOUSE], tag = "building"}
+      elseif kind == "works" or (kind == "shop" and w * d > 1500) then
+        kit.static{mesh = kit.warehouse_mesh(1 + i % 4, h), pos = {x, kit.CURB + h / 2, z}, yaw = yaw, size = {w, h, d},
+                   scale = {w, 1, d}, tag = "building"}
+      else
+        local floors = math.max(1, math.floor(h / kit.FLOOR + 0.5))
+        local style = kind == "shop" and i % 3 == 0 and "glass" or "brick"
+        local color = kind == "church" and {0.94, 0.93, 0.9} or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
+        kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
+                   size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
+      end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3]) end
+      count = count + 1
+    end
+  end
+
+  -- Without a survey, buildings line the roads, by district.
+  for _, e in ipairs(map.footprints and {} or NET.edges) do
     if e.kind ~= "highway" then
       for _, side in ipairs{-1, 1} do
         for i = 2, #e.pts do
@@ -547,10 +682,31 @@ function R.build(map, kit)
     end
   end
 
-  -- Forest wherever there's room.
+  -- Forest wherever there's room: in the surveyed woods and parks, else
+  -- anywhere, up to the map's budget.
   pine_mesh()
-  local trees = 0
-  for _ = 1, map.trees or 900 do
+  local trees, budget = 0, map.trees or 900
+  local want = 0 -- trees the cover asks for; thinned evenly to the budget
+  for _, c in ipairs(COVER) do
+    for _, st in ipairs(c[3] and (map.cover or {})[c[1]] or {}) do want = want + (st[3] - st[1]) * (st[4] - st[2]) / c[3] end
+  end
+  local thin = math.min(1, budget / math.max(1, want))
+  for _, c in ipairs(COVER) do
+    for _, st in ipairs(c[3] and (map.cover or {})[c[1]] or {}) do
+      local n = (st[3] - st[1]) * (st[4] - st[2]) / c[3] * thin
+      n = math.floor(n) + (r() < n % 1 and 1 or 0)
+      for _ = 1, n do
+        if trees >= budget then break end
+        local x, z = st[1] + r() * (st[3] - st[1]), st[2] + r() * (st[4] - st[2])
+        if free(H, x, z, 3) then
+          kit.static{mesh = r() < 0.75 and "pine" or "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 0.8 + r() * 0.7, tag = "tree"}
+          add_circle(H, x, z, 2)
+          trees = trees + 1
+        end
+      end
+    end
+  end
+  for _ = 1, map.cover and 0 or budget do
     local x, z = (r() - 0.5) * (sx - 20), (r() - 0.5) * (sz - 20)
     local a = district(map, x, z)
     if a ~= "open" and free(H, x, z, 3) then
