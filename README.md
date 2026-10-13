@@ -35,6 +35,8 @@ Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` ente
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
 A gamepad works too (see [Gamepads](#gamepads)).
 
+Where the project is going, what to build next and lessons learned: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Design
 
 | Piece | Lines | Notes |
