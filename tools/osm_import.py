@@ -503,7 +503,7 @@ def main():
     road_grid = Grid(50)
     for ed in edges:
         for a, b in zip(ed["pts"], ed["pts"][1:]): road_grid.add((ed, a, b), a, b, pad=ed["width"])
-    footprints, dropped = [], 0
+    footprints, dropped, trimmed = [], 0, 0
     for el in els:
         t = el.get("tags", {})
         if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
@@ -527,21 +527,37 @@ def main():
                 ang, (cx, cz), bw, bd = min_rect(poly)
                 parts = [(cx, cz, bw, bd, ang) if bw >= bd else (cx, cz, bd, bw, ang + math.pi / 2)]
             for (x, z, bw, bd, ang) in parts:
-                # Keep clear of the (game-width) roads and their pavements.
-                r = math.hypot(bw, bd) / 2
-                hit = False
-                for ed, a, b in road_grid.near(x - r, z - r, x + r, z + r):
-                    clear = ed["width"] / 2 + (1.5 if ed["kind"] == "highway" else 3)
-                    c, s_ = math.cos(ang), math.sin(ang)
-                    for fu in (-0.5, 0, 0.5):
-                        for fv in (-0.5, 0, 0.5):
-                            px, pz = x + c * bw * fu - s_ * bd * fv, z + s_ * bw * fu + c * bd * fv
-                            if seg_dist((px, pz), a, b) < clear: hit = True; break
-                        if hit: break
-                    if hit: break
-                if hit:
-                    dropped += 1
-                    continue
+                # Keep clear of the (game-width) roads and their pavements:
+                # a box that reaches into one gives up a few meters on that
+                # side (or two neighbouring sides), or is left out.
+                c, s_ = math.cos(ang), math.sin(ang)
+                def clear_of_roads(x, z, bw, bd):
+                    r = math.hypot(bw, bd) / 2
+                    for ed, a, b in road_grid.near(x - r, z - r, x + r, z + r):
+                        clear = ed["width"] / 2 + (1.5 if ed["kind"] == "highway" else 3)
+                        for fu in (-0.5, -0.25, 0, 0.25, 0.5):
+                            for fv in (-0.5, -0.25, 0, 0.25, 0.5):
+                                px, pz = x + c * bw * fu - s_ * bd * fv, z + s_ * bw * fu + c * bd * fv
+                                if seg_dist((px, pz), a, b) < clear: return False
+                    return True
+                if not clear_of_roads(x, z, bw, bd):
+                    best = None
+                    for cut in (1.5, 3, 4.5, 6, 8):
+                        for su, sv in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+                            nw, nd = bw - cut * abs(su), bd - cut * abs(sv)
+                            if nw < max(4, 0.6 * bw) or nd < max(4, 0.6 * bd): continue
+                            # Shift away from the cut side so the far walls stay put.
+                            nx = x - c * su * cut / 2 + s_ * sv * cut / 2
+                            nz = z - s_ * su * cut / 2 - c * sv * cut / 2
+                            if clear_of_roads(nx, nz, nw, nd):
+                                best = (nx, nz, nw, nd)
+                                break
+                        if best: break
+                    if not best:
+                        dropped += 1
+                        continue
+                    x, z, bw, bd = best
+                    trimmed += 1
                 footprints.append((x, z, bw, bd, ang, h, kind, name, roof_colour(t)))
                 name = None  # the label goes on one box
 
@@ -821,7 +837,7 @@ def main():
     dest.write_text("\n".join(L) + "\n")
     njs = len(used)
     print(f"{dest.relative_to(ROOT)}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
-          f"{len(paved)} paved ways, {len(footprints)} building boxes ({dropped} too close to a road), "
+          f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
           + f", {len(pitches)} pitches, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
           f" {len(piers)} piers, {len(areas)} areas; {dest.stat().st_size // 1024} KB")

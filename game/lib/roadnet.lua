@@ -991,13 +991,15 @@ build = function(map, kit)
       local l = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
       parts[#parts + 1] = {mesh = "cube", pos = {(ax + bx) / 2, WIRE, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
                            size = {0.04, 0.04, l}, color = POLE}
-      for s = 3, l - 3, 4.5 do
+      for s = 2, l - 2, 3 do
         local f = s / l
-        parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * f, WIRE - 0.5, az + (bz - az) * f}, size = {0.24, 0.55, 0.24},
-                             color = {0.32, 0.26, 0.5}, emissive = 0.4}
+        parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * f, WIRE - 0.45, az + (bz - az) * f}, size = {0.02, 0.5, 0.02},
+                             color = POLE}
+        parts[#parts + 1] = {mesh = "cylinder", pos = {ax + (bx - ax) * f, WIRE - 0.85, az + (bz - az) * f}, size = {0.26, 0.4, 0.26},
+                             color = {0.3, 0.28, 0.25}, emissive = 0.5}
       end
     end
-    local GAP = 24
+    local GAP = 18
     for t = -len / 2, len / 2 + 0.1, GAP do
       for _, side in ipairs{-1, 1} do
         local px, pz = at(t, side)
@@ -1011,6 +1013,8 @@ build = function(map, kit)
         local dx, dz = at(t + GAP, -1)
         wire(ax, az, cx, cz)
         wire(bx, bz, dx, dz)
+        wire(ax, az, dx, dz) -- and along each side
+        wire(bx, bz, cx, cz)
       end
     end
     engine.mesh("string_lights_" .. k, parts)

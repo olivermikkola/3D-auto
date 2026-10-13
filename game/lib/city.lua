@@ -407,6 +407,19 @@ local function building_mesh(style, floors)
     if floors >= 30 then -- a mast on the supertalls
       parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 8, 0}, size = {0.03, 16, 0.03}, color = {0.75, 0.75, 0.78}}
     end
+  elseif style == "balconies" then
+    -- Flats of the 2010s: glass-railed balconies along the long sides on
+    -- every floor above the shops, and orange-red panels up the ends and
+    -- the middle.
+    parts = {{mesh = "cube", size = {1, h, 1}, color = {0.9, 0.88, 0.84}}}
+    for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
+    for f = 1, floors - 1 do
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.1, 0}, size = {0.9, 0.2, 1.08}, color = {0.75, 0.75, 0.74}}
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.75, 0}, size = {0.9, 1.1, 1.07}, color = {0.5, 0.6, 0.66}}
+    end
+    for _, u in ipairs{-0.475, 0, 0.475} do
+      parts[#parts + 1] = {mesh = "cube", pos = {u, FLOOR / 2, 0}, size = {0.05, h - FLOOR, 1.09}, color = {0.76, 0.32, 0.18}}
+    end
   else
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
