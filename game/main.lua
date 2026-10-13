@@ -93,6 +93,7 @@ if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("MISSION_TEST") then require "test.missions" end
+if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

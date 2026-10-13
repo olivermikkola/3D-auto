@@ -25,7 +25,7 @@ def seeded_cases(maps, seeds, suite):
 
 
 TEST_ENV = ("MAP", "SEED", "AUTO_TEST", "CITY_TEST", "PAD_TEST", "SOAK",
-            "SAVE_TEST", "MENU_TEST", "SHOP_TEST", "GARAGE_TEST", "RELIABILITY_TEST", "MISSION_TEST")
+            "SAVE_TEST", "MENU_TEST", "SHOP_TEST", "GARAGE_TEST", "RELIABILITY_TEST", "MISSION_TEST", "TERRAIN_TEST")
 ERROR = re.compile(r"\[lua:|FAILED", re.IGNORECASE)
 
 
@@ -104,7 +104,8 @@ def main():
             continue
         for kind, ticks, marker in [("CITY", 2400, "CITY TEST PASSED"),
                                     ("PAD", 3000, "PAD TEST PASSED"),
-                                    ("MISSION", 6000, "MISSION TEST PASSED")]:
+                                    ("MISSION", 6000, "MISSION TEST PASSED"),
+                                    ("TERRAIN", 2400, "TERRAIN TEST PASSED")]:
             run(f"{map_name}-{kind.lower()}", dict(env, **{kind + "_TEST": "1"}), ticks, [marker])
         if args.soak:
             run(f"{map_name}-soak", dict(env, SOAK="1"), 18000, ["SOAK PASSED: 300 simulated seconds"])

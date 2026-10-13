@@ -4,7 +4,7 @@ use crate::audio::{Mixer, Samples};
 use crate::font;
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{self, Body, Broad, Contact, WarmCache};
+use crate::physics::{self, Body, Broad, Contact, Terrain, WarmCache};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -96,6 +96,10 @@ pub struct Engine {
     touched: Vec<u32>,
     /// Live entity ids by tag, ascending (ids only ever grow).
     tagged: HashMap<String, Vec<u32>>,
+    /// The ground as a heightfield, if the game gave one, and the entities
+    /// drawing it.
+    pub terrain: Option<Terrain>,
+    terrain_chunks: Vec<u32>,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -183,6 +187,8 @@ impl Engine {
             broad: Broad::default(),
             touched: Vec::new(),
             tagged: HashMap::new(),
+            terrain: None,
+            terrain_chunks: Vec::new(),
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -283,9 +289,62 @@ impl Engine {
         Some(en)
     }
 
-    /// The nearest body a ray hits; see physics::raycast_near.
+    /// The nearest body or terrain a ray hits; see physics::raycast_near.
     pub fn raycast(&self, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>) -> Option<physics::RayHit> {
-        physics::raycast_near(&self.ents, &self.broad, &self.touched, o, dir, max, ignore)
+        let hit = physics::raycast_near(&self.ents, &self.broad, &self.touched, o, dir, max, ignore);
+        let Some(t) = self.terrain.as_ref().filter(|t| Some(t.id as u32) != ignore) else { return hit };
+        let reach = hit.as_ref().map_or(max, |h| h.dist);
+        match t.ray(o, dir, reach) {
+            Some((dist, normal)) => Some(physics::RayHit { id: t.id as u32, dist, point: o + dir * dist, normal }),
+            None => hit,
+        }
+    }
+
+    /// Replace the ground heightfield (or remove it with None). It's drawn
+    /// in chunks of CHUNK cells, each cell colored by the average of its
+    /// corners' `colors` (one rgb per height, or grass), and collides
+    /// through an entity tagged "terrain".
+    pub fn set_terrain(&mut self, terrain: Option<Terrain>, colors: Option<Vec<[f32; 3]>>) {
+        const CHUNK: usize = 64;
+        if let Some(old) = self.terrain.take() {
+            self.despawn(old.id as u32);
+        }
+        for id in std::mem::take(&mut self.terrain_chunks) {
+            self.despawn(id);
+        }
+        let Some(mut t) = terrain else { return };
+        let mut holder = Entity::new(v3(0.0, -10_000.0, 0.0));
+        holder.tag = "terrain".to_string();
+        holder.visible = false;
+        holder.body = Some(Body::new(physics::Kind::Static, Vec3::ZERO));
+        t.id = self.spawn(holder) as usize;
+        let grass = [0.3, 0.42, 0.24];
+        let col = |i: usize, j: usize| colors.as_ref().map_or(grass, |c| c[j * t.w + i]);
+        let point = |i: usize, j: usize| v3(t.x0 + i as f32 * t.step, t.at(i, j), t.z0 + j as f32 * t.step);
+        let avg = |cs: [[f32; 3]; 3]| {
+            let c = |k: usize| (cs[0][k] + cs[1][k] + cs[2][k]) / 3.0;
+            v3(c(0), c(1), c(2))
+        };
+        for cj in (0..t.d - 1).step_by(CHUNK) {
+            for ci in (0..t.w - 1).step_by(CHUNK) {
+                let mut m = Mesh::default();
+                for j in cj..(cj + CHUNK).min(t.d - 1) {
+                    for i in ci..(ci + CHUNK).min(t.w - 1) {
+                        // Wound so the faces point up; the same split as Terrain::surface.
+                        let (a, b, c, d) = ((i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1));
+                        m.tri(point(a.0, a.1), point(b.0, b.1), point(c.0, c.1), avg([col(a.0, a.1), col(b.0, b.1), col(c.0, c.1)]));
+                        m.tri(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), avg([col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]));
+                    }
+                }
+                let mesh = self.add_mesh(&format!("terrain_{ci}_{cj}"), m);
+                let mut chunk = Entity::new(Vec3::ZERO);
+                chunk.mesh = Some(mesh);
+                chunk.tag = "terrain_mesh".to_string();
+                let id = self.spawn(chunk);
+                self.terrain_chunks.push(id);
+            }
+        }
+        self.terrain = Some(t);
     }
 
     /// World-space position and direction of a light, if its anchor exists.
@@ -312,7 +371,7 @@ impl Engine {
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {
         self.tick += 1;
         self.time += dt as f64;
-        let contacts = physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm, &mut self.broad);
+        let contacts = physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm, &mut self.broad, self.terrain.as_ref());
         self.touched.clear();
         contacts
     }

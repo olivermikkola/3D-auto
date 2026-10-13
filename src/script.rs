@@ -8,7 +8,7 @@ use crate::audio::{self, Synth, Wave};
 use crate::engine::{Engine, Entity};
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{Body, Kind};
+use crate::physics::{Body, Kind, Terrain};
 use crate::save;
 use mlua::{Function, IntoLuaMulti, Lua, LuaOptions, MultiValue, Result, StdLib, Table, Value};
 use std::cell::RefCell;
@@ -446,6 +446,42 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             Some(h) => (h.id, h.dist, h.point.x, h.point.y, h.point.z, h.normal.x, h.normal.y, h.normal.z).into_lua_multi(lua),
             None => Ok(MultiValue::new()),
         }
+    });
+
+    // The ground as a heightfield: {x0, z0, step, w, d, heights = {w * d
+    // numbers, row by row toward +z}, colors = {r, g, b per height}?}; nil
+    // removes it.
+    f!("terrain", |e, _lua, t: Option<Table>| {
+        let Some(t) = t else {
+            e.set_terrain(None, None);
+            return Ok(());
+        };
+        let (w, d): (usize, usize) = (t.get("w")?, t.get("d")?);
+        let step: f32 = t.get("step")?;
+        if w < 2 || d < 2 || step <= 0.0 {
+            return Err(mlua::Error::runtime("terrain needs w, d >= 2 and step > 0"));
+        }
+        let heights: Vec<f32> = t.get::<Table>("heights")?.sequence_values().collect::<Result<_>>()?;
+        if heights.len() != w * d {
+            return Err(mlua::Error::runtime(format!("terrain has {} heights, not w * d = {}", heights.len(), w * d)));
+        }
+        let colors = match t.get::<Option<Table>>("colors")? {
+            None => None,
+            Some(c) => {
+                let v: Vec<f32> = c.sequence_values().collect::<Result<_>>()?;
+                if v.len() != 3 * w * d {
+                    return Err(mlua::Error::runtime(format!("terrain has {} color values, not 3 * w * d = {}", v.len(), 3 * w * d)));
+                }
+                Some(v.chunks(3).map(|c| [c[0], c[1], c[2]]).collect())
+            }
+        };
+        let terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights);
+        e.set_terrain(Some(terrain), colors);
+        Ok(())
+    });
+    // Ground height and normal at (x, z); nothing off the heightfield.
+    f!("terrain_height", |e, lua, (x, z): (f32, f32)| {
+        multi(lua, e.terrain.as_ref().and_then(|t| t.surface(x, z)).map(|(h, n)| (h, n.x, n.y, n.z)))
     });
 
     // ---- meshes ---------------------------------------------------------
