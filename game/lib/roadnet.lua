@@ -416,10 +416,10 @@ end
 local HOUSE = {{0.72, 0.2, 0.15}, {0.9, 0.78, 0.4}, {0.88, 0.88, 0.84}, {0.45, 0.55, 0.62}, {0.6, 0.38, 0.25}, {0.78, 0.7, 0.55}}
 local ROOF = {{0.25, 0.22, 0.22}, {0.45, 0.18, 0.12}, {0.3, 0.32, 0.35}}
 local baked = {}
-local function house_mesh(v, floors)
-  local name = string.format("house%d_%d", v, floors)
+local function house_mesh(v, floors, roof)
+  local name = string.format("house%d_%d", v, floors) .. (roof and string.format("_%g_%g_%g", roof[1], roof[2], roof[3]) or "")
   if baked[name] then return name end
-  local h, c, rc = floors * 2.9, HOUSE[v], ROOF[v % #ROOF + 1]
+  local h, c, rc = floors * 2.9, HOUSE[v], roof or ROOF[v % #ROOF + 1]
   local parts = {{mesh = "cube", size = {1, h, 1}, color = c}}
   for f = 0, floors - 1 do -- windows front and back
     for _, x in ipairs{-0.28, 0.28} do
@@ -431,6 +431,27 @@ local function house_mesh(v, floors)
   -- The roof overhangs a little; two wedges back to back.
   parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 1.1, -0.28}, size = {1.08, 2.2, 0.56}, color = rc}
   parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 1.1, 0.28}, yaw = math.pi, size = {1.08, 2.2, 0.56}, color = rc}
+  engine.mesh(name, parts)
+  baked[name] = true
+  return name
+end
+
+-- A row house (rivitalo): one long low block under a pitched roof, a door
+-- and window per home along the front. Unit footprint, real height.
+local TILE = {{0.55, 0.24, 0.17}, {0.24, 0.22, 0.22}, {0.62, 0.36, 0.25}}
+local function row_mesh(v, roof)
+  local name = string.format("row%d_%g_%g_%g", v, roof[1], roof[2], roof[3])
+  if baked[name] then return name end
+  local h = 2.9
+  local parts = {{mesh = "cube", size = {1, h, 1}, color = HOUSE[v]}}
+  for k = 0, 9 do -- ten homes' worth of doors and windows, front and back
+    local x = -0.45 + k * 0.1
+    parts[#parts + 1] = {mesh = "cube", pos = {x, -h / 2 + 1.05, 0.5}, size = {0.025, 2.1, 0.02}, color = {0.95, 0.95, 0.92}}
+    parts[#parts + 1] = {mesh = "cube", pos = {x + 0.04, -h / 2 + 1.6, 0}, size = {0.035, 1.0, 1.01}, color = {0.22, 0.26, 0.32},
+                         emissive = (v + k) % 3 == 0 and 1 or 0}
+  end
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.9, -0.28}, size = {1.04, 1.8, 0.56}, color = roof}
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.9, 0.28}, yaw = math.pi, size = {1.04, 1.8, 0.56}, color = roof}
   engine.mesh(name, parts)
   baked[name] = true
   return name
@@ -733,7 +754,7 @@ function R.build(map, kit)
   end
 
   -- Surveyed buildings, each a box (or a few), clear of what's placed.
-  local count = 0
+  local count, yards = 0, {}
   for i, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
     local fx, fz = math.cos(yaw), -math.sin(yaw)
@@ -784,10 +805,19 @@ function R.build(map, kit)
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
     elseif ok then
-      if kind == "house" or kind == "terrace" then
+      if kind == "terrace" or (kind == "house" and w > 2.4 * d and w > 25) then
+        kit.static{mesh = row_mesh(1 + i % #HOUSE, f[9] or TILE[1 + i % #TILE]), pos = {x, 1.45, z}, yaw = yaw,
+                   size = {w, 2.9, d}, scale = {w, 1, d}, tag = "building"}
+      elseif kind == "house" then
         local floors = h < 4.5 and 1 or 2
-        kit.static{mesh = house_mesh(1 + i % #HOUSE, floors), pos = {x, floors * 1.45, z}, yaw = yaw,
+        kit.static{mesh = house_mesh(1 + i % #HOUSE, floors, f[9]), pos = {x, floors * 1.45, z}, yaw = yaw,
                    size = {w, floors * 2.9, d}, scale = {w, 1, d}, tag = "building"}
+      elseif kind == "police" then -- light walls, a blue band round the middle floor
+        local floors = math.max(2, math.floor(h / kit.FLOOR + 0.5))
+        kit.static{mesh = kit.building_mesh("brick", floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
+                   size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = {0.9, 0.9, 0.92}, tag = "building"}
+        engine.spawn{mesh = "cube", pos = {x, kit.CURB + kit.FLOOR * 1.05, z}, yaw = yaw, size = {w + 0.1, 0.7, d + 0.1},
+                     color = {0.1, 0.25, 0.65}}
       elseif kind == "shed" then
         kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = HOUSE[1 + i % #HOUSE], tag = "building"}
       elseif kind == "works" or (kind == "shop" and w * d > 1500) then
@@ -802,6 +832,22 @@ function R.build(map, kit)
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
+      if kind == "house" or kind == "terrace" then yards[#yards + 1] = {x, z, w, d, yaw} end
+    end
+  end
+  -- A tree or two in the yards round homes, once every building stands.
+  pine_mesh()
+  local planted = 0
+  for _, y in ipairs(yards) do
+    for _ = 1, r() < 0.5 and 2 or 1 do
+      local a = r() * 2 * math.pi
+      local reach = math.max(y[3], y[4]) / 2 + 3 + r() * 5
+      local tx, tz = y[1] + math.cos(a) * reach, y[2] + math.sin(a) * reach
+      if free(H, tx, tz, 2) then
+        kit.static{mesh = r() < 0.6 and "pine" or "tree", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.7 + r() * 0.6, tag = "tree"}
+        add_circle(H, tx, tz, 1.5)
+        planted = planted + 1
+      end
     end
   end
 

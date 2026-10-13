@@ -265,6 +265,7 @@ def cover_class(t):
 
 def building_kind(t, A):
     b = t.get("building", "yes")
+    if t.get("amenity") == "police": return "police"
     if b in ("garage", "garages", "shed", "carport", "hut", "cabin", "roof", "greenhouse", "service", "kiosk"): return "shed"
     if b in ("house", "detached", "semidetached_house", "bungalow", "farm"): return "house"
     if b == "terrace": return "terrace"
@@ -280,6 +281,21 @@ def building_kind(t, A):
     return "flats"
 
 
+COLOURS = {"red": (0.6, 0.22, 0.17), "darkred": (0.45, 0.15, 0.12), "brown": (0.42, 0.28, 0.2), "darksalmon": (0.72, 0.42, 0.33),
+           "orange": (0.75, 0.42, 0.22), "black": (0.16, 0.16, 0.17), "dimgrey": (0.33, 0.33, 0.34), "dimgray": (0.33, 0.33, 0.34),
+           "grey": (0.5, 0.5, 0.5), "gray": (0.5, 0.5, 0.5), "darkgrey": (0.4, 0.4, 0.41), "darkgray": (0.4, 0.4, 0.41),
+           "silver": (0.7, 0.7, 0.72), "white": (0.88, 0.88, 0.86), "green": (0.25, 0.4, 0.28), "blue": (0.25, 0.32, 0.45)}
+
+
+def roof_colour(t):
+    """A roof:colour as r, g, b: a name or #rrggbb; None if untagged."""
+    c = t.get("roof:colour", "").strip().lower()
+    if c in COLOURS: return COLOURS[c]
+    if len(c) == 7 and c[0] == "#":
+        try: return tuple(round(int(c[i:i + 2], 16) / 255, 2) for i in (1, 3, 5))
+        except ValueError: return None
+
+
 def height_of(t, kind, A):
     for key in ("height", "building:height"):
         try: return max(2.5, float(t[key].split()[0]))
@@ -289,7 +305,7 @@ def height_of(t, kind, A):
     floor = {"house": 2.9, "terrace": 2.9, "shed": 2.6}.get(kind, 3.4)
     if levels is None:
         levels = {"shed": 1, "house": 1 if A < 160 else 2, "terrace": 1, "flats": 3 if A < 900 else 4,
-                  "shop": 2, "civic": 2, "church": 3, "works": 2.5}[kind]
+                  "shop": 2, "civic": 2, "church": 3, "works": 2.5, "police": 3}[kind]
     return max(2.5, levels * floor)
 
 
@@ -486,7 +502,7 @@ def main():
                 if hit:
                     dropped += 1
                     continue
-                footprints.append((x, z, bw, bd, ang, h, kind, name))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof_colour(t)))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -573,12 +589,13 @@ def main():
     for wd, svc, pts in paved:
         L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
-    L.append("  -- {x, z, w, d, yaw, height, kind[, name]}: yaw turns the box's w side off the x axis")
+    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or nil}: yaw turns the box's w side off the x axis")
     L.append("  footprints = {")
-    for x, z, bw, bd, ang, h, kind, name in footprints:
+    for x, z, bw, bd, ang, h, kind, name, roof in footprints:
         # The engine's yaw turns +z toward +x: a box whose w runs at angle
         # `ang` (from +x toward +z) has yaw = -ang.
         tail = f", {q(name)}" if name else ""
+        if roof: tail = (tail or ", false") + ", {" + ", ".join(f(v) for v in roof) + "}"
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")

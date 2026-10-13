@@ -15,6 +15,7 @@ local P = {cops = {}, officers = {}}
 local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
+local STATION_RANGE = 450 -- a station this close sends some of the units
 local LANE = 3.2 -- meters right of the center line, as traffic drives
 
 function P.build()
@@ -24,6 +25,13 @@ function P.build()
   engine.mesh("cop", parts)
   engine.mesh("beacon", {{mesh = "cube", size = {0.5, 0.16, 0.3}, color = {1, 1, 1}, emissive = 1}})
   require("lib.prefabs").person("officer", {0.12, 0.16, 0.36}, {0.07, 0.08, 0.16}, {0.8, 0.62, 0.48}, {0.05, 0.05, 0.08})
+  -- A map with a police station has squad cars parked outside it.
+  if city.has("police_station") then
+    local sx, sz = city.place("police_station")
+    for k = -1, 1, 2 do
+      engine.spawn{mesh = "cop", pos = {sx + k * 3, 0.75, sz}, yaw = math.pi / 2, size = {2, 1.5, 4.5}, body = "static", tag = "prop"}
+    end
+  end
 end
 
 function P.count()
@@ -98,12 +106,30 @@ local function spawn_point()
 end
 
 
+-- Out of the station's yard onto the nearest road, if the station is close
+-- enough to send a unit from.
+local function station_exit(px, pz)
+  if not (city.network() and city.has("police_station")) then return end
+  local sx, sz = city.place("police_station")
+  if U.dist2d(sx, sz, px, pz) > STATION_RANGE then return end
+  local roadnet = require "lib.roadnet"
+  local _, _, rx, rz = roadnet.nearest_edge(sx, sz)
+  if engine.nearest(rx, 1, rz, 6) then return end
+  return rx, rz, math.atan(px - rx, pz - rz)
+end
+
 local function spawn_cop()
-  local x, z, yaw = spawn_point()
+  local px, _, pz = U.player_pos()
+  local x, z, yaw, launch
+  if px and math.random() < 0.5 then
+    x, z, yaw = station_exit(px, pz)
+    launch = x and 30 -- seconds to get to the player before it may be recycled
+  end
+  if not x then x, z, yaw = spawn_point() end
   if not x then return end
   local id = vehicle.spawn(x, z, yaw, nil, "cop", "cop")
   vehicle.headlights(id)
-  local c = {id = id, stuck = 0, reverse = 0}
+  local c = {id = id, stuck = 0, reverse = 0, launch = launch}
   c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
   c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}
   c.siren = engine.play("siren", {loop = true, follow = id})
@@ -378,14 +404,20 @@ local function busted()
   engine.emit("busted", fine)
   wanted.clear()
   P.clear()
-  -- Released on foot outside the station (the start of the game).
+  -- Released on foot outside the station: the map's police station, or the
+  -- start of the game.
   if G.vehicle then
     engine.set_vel(G.vehicle, 0, 0, 0)
     G.vehicle = nil
   elseif G.player then
     engine.despawn(G.player)
   end
-  require("lib.player").spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
+  if city.has("police_station") then
+    local sx, sz = city.place("police_station")
+    require("lib.player").spawn(sx, 1.2, sz + 5, 0)
+  else
+    require("lib.player").spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
+  end
   U.message("BUSTED", 4)
   U.message(string.format("-$%d", fine), 4)
   busted_for = 0
@@ -399,7 +431,8 @@ engine.on("tick", function(dt)
     local x, _, z = engine.pos(id)
     local wrecked = not engine.exists(id) or vehicle.upside_down(id)
     c.wrecked_for = wrecked and (c.wrecked_for or 0) + dt or 0
-    if not x or c.wrecked_for > 3 or U.dist2d(x, z, px, pz) > 170 then
+    c.launch = c.launch and c.launch > 0 and c.launch - dt or nil
+    if not x or c.wrecked_for > 3 or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
       remove(id)
       if x then engine.despawn(id) end
     end

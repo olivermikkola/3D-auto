@@ -44,10 +44,12 @@ return {
     {x = 2700, z = -2200, letter = "M", name = "Kauppakeskus Mylly"},
     {x = 850, z = -1700, letter = "R", name = "Raisiontori"},
     {x = -2760, z = 1820, letter = "S", name = "the harbor"},
+    {x = 1260, z = -1805, letter = "P", name = "Raision poliisiasema"},
   },
 
   places = {
     hospital = {at = {945, -1741}},  -- Mehiläinen, by Raisiontori
+    police_station = {at = {1233, -1796}}, -- Raision poliisiasema: busted, you walk out here
     taxi_rank = {at = {870, -1700}},
     joyride_garage = {junction = "Kuloistentie / Sarkamaantie"}, -- the car dealers past Mylly
     race_start = {junction = "Peltopohjankatu / Sarkamaantie"},
