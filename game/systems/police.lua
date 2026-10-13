@@ -74,30 +74,42 @@ end
 
 -- A junction 70-130 m from where the cops think the player is (further,
 -- in a town whose junctions are far apart). On a map drawn as roads,
--- 70-160 m by road: a junction that's close as the crow flies can be a long
+-- 70-160 m by road (up to 320 up a long dead end): a junction that's close as the crow flies can be a long
 -- drive round, and a cop sent the long way ends up too far off and is
 -- recycled, again and again.
 local function spawn_point()
-  local px, pz = wanted.center[1], wanted.center[2]
+  local px, pz, py = wanted.center[1], wanted.center[2], wanted.center[3]
+  -- Not down in a tunnel when they're up in the street, or the other way.
+  local function level(j)
+    local y = city.level(j)
+    return not (py and y) or math.abs(y - py) < 4
+  end
   if city.network() then
-    local dist, cands = road_dist(city.nearest(px, pz)), {}
-    for _, j in ipairs(city.junctions()) do
-      local x, z = city.pos(j)
-      local d = dist[j]
-      if d and d >= 70 and d <= 160 and U.dist2d(x, z, px, pz) >= 50 and not occupied(x, z) then
-        cands[#cands + 1] = j
+    -- Up a long dead end there may be none that near: then the nearest
+    -- by road, up to twice as far.
+    local dist, cands = road_dist(city.nearest(px, pz, py)), {}
+    for _, far in ipairs{160, 320} do
+      for _, j in ipairs(city.junctions()) do
+        local x, z = city.pos(j)
+        local d = dist[j]
+        if d and d >= 70 and d <= far and U.dist2d(x, z, px, pz) >= 50 and not occupied(x, z) and level(j) then
+          cands[#cands + 1] = j
+        end
       end
+      if #cands > 0 then break end
     end
     if #cands > 0 then
-      local x, z = city.pos(cands[math.random(#cands)])
-      return x, z, math.atan(px - x, pz - z)
+      local j = cands[math.random(#cands)]
+      local x, z = city.pos(j)
+      -- From further off, time to get here before it may be recycled.
+      return x, z, math.atan(px - x, pz - z), city.level(j), U.dist2d(x, z, px, pz) > 150 and 25 or nil
     end
   end
   for _ = 1, 10 do
     local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
     local x, z = city.pos(j)
-    if not occupied(x, z) then return x, z, math.atan(px - x, pz - z) end
+    if not occupied(x, z) and level(j) then return x, z, math.atan(px - x, pz - z), city.level(j) end
   end
   -- A town's junctions can be few and far apart (and busy): anywhere
   -- along a road in range will do, in the lane heading for the player.
@@ -111,7 +123,10 @@ local function spawn_point()
     local t = math.random()
     local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
     local d = U.dist2d(x, z, px, pz)
-    if d >= 60 and d <= 200 and not occupied(x, z) then return x, z, math.atan(px - x, pz - z) end
+    local y = city.height_on(r[1], r[2], x, z)
+    if d >= 60 and d <= 200 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) then
+      return x, z, math.atan(px - x, pz - z), y
+    end
   end
 end
 
@@ -130,7 +145,7 @@ end
 
 local function spawn_cop()
   local px, _, pz = U.player_pos()
-  local x, z, yaw, launch
+  local x, z, yaw, launch, y
   -- Backup (never the first unit, which comes from close by) may come
   -- from a police station in reach.
   if px and P.count() >= 1 then
@@ -140,9 +155,9 @@ local function spawn_cop()
       launch = 30 -- seconds to get to the player before it may be recycled
     end
   end
-  if not x then x, z, yaw = spawn_point() end
+  if not x then x, z, yaw, y, launch = spawn_point() end
   if not x then return end
-  local id = vehicle.spawn(x, z, yaw, nil, "cop", "cop")
+  local id = vehicle.spawn(x, z, yaw, nil, "cop", "cop", y)
   vehicle.headlights(id)
   local c = {id = id, stuck = 0, reverse = 0, launch = launch}
   c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
@@ -198,7 +213,7 @@ function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
 -- On a map drawn as roads, a car out between junctions drives its own
 -- road to whichever end is fewer roads from the goal, rather than heading
 -- straight for the nearest junction (which may be across back gardens).
-local function road_route(x, z, goal)
+local function road_route(x, y, z, goal)
   local roadnet = require "lib.roadnet"
   local hops, queue = {[goal] = 0}, {goal}
   for _, q in ipairs(queue) do
@@ -206,7 +221,7 @@ local function road_route(x, z, goal)
       if not hops[nb] then hops[nb] = hops[q] + 1; queue[#queue + 1] = nb end
     end
   end
-  local e, i = roadnet.nearest_edge(x, z)
+  local e, i = roadnet.nearest_edge(x, z, nil, y)
   local E = roadnet.net().edges[e]
   local route = {}
   if (hops[E.b] or math.huge) <= (hops[E.a] or math.huge) then
@@ -219,8 +234,8 @@ end
 
 local function drive_cop(c, dt)
   local id = c.id
-  local x, _, z = engine.pos(id)
-  local px, _, pz = U.player_pos()
+  local x, y, z = engine.pos(id)
+  local px, py, pz = U.player_pos()
   local yaw = engine.yaw(id)
   local speed = vehicle.speed(id)
   local dist = U.dist2d(x, z, px, pz)
@@ -235,14 +250,17 @@ local function drive_cop(c, dt)
     -- Follow the roads one junction at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
     -- A route may start out away from them, round water or a park.
-    local at = city.nearest(x, z)
-    local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2])
+    -- (Nearest at the same level: not the tunnel under a street, or the
+    -- street over it.)
+    local at = city.nearest(x, z, y)
+    local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2],
+                              wanted.seen and py or wanted.center[3])
     if c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
       c.ri = c.ri + 1 -- round the next bend of this road
       c.goal = c.route[c.ri]
     elseif city.network() and (not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9)
         and U.dist2d(x, z, city.pos(at)) > 15 then
-      c.route, c.ri = road_route(x, z, goal), 1
+      c.route, c.ri = road_route(x, y, z, goal), 1
       c.goal = c.route[1]
     elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
       local from = at
@@ -298,7 +316,7 @@ local function drive_cop(c, dt)
       -- Swung wide round a corner into a wall: back to the middle of the
       -- junction, where there's room, then on along the road.
       if c.jams == 2 and c.route then
-        local jx, jz = city.pos(city.nearest(x, z))
+        local jx, jz = city.pos(city.nearest(x, z, y))
         if U.dist2d(x, z, jx, jz) < 25 then
           table.insert(c.route, c.ri, {jx, jz})
           c.goal = c.route[c.ri]
@@ -440,7 +458,7 @@ end
 
 engine.on("tick", function(dt)
   -- Cops that are gone, wrecked, or far away get recycled.
-  local px, _, pz = U.player_pos()
+  local px, py, pz = U.player_pos()
   if not px then return end
   for id, c in pairs(P.cops) do
     local x, _, z = engine.pos(id)
@@ -512,7 +530,7 @@ engine.on("tick", function(dt)
 
   -- Evasion: unseen and outside the search circle for a few seconds.
   if seen then
-    wanted.seen, wanted.unseen_for, wanted.center = true, 0, {px, pz}
+    wanted.seen, wanted.unseen_for, wanted.center = true, 0, {px, pz, py}
   else
     wanted.seen = false
     wanted.unseen_for = wanted.unseen_for + dt

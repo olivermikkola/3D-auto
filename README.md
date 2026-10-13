@@ -172,7 +172,8 @@ grid's triangles (which crease every 10 m wherever a road curves or climbs); jus
 eases back to the grid over 2 m. A point beside two pieces of the same road (inside a bend) takes
 both, and where different roads overlap, around junctions, they're averaged, nearer centerlines
 counting more, so the surface leans from one to the other without a step. Collisions, rays and
-`engine.terrain_height` all see the roads; the drawn grid stays as it is, under them.
+`engine.terrain_height` all see the roads. The drawn grid stays under them, except where a road runs
+below it (in a sag, or down into a tunnel): there the grid comes down to meet the road.
 
 ## Lighting and day/night
 
@@ -330,6 +331,23 @@ running straight from one end to the other over whatever is below, with railings
 where they don't stand on another road; drive under one and you're on the ground below. Cars,
 pedestrians, police, pickups and shops spawn at the ground's height (`util.ground(x, z)`, 0 on
 the flat maps).
+
+**Raisio 2030** (`MAP=raisio2030`, or RAISIO 2030 under City in the pause menu) is the town as
+it will be once the E18 works under the centre are done (Väylävirasto's "E18 Raision keskustan
+kohta", built 2026-2029). The E18, Nesteentie, drops into a concrete tunnel of about 450 m
+from the new Elauksenkatu up past Raisiontie, with a park on its roof where the Raisio
+crossing's traffic lights were. Raisiontie and Elauksenkatu cross over on top, and the old slip
+roads are gone, along with Soliniuksenkuja's and Martinkatu's junctions onto the E18. It's
+today's map with `lib/tunnel.lua` applied. `tunnel.dig(map, {road =, from =, to =, depth =,
+half =, ramp =, cut =})` sinks the named road along an axis and splits its junctions there from
+the streets that met it at grade. Those streets now cross over it as decks at their own
+surveyed heights, and stubs that only led onto it are cut back. The builder then roofs the
+covered stretch with a park and lights its underside, and walls the open ramps. On a map with
+levels like this, junction lookups take a height (`city.nearest(x, z, y)`,
+`roadnet.nearest_edge(x, z, walkable, y)`). That way police, traffic and pedestrians in the
+street don't head for the tunnel under it, and cars spawn on a road's own level, a bridge's or
+a tunnel's, not just on the ground. The interchange's ramps and roundabouts west of the tunnel,
+Soliniuksenkatu, and the later three-level interchange with valtatie 8 aren't built yet.
 
 You always know where you are: the street you're on and the part of town (Raision keskusta,
 Kerttula, Mylly, Nuorikkala...) come up in the corner whenever either changes, and when the cops

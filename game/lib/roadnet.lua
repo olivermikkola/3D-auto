@@ -3,6 +3,7 @@
 -- another at a named junction). lib/city loads one of these when a map has
 -- `roads` instead of `grid`, and builds it with R.build. Buildings line
 -- the roads by district; landmarks are placed by hand. See maps/raisio.lua.
+local tunnel = require "lib.tunnel"
 local R = {}
 
 local SIDEWALK = 3          -- meters of pavement each side of a non-highway road
@@ -40,7 +41,7 @@ end
 -- then any road ends that aren't named; one edge per stretch of road between
 -- junctions, with its bends.
 function R.load(map)
-  local n = {pos = {}, links = {}, roads = {}, edges = {}, paths = {}, id = {}, name = {}, map = map}
+  local n = {pos = {}, links = {}, roads = {}, edges = {}, paths = {}, id = {}, name = {}, map = map, edge_of = {}}
   local function junction(name)
     if n.id[name] then return n.id[name] end
     local p = map.junctions[name]
@@ -91,8 +92,9 @@ function R.load(map)
         table.insert(n.links[a], b)
         table.insert(n.links[b], a)
         n.roads[#n.roads + 1] = {a, b}
+        n.edge_of[a .. ">" .. b], n.edge_of[b .. ">" .. a] = #n.edges + 1, #n.edges + 1
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck, prof = prof, s0 = cum[start]}
+                                 deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over}
         start = i
       end
     end
@@ -103,6 +105,17 @@ function R.load(map)
 end
 
 function R.net() return NET end
+
+-- Each junction's height (the road's there), once the map is built.
+function R.heights() return NET and NET.heights end
+
+-- The height of the road from junction a to b at (x, z) on it: its deck or
+-- tunnel's, not just the ground's. Nil on a flat map.
+function R.height_on(a, b, x, z)
+  local e = NET and NET.edges[NET.edge_of[a .. ">" .. b] or 0]
+  if not (GROUND and e) then return nil end
+  return (e.height or GROUND)(x, z)
+end
 
 -- Every stretch of road by the grid cells its bounding box touches: cell
 -- key -> {{edge, bend}, ...}, so lookups only look nearby.
@@ -129,8 +142,9 @@ end
 function R.path(a, b) return NET.paths[a][b] end
 
 -- Where the nearest pavement or road of any kind is from (x, z), and the
--- edge it's on.
-function R.nearest_edge(x, z, walkable)
+-- edge it's on. Given a height y, a tunnel or a street over one on another
+-- level counts as far off.
+function R.nearest_edge(x, z, walkable, y)
   local best, be, bi, bx, bz = math.huge
   local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
   local function try(list)
@@ -139,6 +153,10 @@ function R.nearest_edge(x, z, walkable)
       if not (walkable and e.kind == "highway") then
         local a, b = e.pts[it[2] - 1], e.pts[it[2]]
         local d, cx, cz = dist_seg(x, z, a[1], a[2], b[1], b[2])
+        if y and GROUND and (e.tunnel or e.over) then -- on another level: as good as far off
+          local h = (e.height or GROUND)(cx, cz)
+          if math.abs(h - y) > 4 then d = d + 30 * math.abs(h - y) end
+        end
         if d < best then best, be, bi, bx, bz = d, it[1], it[2], cx, cz end
       end
     end
@@ -185,7 +203,7 @@ end
 function R.check(map)
   local name = map.name or "?"
   local function fail(fmt, ...) error(string.format("map '%s': " .. fmt, name, ...), 0) end
-  -- Roads may only meet at junctions (a bridge passes over). Only stretches
+  -- Roads may only meet at junctions (a bridge passes over, a tunnel under). Only stretches
   -- sharing a grid cell can cross.
   local E = NET.edges
   for _, list in pairs(NET.grid) do
@@ -193,7 +211,7 @@ function R.check(map)
       for q = p + 1, #list do
         local ea, eb = list[p][1], list[q][1]
         local a, b = E[ea], E[eb]
-        if ea ~= eb and not (a.bridge or b.bridge) then
+        if ea ~= eb and not (a.bridge or b.bridge or a.tunnel or b.tunnel) then
           local i, k = list[p][2], list[q][2]
           local x, z = crossing(a.pts[i - 1][1], a.pts[i - 1][2], a.pts[i][1], a.pts[i][2],
                                 b.pts[k - 1][1], b.pts[k - 1][2], b.pts[k][1], b.pts[k][2])
@@ -493,7 +511,8 @@ local function dashes(parts, pts, top, hf)
 end
 
 -- A bridge deck's height along its edge: straight from one end's ground to
--- the other's, whatever is below.
+-- the other's, whatever is below; a street over a tunnel keeps its own
+-- surveyed heights.
 local function deck_height(e)
   local cum = {0}
   for i = 2, #e.pts do
@@ -501,11 +520,17 @@ local function deck_height(e)
   end
   local total = math.max(cum[#cum], 1e-3)
   local ha, hb = GROUND(e.pts[1][1], e.pts[1][2]), GROUND(e.pts[#e.pts][1], e.pts[#e.pts][2])
+  local own = e.over and e.prof
   return function(x, z)
     local best, bs = math.huge, 0
     for i = 2, #e.pts do
       local d, _, _, t = dist_seg(x, z, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2])
       if d < best then best, bs = d, cum[i - 1] + (cum[i] - cum[i - 1]) * t end
+    end
+    if own then
+      local hs, u = own.hs, math.max(0, (e.s0 + bs) / own.step)
+      local k = math.min(math.floor(u), #hs - 2)
+      return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
     end
     return ha + (hb - ha) * bs / total
   end
@@ -587,7 +612,7 @@ local KINDS = {
 local function road_surface()
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
-    if e.prof and not e.deck then
+    if e.prof and not e.deck and not e.over then
       local hs, step = e.prof.hs, e.prof.step
       local function h(s)
         local u = math.max(0, s / step)
@@ -650,6 +675,15 @@ build = function(map, kit)
   local H = hash(40)
   local L = {map = map.id or map.name, network = true, sx = sx, sz = sz, curb = kit.CURB, walk = SIDEWALK,
              avenue = 14, street = 12, kinds = {}, landmarks = {}, labels = {}}
+  -- Is (x, z) under a tunnel's roof (where nothing tall can stand on the road)?
+  local function under_roof(x, z)
+    for _, spec in ipairs(map.tunnels or {}) do
+      local len, uv = tunnel.frame(spec)
+      local u, v = uv(x, z)
+      if u > -10 and u < len + 10 and math.abs(v) < spec.half + 4 then return true end
+    end
+    return false
+  end
 
   -- Land (the terrain, if there is one), the sea round it, and invisible
   -- walls at the shore.
@@ -699,7 +733,7 @@ build = function(map, kit)
   for ei, e in ipairs(NET.edges) do
     local parts = {}
     local walk = e.kind ~= "highway"
-    local hf = GROUND and e.deck and deck_height(e) or nil
+    local hf = GROUND and (e.deck or e.over) and deck_height(e) or nil
     e.height = hf
     if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true, hf) end
     strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
@@ -720,7 +754,7 @@ build = function(map, kit)
                      tag = "bridge", abs = true}
           parts[#parts + 1] = {mesh = "cube", pos = {mx, mh - 0.7, mz}, yaw = yaw, pitch = pitch, size = {wide, 1.2, len / n + 0.05},
                                color = {0.55, 0.55, 0.53}, abs = true}
-          for _, side in ipairs{-1, 1} do
+          for _, side in ipairs(e.over and {} or {-1, 1}) do -- over a tunnel, the roof is the ground
             rails[#rails + 1] = {mx + rx * side * wide / 2, mh + 0.5, mz + rz * side * wide / 2, yaw, pitch, len / n + 0.05, ei}
           end
         end
@@ -779,7 +813,7 @@ build = function(map, kit)
           local on_road = H.near(lx, lz, 40, function(it)
             return it.edge and it.edge ~= ei and dist_seg(lx, lz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 1.5
           end)
-          if not on_road then
+          if not on_road and not under_roof(lx, lz) then
             kit.static{mesh = "lamp", pos = {lx, 0.05 + (e.height and e.height(lx, lz) or (GROUND and GROUND(lx, lz) or 0)), lz},
                        yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true}
           end
@@ -1363,6 +1397,95 @@ build = function(map, kit)
   for ei, e in ipairs(NET.edges) do
     if e.kind ~= "highway" then R.pavement(ei, 1); R.pavement(ei, -1) end
   end
+  -- Each junction's height, on its road (a tunnel's, a deck's), for
+  -- telling levels apart.
+  if GROUND then
+    NET.heights = {}
+    for _, e in ipairs(NET.edges) do
+      local f = e.height or GROUND
+      NET.heights[e.a] = NET.heights[e.a] or f(e.pts[1][1], e.pts[1][2])
+      NET.heights[e.b] = NET.heights[e.b] or f(e.pts[#e.pts][1], e.pts[#e.pts][2])
+    end
+  end
+
+  -- Tunnels (lib/tunnel.lua): over the covered stretch a concrete roof at
+  -- the ground's old height with a park on it, lights along its underside,
+  -- and walls down both sides of the open ramps at its ends.
+  for ti, spec in ipairs(map.tunnels or {}) do
+    local len = tunnel.frame(spec)
+    local ax, az = spec.from[1], spec.from[2]
+    local ux, uz = (spec.to[1] - ax) / len, (spec.to[2] - az) / len
+    local yaw = math.atan(ux, uz)
+    local rx, rz = math.cos(yaw), -math.sin(yaw)
+    local W, ramp = 2 * spec.half + 4, spec.ramp or 100
+    local function floor(u) return engine.terrain_height(ax + ux * u, az + uz * u) or 0 end
+    local function top(u) return floor(u) + tunnel.dip(spec, len, u) end
+    local parts = {}
+    local n = math.ceil(len / 10)
+    for k = 0, n - 1 do
+      local u0, u1 = len * k / n, len * (k + 1) / n
+      local h0, h1 = top(u0), top(u1)
+      local mx, mz, mh, l = ax + ux * (u0 + u1) / 2, az + uz * (u0 + u1) / 2, (h0 + h1) / 2, u1 - u0
+      local pitch = -math.atan(h1 - h0, l)
+      kit.static{mesh = "cube", pos = {mx, mh - 0.65, mz}, yaw = yaw, pitch = pitch, size = {W, 1.3, l + 0.05},
+                 color = {0.6, 0.6, 0.58}, tag = "roof", abs = true}
+      parts[#parts + 1] = {mesh = "cube", pos = {mx, mh + 0.02, mz}, yaw = yaw, pitch = pitch, size = {W - 1, 0.06, l + 0.05},
+                           color = {0.32, 0.5, 0.26}, abs = true}
+      parts[#parts + 1] = {mesh = "cube", pos = {mx, mh + 0.04, mz}, yaw = yaw, pitch = pitch, size = {3, 0.06, l + 0.05},
+                           color = {0.72, 0.68, 0.6}, abs = true}
+      for _, v in ipairs{-spec.half / 2, spec.half / 2} do
+        parts[#parts + 1] = {mesh = "cube", pos = {mx + rx * v, mh - 1.35, mz + rz * v}, yaw = yaw, pitch = pitch, size = {0.5, 0.1, 3},
+                             color = {1, 0.97, 0.88}, emissive = 1, abs = true}
+      end
+      -- The park: trees down both sides, clear of the streets crossing it.
+      for _, v in ipairs{-spec.half + 2, spec.half - 2} do
+        local tx, tz = mx + rx * v, mz + rz * v
+        local on_road = H.near(tx, tz, 40, function(it)
+          return it.edge and not NET.edges[it.edge].tunnel and dist_seg(tx, tz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 4
+        end)
+        if k % 2 == 0 and not on_road then
+          kit.static{mesh = r() < 0.5 and "pine" or "tree", pos = {tx, mh, tz}, size = {0.5, 6, 0.5}, scale = 0.7 + r() * 0.5,
+                     tag = "tree", abs = true}
+        end
+      end
+    end
+    -- Down the open ramps, a wall along the outer edge of each carriageway
+    -- (none between them).
+    local _, uv = tunnel.frame(spec)
+    for ei, e in ipairs(NET.edges) do
+      if e.tunnel then
+        local off = e.width / 2 + (e.kind ~= "highway" and SIDEWALK or 1) + 0.6
+        for i = 2, #e.pts do
+          local px, pz, qx, qz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+          local l = math.sqrt((qx - px) ^ 2 + (qz - pz) ^ 2)
+          local wy = math.atan(qx - px, qz - pz)
+          local wx, wz = math.cos(wy), -math.sin(wy)
+          local n = math.max(1, math.ceil(l / 8))
+          for k = 0, n - 1 do
+            local f = (k + 0.5) / n
+            local cx, cz = px + (qx - px) * f, pz + (qz - pz) * f
+            local u = uv(cx, cz)
+            local d = tunnel.dip(spec, len, u)
+            if (u < 0 or u > len) and u > -ramp and u < len + ramp and d > 0.3 then
+              local g = engine.terrain_height(cx, cz) or 0
+              for _, side in ipairs{-1, 1} do
+                local x, z = cx + wx * side * off, cz + wz * side * off
+                local inside = H.near(x, z, 40, function(it)
+                  return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 2
+                end)
+                if not inside then
+                  kit.static{mesh = "cube", pos = {x, g + (d + 1.1) / 2, z}, yaw = wy, size = {0.5, d + 1.1, l / n + 0.3},
+                             color = {0.62, 0.62, 0.6}, tag = "wall", abs = true}
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    bake("tunnel" .. ti, parts, 0, "roof")
+  end
+
   return L
 end
 

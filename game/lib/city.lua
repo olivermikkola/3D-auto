@@ -95,7 +95,7 @@ function C.map() return MAP end
 
 -- The cities the pause menu offers, and the one picked there last (kept in
 -- the "city" save; MAP=<name> overrides it for a run).
-C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}}
+C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"raisio2030", "RAISIO 2030"}}
 function C.chosen()
   local v = engine.load("city")
   for _, m in ipairs(C.MAPS) do if m[1] == v then return v end end
@@ -288,6 +288,14 @@ local function graph()
   return g
 end
 
+-- How high junction `id` is (its road's level: a tunnel's, a bridge's),
+-- or nil on a flat map; and the road from a to b at (x, z) on it.
+function C.level(id)
+  local ys = NET and roadnet.heights()
+  return ys and ys[id]
+end
+function C.height_on(a, b, x, z) return NET and roadnet.height_on(a, b, x, z) end
+
 -- Where junction `id` is, as x, z.
 function C.pos(id)
   local p = graph().pos[id]
@@ -320,12 +328,15 @@ end
 -- The junction at grid intersection (k, l), if it has a road.
 function C.junction(k, l) return graph().id[k .. "," .. l] end
 
--- The nearest junction to (x, z).
-function C.nearest(x, z)
+-- The nearest junction to (x, z); given a height y too, one on another
+-- level (a tunnel under a street, the street over it) counts as far off.
+function C.nearest(x, z, y)
   local g = graph()
+  local ys = y and NET and roadnet.heights()
   local best, id = math.huge, 1
   for i, p in ipairs(g.pos) do
     local d = (p[1] - x) ^ 2 + (p[2] - z) ^ 2
+    if ys and ys[i] and math.abs(ys[i] - y) > 4 then d = d + (30 * (ys[i] - y)) ^ 2 end
     if d < best then best, id = d, i end
   end
   return id

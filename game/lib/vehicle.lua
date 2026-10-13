@@ -9,9 +9,11 @@ M.MAX_SPEED, M.REVERSE, M.ACCEL, M.BRAKE, M.DRAG = 38, 10, 18, 30, 0.12
 -- Anything tagged "car" or "cop" can be driven.
 M.tags = {car = true, cop = true}
 
-function M.spawn(x, z, yaw, color_index, mesh, tag)
+-- y is the road's height there when it isn't the ground's (on a bridge,
+-- in a tunnel).
+function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local n = color_index or math.random(8)
-  local id = engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75 + U.ground(x, z), z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
+  local id = engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75 + (y or U.ground(x, z)), z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
                           body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = tag or "car"}
   return id
 end

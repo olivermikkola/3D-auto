@@ -17,8 +17,8 @@ function W.set(n)
   W.heat = math.max(W.heat, W.level)
   if W.level > 0 and old == 0 then
     -- Fresh pursuit starts where the player is.
-    local x, _, z = U.player_pos()
-    if x then W.center = {x, z} end
+    local x, y, z = U.player_pos()
+    if x then W.center = {x, z, y} end
     W.seen, W.unseen_for = true, 0
   end
   changed(old)
