@@ -44,6 +44,16 @@ function P.is_cop(id) return P.cops[id] ~= nil end
 
 -- ---- spawning ------------------------------------------------------------
 
+-- Is something a cop car would land on standing within 6 m of (x, z)?
+-- Only what moves counts: scenery (road meshes, lamps, trees) is
+-- already off the asphalt.
+local function occupied(x, z)
+  for _, tag in ipairs{"car", "cop", "player", "officer", "ped"} do
+    if engine.nearest(x, 1, z, 6, tag) then return true end
+  end
+  return false
+end
+
 -- How far it is by road from junction `from` to each junction (meters).
 local function road_dist(from)
   local dist, done = {[from] = 0}, {}
@@ -74,7 +84,7 @@ local function spawn_point()
     for _, j in ipairs(city.junctions()) do
       local x, z = city.pos(j)
       local d = dist[j]
-      if d and d >= 70 and d <= 160 and U.dist2d(x, z, px, pz) >= 50 and not engine.nearest(x, 1, z, 6) then
+      if d and d >= 70 and d <= 160 and U.dist2d(x, z, px, pz) >= 50 and not occupied(x, z) then
         cands[#cands + 1] = j
       end
     end
@@ -87,7 +97,7 @@ local function spawn_point()
     local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
     local x, z = city.pos(j)
-    if not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
+    if not occupied(x, z) then return x, z, math.atan(px - x, pz - z) end
   end
   -- A town's junctions can be few and far apart (and busy): anywhere
   -- along a road in range will do, in the lane heading for the player.
@@ -101,7 +111,7 @@ local function spawn_point()
     local t = math.random()
     local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
     local d = U.dist2d(x, z, px, pz)
-    if d >= 60 and d <= 200 and not engine.nearest(x, 1, z, 6) then return x, z, math.atan(px - x, pz - z) end
+    if d >= 60 and d <= 200 and not occupied(x, z) then return x, z, math.atan(px - x, pz - z) end
   end
 end
 
@@ -114,7 +124,7 @@ local function station_exit(px, pz)
   if U.dist2d(sx, sz, px, pz) > STATION_RANGE then return end
   local roadnet = require "lib.roadnet"
   local _, _, rx, rz = roadnet.nearest_edge(sx, sz)
-  if engine.nearest(rx, 1, rz, 6) then return end
+  if occupied(rx, rz) then return end
   return rx, rz, math.atan(px - rx, pz - rz)
 end
 
