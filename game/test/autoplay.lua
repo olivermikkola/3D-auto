@@ -278,6 +278,8 @@ until_(function() return busts == 1 end, 30, "busted when caught standing next t
   if city.has("police_station") then sx, sz = city.place("police_station") end
   check(math.sqrt((px - sx) ^ 2 + (pz - sz) ^ 2) < 12, city.has("police_station") and "released outside the police station"
                                          or "released where the game starts")
+  -- The rest of the run plays out from the start, wherever the station is.
+  engine.set_pos(G.player, G.spawn[1], G.spawn[2], G.spawn[3])
 end)
 
 after(1.0, function() wanted.set(1) end)
