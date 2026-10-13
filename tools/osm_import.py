@@ -653,8 +653,9 @@ def main():
         def ground(x, z):
             return Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
         # Each junction's height, then each road's profile: the ground along
-        # it smoothed over 40 m and bent to meet its junctions. A road on a
-        # bridge runs straight between its ends instead.
+        # it smoothed over 40 m (80 m for main roads and highways, built
+        # gentler) and bent to meet its junctions. A road on a bridge runs
+        # straight between its ends instead.
         jh = {j: sum(ground(pos[j][0] + dx, pos[j][1] + dz) for dx, dz in ((0, 0), (5, 0), (-5, 0), (0, 5), (0, -5))) / 5
               for j in {ed_["a"] for ed_ in edges} | {ed_["b"] for ed_ in edges}}
         prof_grid = Grid(50)
@@ -673,14 +674,24 @@ def main():
                 hs = [ha + (hb - ha) * s_ / total for s_ in ss]
             else:
                 raw = [ground(*p) for p in xs]
+                reach = 40 if ed_["kind"] in ("main", "highway") else 20
                 sm = []
                 for k in range(len(raw)):
                     lo, hi = k, k
-                    while lo > 0 and ss[k] - ss[lo - 1] <= 20: lo -= 1
-                    while hi < len(raw) - 1 and ss[hi + 1] - ss[k] <= 20: hi += 1
+                    while lo > 0 and ss[k] - ss[lo - 1] <= reach: lo -= 1
+                    while hi < len(raw) - 1 and ss[hi + 1] - ss[k] <= reach: hi += 1
                     sm.append(sum(raw[lo:hi + 1]) / (hi - lo + 1))
                 hs = [sm[k] + (ha - sm[0]) * (1 - ss[k] / total) + (hb - sm[-1]) * ss[k] / total for k in range(len(sm))]
             ed_["profile"] = list(zip(xs, hs))
+            # For the game: heights every 10 m or so along the road, end to end.
+            n = max(1, round(total / 10))
+            ed_["heights"] = []
+            k = 0
+            for m in range(n + 1):
+                s_ = total * m / n
+                while k < len(ss) - 2 and ss[k + 1] < s_: k += 1
+                f_ = (s_ - ss[k]) / ((ss[k + 1] - ss[k]) or 1)
+                ed_["heights"].append(hs[k] + (hs[k + 1] - hs[k]) * min(1.0, max(0.0, f_)) if len(hs) > 1 else hs[0])
             if not ed_["deck"]:
                 for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
                     prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
@@ -754,6 +765,8 @@ def main():
         if ed["name"]: attrs = f"name = {q(ed['name'])}, " + attrs
         if ed["bridge"]: attrs += ", bridge = true"
         if ed.get("deck") and cfg.get("dem"): attrs += ", deck = true"
+        if ed.get("heights") and not ed.get("deck"):
+            attrs += ", heights = {" + ", ".join(f"{h:.2f}".rstrip("0").rstrip(".") for h in ed["heights"]) + "}"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")
     L.append("  },")
     L.append("  -- {width, service road?, points...}")

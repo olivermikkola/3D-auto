@@ -8,7 +8,7 @@ use crate::audio::{self, Synth, Wave};
 use crate::engine::{Engine, Entity};
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{Body, Kind, Terrain};
+use crate::physics::{Body, Kind, RoadSeg, Terrain};
 use crate::save;
 use mlua::{Function, IntoLuaMulti, Lua, LuaOptions, MultiValue, Result, StdLib, Table, Value};
 use std::cell::RefCell;
@@ -449,8 +449,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
 
     // The ground as a heightfield: {x0, z0, step, w, d, heights = {w * d
-    // numbers, row by row toward +z}, colors = {r, g, b per height}?}; nil
-    // removes it.
+    // numbers, row by row toward +z}, colors = {r, g, b per height}?, roads =
+    // {ax, az, ay, bx, bz, by, half width, road number, ...}?}; nil removes it.
     f!("terrain", |e, _lua, t: Option<Table>| {
         let Some(t) = t else {
             e.set_terrain(None, None);
@@ -499,7 +499,19 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 Some(v.chunks(3).map(|c| [c[0], c[1], c[2]]).collect())
             }
         };
-        let terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights);
+        // Roads over it, level across: {ax, az, ay, bx, bz, by, half width,
+        // which road, ...}.
+        let roads = match t.get::<Option<Table>>("roads")? {
+            None => Vec::new(),
+            Some(r) => {
+                let v: Vec<f32> = r.sequence_values().collect::<Result<_>>()?;
+                if !v.len().is_multiple_of(8) {
+                    return Err(mlua::Error::runtime("terrain roads come in eights: ax, az, ay, bx, bz, by, half width, road"));
+                }
+                v.chunks(8).map(|c| RoadSeg { a: v3(c[0], c[2], c[1]), b: v3(c[3], c[5], c[4]), half: c[6], road: c[7] as u32 }).collect()
+            }
+        };
+        let terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights).with_roads(roads);
         e.set_terrain(Some(terrain), colors);
         Ok(())
     });

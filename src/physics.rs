@@ -98,20 +98,163 @@ pub struct Terrain {
     pub heights: Vec<f32>,
     pub id: usize,
     pub top: f32,
+    roads: Vec<RoadSeg>,
+    /// Road segments by ROAD_CELL square, as ranges into `road_items`.
+    road_cells: Vec<u32>,
+    road_items: Vec<u32>,
+    road_w: usize,
 }
+
+/// A stretch of road laid over the terrain: its centerline from `a` to `b`
+/// (heights in y), flat across out to `half` meters each side.
+#[derive(Clone, Copy)]
+pub struct RoadSeg {
+    pub a: Vec3,
+    pub b: Vec3,
+    pub half: f32,
+    /// Which road it's part of: a road follows its nearest piece, and
+    /// different roads that overlap blend.
+    pub road: u32,
+}
+
+const ROAD_CELL: f32 = 16.0;
+/// Past a road's edge the surface eases back to the heightfield over this many meters.
+const ROAD_BLEND: f32 = 2.0;
 
 impl Terrain {
     pub fn new(x0: f32, z0: f32, step: f32, w: usize, d: usize, heights: Vec<f32>) -> Terrain {
         let top = heights.iter().copied().fold(f32::MIN, f32::max);
-        Terrain { x0, z0, step, w, d, heights, id: usize::MAX, top }
+        Terrain {
+            x0,
+            z0,
+            step,
+            w,
+            d,
+            heights,
+            id: usize::MAX,
+            top,
+            roads: Vec::new(),
+            road_cells: Vec::new(),
+            road_items: Vec::new(),
+            road_w: 0,
+        }
+    }
+
+    /// Lay roads over the heightfield: on them the surface is the road's
+    /// own, smooth along it and level across, instead of the grid's
+    /// triangles; it eases back to the grid just past their edges.
+    pub fn with_roads(mut self, roads: Vec<RoadSeg>) -> Terrain {
+        let (rw, rd) =
+            (((self.w - 1) as f32 * self.step / ROAD_CELL) as usize + 1, ((self.d - 1) as f32 * self.step / ROAD_CELL) as usize + 1);
+        let mut lists: Vec<Vec<u32>> = vec![Vec::new(); rw * rd];
+        let cell = |v: f32, n: usize| ((v / ROAD_CELL).floor().max(0.0) as usize).min(n - 1);
+        for (k, r) in roads.iter().enumerate() {
+            let pad = r.half + ROAD_BLEND;
+            let (lx, hx) = (r.a.x.min(r.b.x) - pad - self.x0, r.a.x.max(r.b.x) + pad - self.x0);
+            let (lz, hz) = (r.a.z.min(r.b.z) - pad - self.z0, r.a.z.max(r.b.z) + pad - self.z0);
+            for j in cell(lz, rd)..=cell(hz, rd) {
+                for i in cell(lx, rw)..=cell(hx, rw) {
+                    lists[j * rw + i].push(k as u32);
+                }
+            }
+            self.top = self.top.max(r.a.y).max(r.b.y);
+        }
+        self.road_cells = Vec::with_capacity(lists.len() + 1);
+        self.road_items.clear();
+        for l in &lists {
+            self.road_cells.push(self.road_items.len() as u32);
+            self.road_items.extend_from_slice(l);
+        }
+        self.road_cells.push(self.road_items.len() as u32);
+        self.roads = roads;
+        self.road_w = rw;
+        self
     }
 
     pub fn at(&self, i: usize, j: usize) -> f32 {
         self.heights[j * self.w + i]
     }
 
-    /// Height and upward normal at (x, z); None off the grid.
+    /// How much of (x, z) is road (1 on one, easing to 0 over ROAD_BLEND
+    /// past its edge), and the roads' height and normal there. Where roads
+    /// overlap, as they do around junctions, they're averaged, nearer
+    /// centerlines counting more, so one never steps onto another.
+    fn road(&self, x: f32, z: f32) -> Option<(f32, f32, Vec3)> {
+        if self.roads.is_empty() {
+            return None;
+        }
+        let (u, v) = ((x - self.x0) / ROAD_CELL, (z - self.z0) / ROAD_CELL);
+        if !(u >= 0.0 && v >= 0.0) || u as usize >= self.road_w || (v as usize + 1) * self.road_w >= self.road_cells.len() {
+            return None;
+        }
+        let c = v as usize * self.road_w + u as usize;
+        // Per road: its pieces blended, the ones (x, z) is beside by far the
+        // most (so inside a bend there's no crease where one piece hands over
+        // to the next):
+        // (road, weight, weighted height, weighted normal, nearest distance
+        // squared, coverage, reach).
+        let mut near = [(u32::MAX, 0.0f32, 0.0f32, Vec3::ZERO, f32::MAX, 0.0f32, 0.0f32); 8];
+        let mut n = 0;
+        for &k in &self.road_items[self.road_cells[c] as usize..self.road_cells[c + 1] as usize] {
+            let r = &self.roads[k as usize];
+            let (dx, dz) = (r.b.x - r.a.x, r.b.z - r.a.z);
+            let l2 = dx * dx + dz * dz;
+            let along = if l2 > 1e-9 { ((x - r.a.x) * dx + (z - r.a.z) * dz) / l2 } else { 0.0 };
+            let t = along.clamp(0.0, 1.0);
+            let d2 = (x - r.a.x - dx * t).powi(2) + (z - r.a.z - dz * t).powi(2);
+            let on = 1.0 - (d2.sqrt() - r.half) / ROAD_BLEND;
+            if on <= 0.0 {
+                continue;
+            }
+            let g = if l2 > 1e-9 { (r.b.y - r.a.y) / l2 } else { 0.0 };
+            let (h, nrm) = (r.a.y + (r.b.y - r.a.y) * t, v3(-dx * g, 1.0, -dz * g).norm());
+            // Beside its own piece a point counts that piece almost alone;
+            // a meter past a piece's end, it barely counts, nor toward the
+            // edge of a piece across a bend.
+            let past_end = (along - t).abs() * l2.sqrt();
+            let w = (1.0 - d2.sqrt() / (r.half + ROAD_BLEND)).powi(2) / (past_end * past_end + 0.01).powi(2);
+            let i = match near[..n].iter().position(|p| p.0 == r.road) {
+                Some(i) => i,
+                None if n < near.len() => {
+                    n += 1;
+                    near[n - 1].0 = r.road;
+                    n - 1
+                }
+                None => continue,
+            };
+            let p = &mut near[i];
+            p.1 += w;
+            p.2 += w * h;
+            p.3 += nrm * w;
+            p.4 = p.4.min(d2);
+            p.5 = p.5.max(on.min(1.0));
+            p.6 = r.half + ROAD_BLEND;
+        }
+        // Then the roads together, nearer centerlines counting more and
+        // fading out smoothly toward each one's outer edge, so between two
+        // the surface leans from one to the other without a step.
+        let (mut cover, mut sw, mut sh, mut sn) = (0.0f32, 0.0f32, 0.0f32, Vec3::ZERO);
+        for &(_, pw, ph, pn, d2, on, reach) in &near[..n] {
+            let w = (1.0 - d2.sqrt() / reach).powi(2);
+            cover = cover.max(on);
+            sw += w;
+            sh += w * ph / pw;
+            sn += pn.norm() * w;
+        }
+        (sw > 0.0).then(|| (cover, sh / sw, sn.norm()))
+    }
+
+    /// Height and upward normal at (x, z), roads included; None off the grid.
     pub fn surface(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
+        let (h, n) = self.grid(x, z)?;
+        Some(match self.road(x, z) {
+            Some((on, rh, rn)) => (h + (rh - h) * on, (n * (1.0 - on) + rn * on).norm()),
+            None => (h, n),
+        })
+    }
+
+    /// The heightfield's own triangles at (x, z), as drawn.
+    pub fn grid(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
         let (u, v) = ((x - self.x0) / self.step, (z - self.z0) / self.step);
         if !(u >= 0.0 && v >= 0.0) {
             return None;
@@ -828,6 +971,53 @@ mod tests {
         assert!((b.surface(1.0, 1.0).unwrap().0 - 2.0).abs() < 1e-5);
         assert!((b.surface(0.75, 0.75).unwrap().0 - 1.0).abs() < 1e-5, "lower triangle: halfway along both");
         assert!((b.surface(1.25, 1.25).unwrap().0 - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn roads_lay_their_own_smooth_surface_over_the_terrain() {
+        // Lumpy ground on a 10 m grid, graded roughly to a road climbing 5%
+        // along x in 10 m pieces, 6 m each side; a second road leaving its
+        // middle at a slant, a little steeper.
+        let (w, d, step) = (31, 21, 10.0);
+        let main = |x: f32| 3.0 + x * 0.05;
+        let hs = (0..w * d)
+            .map(|k| main((k % w) as f32 * step) + ((k % w) as f32 * 1.3).sin() * 0.5 + ((k / w) as f32 * 0.7).cos() * 0.3)
+            .collect();
+        let mut roads: Vec<RoadSeg> = (0..20)
+            .map(|k| {
+                let (x0, x1) = (50.0 + k as f32 * 10.0, 60.0 + k as f32 * 10.0);
+                RoadSeg { a: v3(x0, main(x0), 100.0), b: v3(x1, main(x1), 100.0), half: 6.0, road: 0 }
+            })
+            .collect();
+        roads.push(RoadSeg { a: v3(150.0, main(150.0), 100.0), b: v3(200.0, main(150.0) + 4.0, 130.0), half: 6.0, road: 1 });
+        let t = Terrain::new(0.0, 0.0, step, w, d, hs).with_roads(roads);
+        for x in [61.0, 87.5, 113.3] {
+            for z in [94.5, 100.0, 105.5] {
+                let (h, n) = t.surface(x, z).unwrap();
+                assert!((h - main(x)).abs() < 1e-3, "on the road at ({x}, {z}): {h} not {}", main(x));
+                assert!((n - v3(-0.05, 1.0, 0.0).norm()).len() < 1e-3, "{n:?}");
+            }
+        }
+        assert_eq!(t.surface(100.0, 109.0), t.grid(100.0, 109.0), "past the blend it's the grid again");
+        let h = t.surface(100.0, 107.0).unwrap().0;
+        assert!(h > main(100.0).min(t.grid(100.0, 107.0).unwrap().0) - 1e-3 && h < main(100.0).max(t.grid(100.0, 107.0).unwrap().0) + 1e-3);
+        // Walking a fine lattice around the fork, on the roads the surface
+        // never steps: neighbours 10 cm apart differ by little more than the
+        // steepest slope there allows, even where the two roads overlap.
+        let on_road = |x: f32, z: f32| t.road(x, z).is_some_and(|r| r.0 >= 1.0);
+        let mut worst: f32 = 0.0;
+        for j in 0..400 {
+            for i in 0..1200 {
+                let (x, z) = (80.0 + i as f32 * 0.1, 90.0 + j as f32 * 0.1);
+                let h = t.surface(x, z).unwrap().0;
+                for (x2, z2) in [(x + 0.1, z), (x, z + 0.1)] {
+                    if on_road(x, z) && on_road(x2, z2) {
+                        worst = worst.max((t.surface(x2, z2).unwrap().0 - h).abs());
+                    }
+                }
+            }
+        }
+        assert!(worst < 0.03, "a step of {worst} m in 10 cm");
     }
 
     #[test]
