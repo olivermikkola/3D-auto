@@ -210,7 +210,7 @@ local function road_layout(L, M, want, at_least)
   if M.terrain then
     local worst, worst_at, sum, steps = 0, nil, 0, 0
     for _, e in ipairs(roadnet.net().edges) do
-      if not e.deck then
+      if not e.deck and not e.over then
         for i = 2, #e.pts do
           local prev, prev2
           local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]

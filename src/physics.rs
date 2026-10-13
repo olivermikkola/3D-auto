@@ -168,6 +168,20 @@ impl Terrain {
         self.road_cells.push(self.road_items.len() as u32);
         self.roads = roads;
         self.road_w = rw;
+        // Where a road runs below the grid (in a sag, or down a trench into
+        // a tunnel) the grid under it comes down to meet it, so the ground
+        // drawn there doesn't cover the road.
+        for j in 0..self.d {
+            for i in 0..self.w {
+                let (x, z) = (self.x0 + i as f32 * self.step, self.z0 + j as f32 * self.step);
+                if let Some((on, rh, _)) = self.road(x, z)
+                    && on >= 1.0
+                    && rh - 0.15 < self.heights[j * self.w + i]
+                {
+                    self.heights[j * self.w + i] = rh - 0.15;
+                }
+            }
+        }
         self
     }
 
@@ -999,6 +1013,9 @@ mod tests {
             }
         }
         assert_eq!(t.surface(100.0, 109.0), t.grid(100.0, 109.0), "past the blend it's the grid again");
+        for x in [60.0, 100.0, 140.0] {
+            assert!(t.grid(x, 100.0).unwrap().0 <= main(x) - 0.149, "the grid under the road comes down to it at x {x}");
+        }
         let h = t.surface(100.0, 107.0).unwrap().0;
         assert!(h > main(100.0).min(t.grid(100.0, 107.0).unwrap().0) - 1e-3 && h < main(100.0).max(t.grid(100.0, 107.0).unwrap().0) + 1e-3);
         // Walking a fine lattice around the fork, on the roads the surface

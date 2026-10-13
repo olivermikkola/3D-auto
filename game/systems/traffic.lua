@@ -70,16 +70,16 @@ local function place(c, min_dist)
     local d = px and U.dist2d(x, z, px, pz)
     if not px or (d >= min_dist and d <= NEAR) then
       c.speed, c.stuck = 0, 0
-      return x, z, yaw
+      return x, z, yaw, city.height_on(c.from, c.to, x, z)
     end
   end
 end
 
 local function add_car(min_dist)
   local c = {}
-  local x, z, yaw = place(c, min_dist)
+  local x, z, yaw, y = place(c, min_dist)
   if not x then return end
-  c.id = vehicle.spawn(x, z, yaw)
+  c.id = vehicle.spawn(x, z, yaw, nil, nil, nil, y)
   vehicle.headlights(c.id)
   T.cars[c.id] = c
 end
@@ -88,8 +88,8 @@ end
 -- off down one of its roads. Missions use it for cars they want to see wander town:
 -- `keep` ones are never recycled out of sight, and `cruise` sets their pace.
 function T.adopt(id, opts)
-  local x, _, z = engine.pos(id)
-  local at = city.nearest(x, z)
+  local x, y, z = engine.pos(id)
+  local at = city.nearest(x, z, y)
   local ways = city.links(at)
   local c = {from = at, to = ways[math.random(math.max(1, #ways))] or at, speed = 0, stuck = 0}
   route(c)

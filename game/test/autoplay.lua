@@ -46,7 +46,7 @@ end
 -- middle of the crossing; on a map drawn as roads it's live traffic, so
 -- stand on the pavement beside it, away from every road that meets there.
 local function beside_junction(x, z)
-  local j = city.nearest(x, z)
+  local j = city.nearest(x, z, U.ground(x, z)) -- on the ground's level, not in a tunnel under it
   local jx, jz = city.pos(j)
   if not city.network() then return jx, jz end
   local best, bx, bz = -1, jx, jz

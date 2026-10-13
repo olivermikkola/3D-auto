@@ -35,6 +35,9 @@ jobs:
       - name: Headless tests (the starter map people copy for their own city)
         if: runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/starter --maps starter --seeds 1337
+      - name: Headless tests (Raisio 2030, the E18 in its tunnel)
+        if: runner.os == 'Linux'
+        run: python tools/headless_tests.py --output headless-results/raisio2030 --maps raisio2030 --seeds 1337
       - name: Headless tests (default seed, both maps)
         if: runner.os == 'macOS'
         run: python tools/headless_tests.py --output headless-results --seeds 1337
