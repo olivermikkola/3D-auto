@@ -405,8 +405,9 @@ def main():
         width = w1 if oneway else w2
         name = t.get("name") or t.get("ref")
         bridge = t.get("bridge") not in (None, "no") or t.get("tunnel") not in (None, "no") or t.get("layer", "0") not in ("0",)
-        layer = int(t.get("layer", "0")) if t.get("layer", "0").lstrip("-").isdigit() else 0
-        deck = t.get("bridge") not in (None, "no") or layer > 0  # up on a bridge, not on the ground
+        # Up on a bridge, not on the ground. A layer alone isn't one: Nesteentie
+        # at Raisiontie is layer 1 only to sit over a tunnel being dug under it.
+        deck = t.get("bridge") not in (None, "no")
         start = 0
         for k in range(1, len(run)):
             if run[k][0] in is_j or k == len(run) - 1:
