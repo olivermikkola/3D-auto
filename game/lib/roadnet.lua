@@ -1058,7 +1058,9 @@ build = function(map, kit)
         for s = 14, len - 14, map.lamp_every or 38 do
           local t = s / len
           local sd = e.height and {kind = "walk"} or side_at(e, i, t, side > 0 and 1 or 2)
-          local o = e.width / 2 + (sd.kind == "walk" and SIDEWALK - 0.6 or sd.kind == "median" and sd.w or sd.kind == "verge" and 1.5 or 1.2)
+          -- (On a verge or a bare edge, by the kerb: pedestrians walk a
+          -- little further out.)
+          local o = e.width / 2 + (sd.kind == "walk" and SIDEWALK - 0.6 or sd.kind == "median" and sd.w or 0.6)
           o = o * side
           local lx, lz = ax + (bx - ax) * t + rx * o, az + (bz - az) * t + rz * o
           local on_road = H.near(lx, lz, 40, function(it)
