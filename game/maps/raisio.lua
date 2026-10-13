@@ -23,7 +23,7 @@ return {
   footbridges = osm.footbridges,
   -- The map data's towers, and the police station's radio mast behind it.
   towers = (function()
-    local t = {{1295, -1825, 45, "lattice"}}
+    local t = {{1295, -1825, 45, "lattice"}, {-1000, -1590, 70, "chimney"}} -- and Raisio's factory chimney
     for _, v in ipairs(osm.towers) do t[#t + 1] = v end
     return t
   end)(),
@@ -52,7 +52,20 @@ return {
     {665, -953, 30, {color = {0.86, 0.77, 0.6}, floors = 3}},                    -- Raseko, Eeronkuja 4: the new tan block
     {537, -960, 40, {color = {0.66, 0.34, 0.26}, floors = 3}},                   -- Raseko, Purokatu 1
     {1110, -1160, 60, {color = {0.86, 0.85, 0.8}, floors = 2}},                  -- Raision lukio
+    -- Raisio's factory (Raisio Oyj): the silo block, smaller silos, tall
+    -- pale mill buildings and yellow brick ones.
+    {-1045, -1565, 30, {height = 46, color = {0.9, 0.9, 0.88}}},
+    {-1041, -1510, 15, {height = 32, color = {0.88, 0.88, 0.86}}},
+    {-852, -1453, 16, {height = 26, color = {0.86, 0.86, 0.84}}},
+    {-1141, -1520, 45, {color = {0.88, 0.86, 0.78}, floors = 7}},
+    {-1050, -1440, 40, {color = {0.86, 0.84, 0.76}, floors = 6}},
+    {-980, -1713, 70, {color = {0.86, 0.84, 0.78}, floors = 4}},
+    {-960, -1336, 50, {color = {0.95, 0.78, 0.4}, floors = 3}},
+    -- Raisiontori: Tokmanni, white.
+    {915, -1895, 60, {color = {0.93, 0.93, 0.91}, floors = 2}},
   },
+  -- The lanterns strung across Raisiontie through the center.
+  string_lights = {{610, -1755.5, 940, -1755.5, 13}},
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {170, 700}, -- see across the bay to the shipyard

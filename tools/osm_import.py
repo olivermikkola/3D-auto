@@ -268,6 +268,13 @@ def cover_class(t):
         if test(t): return name
 
 
+def round_of(poly):
+    """The nearest and farthest a ring's corners are from its middle."""
+    cx, cz = sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
+    d = [math.hypot(x - cx, z - cz) for x, z in poly]
+    return min(d), max(d)
+
+
 def building_kind(t, A):
     b = t.get("building", "yes")
     if t.get("amenity") == "police": return "police"
@@ -493,9 +500,15 @@ def main():
             kind = building_kind(t, A)
             h = height_of(t, kind, A)
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
-            # A church is one nave under one roof, not strips.
+            # A church is one nave under one roof, not strips; a round
+            # building (a silo, a tank) is one drum.
             parts = boxes_of(poly)
-            if kind == "church":
+            r_in, r_out = round_of(poly)
+            if len(poly) >= 8 and r_out < 40 and r_in > 0.85 * r_out:
+                kind, cx, cz = "round", sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
+                parts = [(cx, cz, 2 * r_out, 2 * r_out, 0)]
+                if "height" not in t and "building:levels" not in t: h = max(h, min(1.2 * r_out, 22))
+            elif kind == "church":
                 ang, (cx, cz), bw, bd = min_rect(poly)
                 parts = [(cx, cz, bw, bd, ang) if bw >= bd else (cx, cz, bd, bw, ang + math.pi / 2)]
             for (x, z, bw, bd, ang) in parts:
