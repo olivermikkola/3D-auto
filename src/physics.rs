@@ -98,6 +98,8 @@ pub struct Terrain {
     pub heights: Vec<f32>,
     pub id: usize,
     pub top: f32,
+    /// How far raised pavements and medians stand above the road beside them.
+    pub kerb: f32,
     roads: Vec<RoadSeg>,
     /// Road segments by ROAD_CELL square, as ranges into `road_items`.
     road_cells: Vec<u32>,
@@ -106,12 +108,17 @@ pub struct Terrain {
 }
 
 /// A stretch of road laid over the terrain: its centerline from `a` to `b`
-/// (heights in y), flat across out to `half` meters each side.
+/// (heights in y), flat across out to `half` meters each side. The asphalt
+/// is `carriage` meters each side; past it, a side that's `raised` (a
+/// pavement, a median) stands the terrain's `kerb` higher, out to `half`.
+/// Side 0 is the one toward (dz, -dx), (dx, dz) being b - a.
 #[derive(Clone, Copy)]
 pub struct RoadSeg {
     pub a: Vec3,
     pub b: Vec3,
     pub half: f32,
+    pub carriage: f32,
+    pub raised: [bool; 2],
     /// Which road it's part of: a road follows its nearest piece, and
     /// different roads that overlap blend.
     pub road: u32,
@@ -133,6 +140,7 @@ impl Terrain {
             heights,
             id: usize::MAX,
             top,
+            kerb: 0.0,
             roads: Vec::new(),
             road_cells: Vec::new(),
             road_items: Vec::new(),
@@ -192,7 +200,9 @@ impl Terrain {
     /// How much of (x, z) is road (1 on one, easing to 0 over ROAD_BLEND
     /// past its edge), and the roads' height and normal there. Where roads
     /// overlap, as they do around junctions, they're averaged, nearer
-    /// centerlines counting more, so one never steps onto another.
+    /// centerlines counting more, so one never steps onto another. On a
+    /// raised side it's a kerb higher, unless it's on some road's asphalt
+    /// (where one road's pavement meets another road at a junction).
     fn road(&self, x: f32, z: f32) -> Option<(f32, f32, Vec3)> {
         if self.roads.is_empty() {
             return None;
@@ -209,6 +219,7 @@ impl Terrain {
         // squared, coverage, reach).
         let mut near = [(u32::MAX, 0.0f32, 0.0f32, Vec3::ZERO, f32::MAX, 0.0f32, 0.0f32); 8];
         let mut n = 0;
+        let (mut asphalt, mut raised) = (false, false);
         for &k in &self.road_items[self.road_cells[c] as usize..self.road_cells[c + 1] as usize] {
             let r = &self.roads[k as usize];
             let (dx, dz) = (r.b.x - r.a.x, r.b.z - r.a.z);
@@ -226,6 +237,12 @@ impl Terrain {
             // a meter past a piece's end, it barely counts, nor toward the
             // edge of a piece across a bend.
             let past_end = (along - t).abs() * l2.sqrt();
+            if d2 <= r.carriage * r.carriage {
+                asphalt = true;
+            } else if past_end < 1e-3 && d2 <= r.half * r.half {
+                let side = ((x - r.a.x) * dz - (z - r.a.z) * dx < 0.0) as usize;
+                raised |= r.raised[side];
+            }
             let w = (1.0 - d2.sqrt() / (r.half + ROAD_BLEND)).powi(2) / (past_end * past_end + 0.01).powi(2);
             let i = match near[..n].iter().position(|p| p.0 == r.road) {
                 Some(i) => i,
@@ -255,7 +272,8 @@ impl Terrain {
             sh += w * ph / pw;
             sn += pn.norm() * w;
         }
-        (sw > 0.0).then(|| (cover, sh / sw, sn.norm()))
+        let kerb = if raised && !asphalt { self.kerb } else { 0.0 };
+        (sw > 0.0).then(|| (cover, sh / sw + kerb, sn.norm()))
     }
 
     /// Height and upward normal at (x, z), roads included; None off the grid.
@@ -1000,10 +1018,17 @@ mod tests {
         let mut roads: Vec<RoadSeg> = (0..20)
             .map(|k| {
                 let (x0, x1) = (50.0 + k as f32 * 10.0, 60.0 + k as f32 * 10.0);
-                RoadSeg { a: v3(x0, main(x0), 100.0), b: v3(x1, main(x1), 100.0), half: 6.0, road: 0 }
+                RoadSeg { a: v3(x0, main(x0), 100.0), b: v3(x1, main(x1), 100.0), half: 6.0, carriage: 6.0, raised: [false; 2], road: 0 }
             })
             .collect();
-        roads.push(RoadSeg { a: v3(150.0, main(150.0), 100.0), b: v3(200.0, main(150.0) + 4.0, 130.0), half: 6.0, road: 1 });
+        roads.push(RoadSeg {
+            a: v3(150.0, main(150.0), 100.0),
+            b: v3(200.0, main(150.0) + 4.0, 130.0),
+            half: 6.0,
+            carriage: 6.0,
+            raised: [false; 2],
+            road: 1,
+        });
         let t = Terrain::new(0.0, 0.0, step, w, d, hs).with_roads(roads);
         for x in [61.0, 87.5, 113.3] {
             for z in [94.5, 100.0, 105.5] {
@@ -1035,6 +1060,23 @@ mod tests {
             }
         }
         assert!(worst < 0.03, "a step of {worst} m in 10 cm");
+    }
+
+    #[test]
+    fn pavements_stand_a_kerb_above_the_road() {
+        // Flat ground at 1 m; a road along x at z = 100, 4 m of asphalt
+        // each side and a pavement to 7 m on its side 0 (toward -z) only;
+        // a side street running off it toward -z, no pavements.
+        let mut t = Terrain::new(0.0, 0.0, 10.0, 31, 21, vec![1.0; 31 * 21]);
+        t.kerb = 0.12;
+        let main = RoadSeg { a: v3(20.0, 2.0, 100.0), b: v3(280.0, 2.0, 100.0), half: 7.0, carriage: 4.0, raised: [true, false], road: 0 };
+        let side = RoadSeg { a: v3(150.0, 2.0, 100.0), b: v3(150.0, 2.0, 40.0), half: 4.0, carriage: 4.0, raised: [false; 2], road: 1 };
+        let t = t.with_roads(vec![main, side]);
+        let h = |x: f32, z: f32| t.surface(x, z).unwrap().0;
+        assert!((h(100.0, 100.0) - 2.0).abs() < 1e-4 && (h(100.0, 103.5) - 2.0).abs() < 1e-4, "the asphalt is level");
+        assert!((h(100.0, 95.0) - 2.12).abs() < 1e-4, "the pavement is a kerb up: {}", h(100.0, 95.0));
+        assert!((h(100.0, 105.0) - 2.0).abs() < 1e-4, "no pavement on side 1: {}", h(100.0, 105.0));
+        assert!((h(150.0, 95.0) - 2.0).abs() < 1e-3, "where the side street crosses it, no kerb: {}", h(150.0, 95.0));
     }
 
     #[test]
