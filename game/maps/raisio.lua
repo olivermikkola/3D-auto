@@ -62,6 +62,20 @@ return {
     {-1050, -1440, 40, {color = {0.86, 0.84, 0.76}, floors = 6}},
     {-980, -1713, 70, {color = {0.86, 0.84, 0.78}, floors = 4}},
     {-960, -1336, 50, {color = {0.95, 0.78, 0.4}, floors = 3}},
+    -- The centre. Raisiontie's north side: flats of the 2010s with glass
+    -- balconies and orange-red panels. Raision Lasikuutio (Mehiläinen):
+    -- the dark glass cube at the square's east end. Tasalanaukio 9
+    -- (Tasalanpuisto, 1986) and 7 (Tasalanhovi, 1984): pale tiled blocks.
+    -- Sofram's grey building, Tasalanaukio 12. And the white 1980s shops
+    -- and offices of Tasala round the square (S-market, the pharmacy...).
+    {800.2, -1779.5, 6, {style = "balconies", color = {1, 1, 1}, floors = 5}},
+    {850.9, -1779.5, 6, {style = "balconies", color = {1, 1, 1}, floors = 5}},
+    {917, -1779.5, 6, {style = "balconies", color = {1, 1, 1}, floors = 5}},
+    {956.8, -1725.3, 8, {style = "glass", color = {0.6, 0.64, 0.7}, floors = 3}},
+    {733, -1581, 14, {color = {0.88, 0.83, 0.72}, floors = 4}},
+    {762, -1602, 26, {color = {0.88, 0.83, 0.72}, floors = 5}},
+    {713, -1630.7, 8, {color = {0.6, 0.6, 0.58}, floors = 2}},
+    {850, -1650, 75, {color = {0.93, 0.93, 0.91}}},
     -- Raisiontori: Tokmanni, white.
     {915, -1895, 60, {color = {0.93, 0.93, 0.91}, floors = 2}},
   },
