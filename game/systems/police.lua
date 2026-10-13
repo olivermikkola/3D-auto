@@ -15,7 +15,7 @@ local P = {cops = {}, officers = {}}
 local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
-local STATION_RANGE = 450 -- a station this close sends some of the units
+local STATION_RANGE = 250 -- a station this close sends some of the backup (it arrives in seconds)
 local LANE = 3.2 -- meters right of the center line, as traffic drives
 
 function P.build()
@@ -121,9 +121,14 @@ end
 local function spawn_cop()
   local px, _, pz = U.player_pos()
   local x, z, yaw, launch
-  if px and math.random() < 0.5 then
-    x, z, yaw = station_exit(px, pz)
-    launch = x and 30 -- seconds to get to the player before it may be recycled
+  -- Backup (never the first unit, which comes from close by) may come
+  -- from a police station in reach.
+  if px and P.count() >= 1 then
+    local sx, sz, syaw = station_exit(px, pz)
+    if sx and math.random() < 0.5 then -- rolled for only with a station in reach
+      x, z, yaw = sx, sz, syaw
+      launch = 30 -- seconds to get to the player before it may be recycled
+    end
   end
   if not x then x, z, yaw = spawn_point() end
   if not x then return end
@@ -477,7 +482,17 @@ engine.on("tick", function(dt)
     local d = U.dist2d(x, z, px, pz)
     if c.deployed then
       vehicle.drive(id, dt, {throttle = 0, handbrake = true})
-      if d > 60 or wanted.stars() < DEPLOY_STARS then recall(c) end
+      local crew = false
+      for oid, o in pairs(P.officers) do
+        if o.car == id and engine.exists(oid) then crew = true break end
+      end
+      if d > 60 or wanted.stars() < DEPLOY_STARS then recall(c)
+      elseif crew then c.redeploy = nil
+      elseif not c.redeploy then c.redeploy = engine.time() + 5 -- its officers are down: a fresh pair soon
+      elseif engine.time() >= c.redeploy and c.sees and d < DEPLOY_RANGE then
+        c.redeploy = nil
+        deploy(c)
+      end
     else
       drive_cop(c, dt)
       if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c) end
