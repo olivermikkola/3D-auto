@@ -9,6 +9,7 @@ local garage = {PRICE = 100}
 function garage.inside(id)
   if not garage.x or not id or not engine.exists(id) then return false end
   local x, y, z = engine.pos(id)
+  y = y - U.ground(x, z)
   return math.abs(x - garage.x) <= 2 and math.abs(z - garage.z) <= 2.5 and y >= 0.3 and y <= 1.6
 end
 
@@ -16,16 +17,16 @@ function garage.build()
   local x, z = city.place("lot")
   garage.x, garage.z = x, z - 10
   -- Open north/south entrances; tucked behind the parked cars, beside spawn.
-  engine.spawn{mesh = "plane", pos = {x, 0.27, garage.z}, size = {6, 1, 9}, color = {0.1, 0.65, 0.7}, tag = "garage"}
+  engine.spawn{mesh = "plane", pos = {x, 0.27 + U.ground(x, garage.z), garage.z}, size = {6, 1, 9}, color = {0.1, 0.65, 0.7}, tag = "garage"}
   for _, side in ipairs{-1, 1} do
-    engine.spawn{mesh = "cube", pos = {x + side * 3.5, 2.4, garage.z}, size = {0.35, 4.4, 0.35},
+    engine.spawn{mesh = "cube", pos = {x + side * 3.5, 2.4 + U.ground(x + side * 3.5, garage.z), garage.z}, size = {0.35, 4.4, 0.35},
                  body = "static", color = {0.15, 0.7, 0.75}, tag = "garage"}
   end
-  engine.spawn{mesh = "cube", pos = {x, 4.8, garage.z}, size = {8, 0.4, 9}, body = "static",
+  engine.spawn{mesh = "cube", pos = {x, 4.8 + U.ground(x, garage.z), garage.z}, size = {8, 0.4, 9}, body = "static",
                color = {0.12, 0.3, 0.35}, tag = "garage"}
-  engine.spawn{mesh = "cube", pos = {x, 4.4, garage.z - 4.4}, size = {7, 0.4, 0.15},
+  engine.spawn{mesh = "cube", pos = {x, 4.4 + U.ground(x, garage.z - 4.4), garage.z - 4.4}, size = {7, 0.4, 0.15},
                color = {0.1, 1, 0.9}, glow = 1, tag = "garage"}
-  engine.light{pos = {x, 3.8, garage.z}, color = {0.2, 1, 0.9}, radius = 12, intensity = 1.5}
+  engine.light{pos = {x, 3.8 + U.ground(x, garage.z), garage.z}, color = {0.2, 1, 0.9}, radius = 12, intensity = 1.5}
   engine.synth("repair", {wave = "triangle", notes = {440, 554, 659, 880}, note_len = 0.09, volume = 0.4})
 end
 

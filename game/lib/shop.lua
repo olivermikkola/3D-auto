@@ -20,7 +20,7 @@ end
 function S.here(def)
   if G.dead or (def.car and not G.vehicle) or (not def.car and G.vehicle) then return false end
   local x, y, z = U.player_pos()
-  return x ~= nil and math.abs(x - def.x) <= def.hw and math.abs(z - def.z) <= def.hd and y < 3
+  return x ~= nil and math.abs(x - def.x) <= def.hw and math.abs(z - def.z) <= def.hd and y - U.ground(x, z) < 3
 end
 
 function S.current()

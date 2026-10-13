@@ -16,14 +16,14 @@ return {
     for i = 0, 3 do
       for j = 0, 2 do
         for k = 0, 1 do
-          crates[#crates + 1] = m:spawn{mesh = "crate", pos = {px - 3 + i * 1.6, 0.8 + k * 1.05, pz - 2 + j * 1.6},
+          crates[#crates + 1] = m:spawn{mesh = "crate", pos = {px - 3 + i * 1.6, 0.8 + k * 1.05 + U.ground(px - 3 + i * 1.6, pz - 2 + j * 1.6), pz - 2 + j * 1.6},
                                         size = 1, body = "dynamic", mass = 40, friction = 0.5, tag = "crate"}
         end
       end
     end
     for a = 0, 7 do
       local ang = a / 8 * math.pi * 2
-      m:spawn{mesh = "cone", pos = {px + math.cos(ang) * 14, 0.6, pz + math.sin(ang) * 14}, size = {0.6, 0.8, 0.6},
+      m:spawn{mesh = "cone", pos = {px + math.cos(ang) * 14, 0.6 + U.ground(px + math.cos(ang) * 14, pz + math.sin(ang) * 14), pz + math.sin(ang) * 14}, size = {0.6, 0.8, 0.6},
               body = "dynamic", mass = 5, tag = "cone"}
     end
     m:say("Smash every crate off the plaza. Bring a car.")

@@ -1,6 +1,7 @@
 -- The later missions and the order they unlock in, played by teleporting.
 -- MISSION_TEST=1 auto game --headless 6000
 local G = require "lib.state"
+local U = require "lib.util"
 local H = require "lib.health"
 local mission = require "lib.mission"
 local city = require "lib.city"
@@ -68,7 +69,7 @@ local function script()
   -- ---- Fragile Cargo: a hard knock fails it ---------------------------------
   local m = start("05_cargo")
   local px, _, pz = engine.pos(m.car)
-  engine.set_pos(G.player, px, 1.2, pz - 3.5)
+  engine.set_pos(G.player, px, 1.2 + U.ground(px, pz - 3.5), pz - 3.5)
   engine.emit("key", "e", true)
   wait(function() return G.vehicle == m.car end, 1, "got into the cargo car")
   H.damage(m.car, 45)
@@ -80,7 +81,7 @@ local function script()
   wait(function() return G.vehicle == nil end, 1, "got out of the dented car")
   m = start("05_cargo")
   px, _, pz = engine.pos(m.car)
-  engine.set_pos(G.player, px, 1.2, pz - 3.5)
+  engine.set_pos(G.player, px, 1.2 + U.ground(px, pz - 3.5), pz - 3.5)
   engine.emit("key", "e", true)
   wait(function() return G.vehicle == m.car end, 1, "got into the second cargo car")
   go(city.place("cargo_drop"))

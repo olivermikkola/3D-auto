@@ -1,6 +1,7 @@
 -- Focused integration test using the real world, input bus, health and audio.
 -- GARAGE_TEST=1 auto game --headless 600
 local G = require "lib.state"
+local U = require "lib.util"
 local H = require "lib.health"
 local C = require "systems.carnage"
 local vehicle = require "lib.vehicle"
@@ -53,10 +54,10 @@ engine.on("tick", function()
   check(G.cash == 150 and repaired == 1, "healthy car is not charged again")
   H.set(car, H.VEHICLE_HP)
   H.damage(car, 80)
-  engine.set_pos(car, garage.x + 12, 0.95, garage.z) -- in the lot, beside the bay
+  engine.set_pos(car, garage.x + 12, 0.95 + U.ground(garage.x + 12, garage.z), garage.z) -- in the lot, beside the bay
   engine.emit("key", "r", true)
   check(H.get(car) == 20 and G.cash == 150, "cannot repair outside the bay")
-  engine.set_pos(car, garage.x, 0.95, garage.z)
+  engine.set_pos(car, garage.x, 0.95 + U.ground(garage.x, garage.z), garage.z)
   engine.set_vel(car, 0, 0, 0)
   engine.set_angvel(car, 0, 0, 0)
   engine.emit("key", "r", false)

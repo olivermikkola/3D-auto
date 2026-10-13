@@ -33,12 +33,6 @@ end
 -- and squad cars with their crew aboard. Parked and empty cars are quiet.
 local voices = {}
 
-local function running(id)
-  if id == G.vehicle then return true end
-  local traffic, police = package.loaded["systems.traffic"], package.loaded["systems.police"]
-  local cop = police and police.cops[id]
-  return (traffic and traffic.cars[id] ~= nil) or (cop ~= nil and not cop.deployed)
-end
 
 local function update_engines()
   local px, py, pz = engine.camera_pos()
@@ -46,7 +40,7 @@ local function update_engines()
   for _, id in ipairs(engine.find("cop")) do cars[#cars + 1] = id end
   for _, id in ipairs(cars) do
     local x, y, z = engine.pos(id)
-    local near = (x - px) ^ 2 + (z - pz) ^ 2 < 70 ^ 2 and running(id)
+    local near = (x - px) ^ 2 + (z - pz) ^ 2 < 70 ^ 2 and vehicle.driven(id)
     local v = voices[id]
     if near and not v then
       v = engine.play("engine", {loop = true, follow = id, volume = 0})

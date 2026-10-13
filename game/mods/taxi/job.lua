@@ -23,7 +23,7 @@ return {
       local x, _, z = engine.pos(cab.id)
       local px, pz = corner_far_from(x, z, 80)
       local pickup = m:marker(px, pz, {1, 0.8, 0.1})
-      local rider = m:spawn{mesh = "ped" .. math.random(12), pos = {px + 3, 1.15, pz + 3}, size = {0.7, 1.8, 0.7}, tag = "rider"}
+      local rider = m:spawn{mesh = "ped" .. math.random(12), pos = {px + 3, 1.15 + U.ground(px + 3, pz + 3), pz + 3}, size = {0.7, 1.8, 0.7}, tag = "rider"}
       m:say(string.format("Fare %d/3: pick up the passenger.", fare))
       m:clear_timer()
       m:wait(function()

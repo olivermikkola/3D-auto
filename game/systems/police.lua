@@ -29,7 +29,7 @@ function P.build()
   if city.has("police_station") then
     local sx, sz = city.place("police_station")
     for k = -1, 1, 2 do
-      engine.spawn{mesh = "cop", pos = {sx + k * 3, 0.75, sz}, yaw = math.pi / 2, size = {2, 1.5, 4.5}, body = "static", tag = "prop"}
+      engine.spawn{mesh = "cop", pos = {sx + k * 3, 0.75 + U.ground(sx + k * 3, sz), sz}, yaw = math.pi / 2, size = {2, 1.5, 4.5}, body = "static", tag = "prop"}
     end
   end
 end
@@ -429,7 +429,7 @@ local function busted()
   end
   if city.has("police_station") then
     local sx, sz = city.place("police_station")
-    require("lib.player").spawn(sx, 1.2, sz + 5, 0)
+    require("lib.player").spawn(sx, 1.2 + U.ground(sx, sz + 5), sz + 5, 0)
   else
     require("lib.player").spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
   end

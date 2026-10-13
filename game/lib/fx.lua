@@ -75,7 +75,8 @@ engine.on("frame", function(dt)
         local x, y, z = engine.pos(e.id)
         if x then
           y = y + e.vy * dt
-          if y < 0.06 and e.g ~= 0 then y, e.vy, e.vx, e.vz = 0.06, 0, e.vx * 0.5, e.vz * 0.5 end
+          e.floor = e.floor or require("lib.util").ground(x, z) + 0.06
+          if y < e.floor and e.g ~= 0 then y, e.vy, e.vx, e.vz = e.floor, 0, e.vx * 0.5, e.vz * 0.5 end
           engine.set_pos(e.id, x + e.vx * dt, y, z + e.vz * dt)
           if e.grow then
             e.s = math.max(0.05, e.s + e.grow * dt)

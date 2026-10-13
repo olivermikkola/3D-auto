@@ -2,7 +2,7 @@
 //! Built-in unit primitives, Wavefront OBJ (+MTL Kd colors), and baking
 //! several parts into one mesh so a prefab is a single draw call.
 
-use crate::math::{Vec3, v3};
+use crate::math::{Quat, Vec3, v3};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -61,13 +61,18 @@ impl Mesh {
         self.indices.len() / 3
     }
 
-    /// Append `src` transformed by translate * rotY(yaw) * scale, tinted by `col`.
-    pub fn append(&mut self, src: &Mesh, offset: Vec3, yaw: f32, scale: Vec3, col: Vec3, emissive: f32) {
+    /// Append `src` scaled, turned (yaw, then pitch about its own +X, then
+    /// roll about its +Z, as Quat::euler orders them), moved by `offset`,
+    /// and tinted by `col`.
+    pub fn append_tilted(&mut self, src: &Mesh, offset: Vec3, (yaw, pitch, roll): (f32, f32, f32), scale: Vec3, col: Vec3, emissive: f32) {
         let base = self.verts.len() as u32;
         let inv = v3(1.0 / scale.x, 1.0 / scale.y, 1.0 / scale.z);
+        let tilt =
+            (pitch != 0.0 || roll != 0.0).then(|| Quat::axis_angle(v3(1.0, 0.0, 0.0), pitch) * Quat::axis_angle(v3(0.0, 0.0, 1.0), roll));
+        let turn = |v: Vec3| tilt.map_or(v, |q| q.rotate(v)).rot_y(yaw);
         for v in &src.verts {
-            let p = v3(v.pos[0], v.pos[1], v.pos[2]).mul(scale).rot_y(yaw) + offset;
-            let n = v3(v.normal[0], v.normal[1], v.normal[2]).mul(inv).rot_y(yaw).norm();
+            let p = turn(v3(v.pos[0], v.pos[1], v.pos[2]).mul(scale)) + offset;
+            let n = turn(v3(v.normal[0], v.normal[1], v.normal[2]).mul(inv)).norm();
             self.verts.push(Vertex {
                 pos: [p.x, p.y, p.z],
                 normal: [n.x, n.y, n.z],
@@ -259,7 +264,22 @@ mod tests {
     // The origin lies on the wedge's slope; shift so the convexity test applies.
     fn wedge_centered() -> Mesh {
         let mut w = Mesh::default();
-        w.append(&wedge(), v3(0.0, 0.25, -0.25), 0.0, Vec3::ONE, Vec3::ONE, 0.0);
+        w.append_tilted(&wedge(), v3(0.0, 0.25, -0.25), (0.0, 0.0, 0.0), Vec3::ONE, Vec3::ONE, 0.0);
         w
+    }
+
+    #[test]
+    fn tilted_parts_climb_where_they_point() {
+        // A 10 m plank turned to face +X and pitched up 0.2 rad: its far end
+        // is 10 sin(0.2) higher than its near end, and it's still outward-facing.
+        let mut m = Mesh::default();
+        m.append_tilted(&cube(), Vec3::ZERO, (std::f32::consts::FRAC_PI_2, -0.2, 0.0), v3(1.0, 0.1, 10.0), Vec3::ONE, 0.0);
+        let (lo, hi) = m.verts.iter().fold((v3(9., 9., 9.), v3(-9., -9., -9.)), |(lo, hi), v| {
+            let p = v3(v.pos[0], v.pos[1], v.pos[2]);
+            (if p.x < lo.x { p } else { lo }, if p.x > hi.x { p } else { hi })
+        });
+        assert!(hi.x > 4.8 && lo.x < -4.8, "{lo:?} {hi:?}");
+        assert!((hi.y - lo.y - 10.0 * 0.2f32.sin()).abs() < 0.15, "rise {}", hi.y - lo.y);
+        outward(&m);
     }
 }

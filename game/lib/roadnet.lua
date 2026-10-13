@@ -11,6 +11,10 @@ local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
 
 local NET -- the loaded network
+-- On a map with terrain, the height of the ground (or water) at x, z; nil on
+-- a flat map. BASE, while set, stands in for it (a building's footprint).
+local GROUND, BASE
+local wet_rows -- the water's strips by row, built when first needed
 
 local function dist_seg(px, pz, ax, az, bx, bz)
   local dx, dz = bx - ax, bz - az
@@ -84,7 +88,8 @@ function R.load(map)
         table.insert(n.links[a], b)
         table.insert(n.links[b], a)
         n.roads[#n.roads + 1] = {a, b}
-        n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge}
+        n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
+                                 deck = road.deck}
         start = i
       end
     end
@@ -350,9 +355,12 @@ local function bake(name, parts, y, tag)
     z0, z1 = math.min(z0, p.pos[3]), math.max(z1, p.pos[3])
   end
   local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
-  for _, p in ipairs(parts) do p.pos = {p.pos[1] - cx, p.pos[2] - y, p.pos[3] - cz} end
+  for _, p in ipairs(parts) do
+    local g = (GROUND and not p.abs) and GROUND(p.pos[1], p.pos[3]) or 0
+    p.pos, p.abs = {p.pos[1] - cx, p.pos[2] + g - y, p.pos[3] - cz}, nil
+  end
   engine.mesh(name, parts)
-  engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = tag or "road"}
+  engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = tag or "road", abs = true}
 end
 
 -- Parts grouped by which CHUNK x CHUNK square they're in, baked one mesh a
@@ -427,7 +435,28 @@ local function dome_mesh(w, d, h)
 end
 -- A strip along a polyline: a box per segment and a disc at each bend, so
 -- curves have no gaps.
-local function strip(parts, pts, width, top, color, discs)
+local function strip(parts, pts, width, top, color, discs, hf)
+  hf = hf or GROUND
+  if hf then -- on terrain: pieces at most 6 m long, each tilted to follow the ground
+    for i = 2, #pts do
+      local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
+      local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      local n = math.max(1, math.ceil(len / 6))
+      local yaw = math.atan(bx - ax, bz - az)
+      for k = 0, n - 1 do
+        local t0, t1 = k / n, (k + 1) / n
+        local h0, h1 = hf(ax + (bx - ax) * t0, az + (bz - az) * t0), hf(ax + (bx - ax) * t1, az + (bz - az) * t1)
+        local l = len / n
+        parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * (t0 + t1) / 2, (h0 + h1) / 2 + top - 0.15, az + (bz - az) * (t0 + t1) / 2},
+                             yaw = yaw, pitch = -math.atan(h1 - h0, l), size = {width, 0.3, l + 0.1}, color = color, abs = true}
+      end
+    end
+    for i = discs and 1 or 2, discs and #pts or #pts - 1 do
+      parts[#parts + 1] = {mesh = "cylinder", pos = {pts[i][1], hf(pts[i][1], pts[i][2]) + top - 0.15, pts[i][2]},
+                           size = {width, 0.3, width}, color = color, abs = true}
+    end
+    return
+  end
   for i = 2, #pts do
     local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
     local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
@@ -440,16 +469,42 @@ local function strip(parts, pts, width, top, color, discs)
 end
 
 -- Dashed center line.
-local function dashes(parts, pts, top)
+local function dashes(parts, pts, top, hf)
+  hf = hf or GROUND
   for i = 2, #pts do
     local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
     local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
     local yaw = math.atan(bx - ax, bz - az)
     for s = 8, len - 8, 9 do
       local t = s / len
-      parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * t, top, az + (bz - az) * t}, yaw = yaw,
-                           size = {0.18, 0.01, 3}, color = {0.9, 0.9, 0.86}}
+      local x, z = ax + (bx - ax) * t, az + (bz - az) * t
+      local part = {mesh = "cube", pos = {x, top, z}, yaw = yaw, size = {0.18, 0.01, 3}, color = {0.9, 0.9, 0.86}}
+      if hf then
+        local d = 1.5 / len
+        local h0, h1 = hf(ax + (bx - ax) * (t - d), az + (bz - az) * (t - d)), hf(ax + (bx - ax) * (t + d), az + (bz - az) * (t + d))
+        part.pos[2], part.pitch, part.abs = (h0 + h1) / 2 + top, -math.atan(h1 - h0, 3), true
+      end
+      parts[#parts + 1] = part
     end
+  end
+end
+
+-- A bridge deck's height along its edge: straight from one end's ground to
+-- the other's, whatever is below.
+local function deck_height(e)
+  local cum = {0}
+  for i = 2, #e.pts do
+    cum[i] = cum[i - 1] + math.sqrt((e.pts[i][1] - e.pts[i - 1][1]) ^ 2 + (e.pts[i][2] - e.pts[i - 1][2]) ^ 2)
+  end
+  local total = math.max(cum[#cum], 1e-3)
+  local ha, hb = GROUND(e.pts[1][1], e.pts[1][2]), GROUND(e.pts[#e.pts][1], e.pts[#e.pts][2])
+  return function(x, z)
+    local best, bs = math.huge, 0
+    for i = 2, #e.pts do
+      local d, _, _, t = dist_seg(x, z, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2])
+      if d < best then best, bs = d, cum[i - 1] + (cum[i] - cum[i - 1]) * t end
+    end
+    return ha + (hb - ha) * bs / total
   end
 end
 
@@ -522,22 +577,55 @@ local KINDS = {
   industrial = {w = {28, 48}, d = {24, 36}, back = {6, 10}, floors = {0, 0}, gap = {8, 14}, empty = 0.25},
 }
 
+local build
+
+-- Build the map. With terrain, everything placed during the build sits on
+-- the ground: engine.spawn adds the ground's height under a thing's x, z to
+-- its y, unless it says abs = true (it was placed on the ground already).
 function R.build(map, kit)
+  GROUND, BASE = nil, nil
+  local t = map.terrain
+  if not t then return build(map, kit) end
+  local palette = {LAND}
+  for _, name in ipairs(t.classes) do
+    for _, c in ipairs(COVER) do if c[1] == name then palette[#palette + 1] = c[2] end end
+  end
+  engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette}
+  GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
+  local spawn = engine.spawn
+  engine.spawn = function(e)
+    if e.abs then e.abs = nil
+    elseif e.pos then e.pos = {e.pos[1], e.pos[2] + (BASE or GROUND(e.pos[1], e.pos[3])), e.pos[3]} end
+    return spawn(e)
+  end
+  local ok, L = pcall(build, map, kit)
+  engine.spawn, BASE = spawn, nil
+  if not ok then error(L, 0) end
+  return L
+end
+
+-- The ground's height at x, z: the terrain, or water's level over it; 0 on a
+-- flat map.
+function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
+
+build = function(map, kit)
   local sx, sz = map.size[1], map.size[2]
   local r = kit.rng(7, 11)
   local H = hash(40)
   local L = {map = map.id or map.name, network = true, sx = sx, sz = sz, curb = kit.CURB, walk = SIDEWALK,
              avenue = 14, street = 12, kinds = {}, landmarks = {}, labels = {}}
 
-  -- Land, the sea round it, and invisible walls at the shore.
-  kit.static{mesh = "cube", pos = {0, -1.5, 0}, size = {sx, 3, sz}, color = LAND, tag = "ground"}
+  -- Land (the terrain, if there is one), the sea round it, and invisible
+  -- walls at the shore.
+  if not GROUND then kit.static{mesh = "cube", pos = {0, -1.5, 0}, size = {sx, 3, sz}, color = LAND, tag = "ground"} end
   local W = 1500
   for _, f in ipairs{{0, -(sz + W) / 2, sx + 2 * W, W}, {0, (sz + W) / 2, sx + 2 * W, W},
                      {-(sx + W) / 2, 0, W, sz}, {(sx + W) / 2, 0, W, sz}} do
-    engine.spawn{mesh = "cube", pos = {f[1], 0.04 - 0.5, f[2]}, size = {f[3], 1, f[4]}, color = WATER, tag = "water"}
+    engine.spawn{mesh = "cube", pos = {f[1], 0.04 - 0.5, f[2]}, size = {f[3], 1, f[4]}, color = WATER, tag = "water", abs = true}
   end
   for _, s in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
-    kit.static{pos = {s[1] * sx / 2, 5, s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 10, s[2] == 0 and sz or 1}, visible = false, tag = "wall"}
+    kit.static{pos = {s[1] * sx / 2, 60, s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 140, s[2] == 0 and sz or 1}, visible = false,
+               tag = "wall", abs = true}
   end
 
   -- Rivers: water ribbons with nothing built on them; railings where a road
@@ -568,16 +656,74 @@ function R.build(map, kit)
     end
   end
 
-  -- Roads: pavement under, asphalt on top, a dashed center line.
+  local piers, rails = {}, {}
+  -- Roads: pavement under, asphalt on top, a dashed center line. On
+  -- terrain a bridge's deck is solid, a ramp from one end to the other,
+  -- with railings and a pier under each end and in the middle.
   for ei, e in ipairs(NET.edges) do
     local parts = {}
     local walk = e.kind ~= "highway"
-    if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true) end
-    strip(parts, e.pts, e.width, 0.08, ROAD, true)
-    dashes(parts, e.pts, 0.09)
+    local hf = GROUND and e.deck and deck_height(e) or nil
+    e.height = hf
+    if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true, hf) end
+    strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
+    dashes(parts, e.pts, 0.09, hf)
+    if hf then
+      local wide = e.width + (walk and 2 * SIDEWALK or 1)
+      for i = 2, #e.pts do
+        local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+        local yaw = math.atan(bx - ax, bz - az)
+        local rx, rz = math.cos(yaw), -math.sin(yaw)
+        local n = math.max(1, math.ceil(len / 6))
+        for k = 0, n - 1 do
+          local t0, t1 = k / n, (k + 1) / n
+          local h0, h1 = hf(ax + (bx - ax) * t0, az + (bz - az) * t0), hf(ax + (bx - ax) * t1, az + (bz - az) * t1)
+          local mx, mz, mh, pitch = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2, (h0 + h1) / 2, -math.atan(h1 - h0, len / n)
+          kit.static{pos = {mx, mh - 0.5, mz}, yaw = yaw, pitch = pitch, size = {wide, 1, len / n + 0.05}, visible = false,
+                     tag = "bridge", abs = true}
+          parts[#parts + 1] = {mesh = "cube", pos = {mx, mh - 0.7, mz}, yaw = yaw, pitch = pitch, size = {wide, 1.2, len / n + 0.05},
+                               color = {0.55, 0.55, 0.53}, abs = true}
+          for _, side in ipairs{-1, 1} do
+            rails[#rails + 1] = {mx + rx * side * wide / 2, mh + 0.5, mz + rz * side * wide / 2, yaw, pitch, len / n + 0.05, ei}
+          end
+        end
+      end
+      for i = 2, #e.pts do -- where piers could go, under each bend and the middle of each stretch
+        for _, f in ipairs{0, 0.5} do
+          local x, z = e.pts[i - 1][1] + (e.pts[i][1] - e.pts[i - 1][1]) * f, e.pts[i - 1][2] + (e.pts[i][2] - e.pts[i - 1][2]) * f
+          piers[#piers + 1] = {x, z, hf(x, z), ei}
+        end
+      end
+    end
     bake("road" .. ei, parts, 0)
     for i = 2, #e.pts do
       add_seg(H, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2], e.width / 2 + (walk and SIDEWALK or 1.5), ei, e.width)
+    end
+  end
+  -- Bridge railings and piers, once every road is known: none on another
+  -- road (where ramps meet, or the road a bridge spans); piers only where
+  -- the deck is well above the ground.
+  for _, r in ipairs(rails) do
+    local x, z, ei = r[1], r[3], r[7]
+    local on_road = H.near(x, z, 40, function(it)
+      return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 0.5
+                 and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
+    end)
+    if not on_road then
+      kit.static{mesh = "cube", pos = {x, r[2], z}, yaw = r[4], pitch = r[5], size = {0.25, 1, r[6]}, color = {0.62, 0.64, 0.66},
+                 tag = "wall", abs = true}
+    end
+  end
+  for _, p in ipairs(piers) do
+    local x, z, top, ei = p[1], p[2], p[3], p[4]
+    local g = engine.terrain_height(x, z) or 0
+    local on_road = H.near(x, z, 40, function(it)
+      return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 3
+    end)
+    if top - g > 3 and not on_road then
+      kit.static{mesh = "cube", pos = {x, (top - 1.3 + g) / 2, z}, size = {1.6, top - 1.3 - g, 1.6}, color = {0.6, 0.6, 0.58},
+                 tag = "wall", abs = true}
     end
   end
   -- Street lamps along the pavement, alternating sides, once every road is
@@ -598,7 +744,8 @@ function R.build(map, kit)
             return it.edge and it.edge ~= ei and dist_seg(lx, lz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 1.5
           end)
           if not on_road then
-            kit.static{mesh = "lamp", pos = {lx, 0.05, lz}, yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
+            kit.static{mesh = "lamp", pos = {lx, 0.05 + (e.height and e.height(lx, lz) or (GROUND and GROUND(lx, lz) or 0)), lz},
+                       yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true}
           end
           side = -side
         end
@@ -614,13 +761,16 @@ function R.build(map, kit)
   end
 
   -- Ground cover from the map's survey: fields, forest, water... as strips.
+  -- On terrain the ground is colored by them already; only water is drawn,
+  -- flat at its level.
   for k, c in ipairs(COVER) do
     local strips = (map.cover or {})[c[1]]
-    if strips and #strips > 0 then
+    if strips and #strips > 0 and (not GROUND or c[1] == "water") then
       local ch = chunked()
       for _, st in ipairs(strips) do
         local x, z = (st[1] + st[3]) / 2, (st[2] + st[4]) / 2
-        ch.add(x, z, {mesh = "cube", pos = {x, k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2]})
+        ch.add(x, z, {mesh = "cube", pos = {x, (st[5] or 0) + k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2],
+                      abs = GROUND and true or nil})
       end
       ch.bake("cover_" .. c[1], c[1] == "water" and "water" or "cover")
     end
@@ -942,6 +1092,13 @@ function R.build(map, kit)
   for i, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
     local fx, fz = math.cos(yaw), -math.sin(yaw)
+    if GROUND then -- on a slope it stands on its lowest corner
+      BASE = math.huge
+      for _, c in ipairs{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}} do
+        local cx, cz = x + fx * c[1] * w / 2 - fz * c[2] * d / 2, z + fz * c[1] * w / 2 + fx * c[2] * d / 2
+        BASE = math.min(BASE, engine.terrain_height(cx, cz) or 0)
+      end
+    end
     local circles = box_circles(x, z, fx, fz, w, d)
     local ok = true
     for _, c in ipairs(circles) do
@@ -1049,6 +1206,7 @@ function R.build(map, kit)
       if kind == "house" or kind == "terrace" then yards[#yards + 1] = {x, z, w, d, yaw} end
     end
   end
+  BASE = nil
   -- A tree or two in the yards round homes, once every building stands.
   pine_mesh()
   local planted = 0
@@ -1177,10 +1335,10 @@ end
 
 -- Is (x, z) on the map's water (its surveyed cover), and not on a bridge?
 -- Rows of water spans, ROW meters tall like the importer's strips.
-local ROW, wet_rows = 4
-function R.wet(x, z)
+local ROW = 4
+local function water_rows()
   local water = NET and (NET.map.cover or {}).water
-  if not water then return false end
+  if not water then return nil end
   if not wet_rows then
     wet_rows = {}
     for _, st in ipairs(water) do
@@ -1190,7 +1348,21 @@ function R.wet(x, z)
       end
     end
   end
-  for _, st in ipairs(wet_rows[math.floor(z / ROW)] or {}) do
+  return wet_rows
+end
+
+-- The level of the surveyed water at (x, z), on a map with terrain (whose
+-- water strips carry it); nil on land.
+function R.water_level(x, z)
+  for _, st in ipairs((water_rows() or {})[math.floor(z / ROW)] or {}) do
+    if st[5] and x >= st[1] and x <= st[3] then return st[5] end
+  end
+end
+
+function R.wet(x, z)
+  local rows = water_rows()
+  if not rows then return false end
+  for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
     if x >= st[1] and x <= st[3] then
       for _, p in ipairs(NET.map.piers or {}) do -- out on a pier is dry
         for i = 3, #p do

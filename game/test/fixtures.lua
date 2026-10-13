@@ -63,9 +63,9 @@ function F.clear_flight(x, z, dx, dz, car)
   for across = -1.2, 1.2, 0.2 do
     for _, height in ipairs{0.8, 1.8, 3, 5} do
       local ox, oz = x - dx * 12 + dz * across, z - dz * 12 - dx * across
-      local remaining, ignore = 42, car
+      local remaining, ignore, y = 42, car, height + require("lib.util").ground(ox, oz)
       for _ = 1, 64 do
-        local hit, distance = engine.raycast(ox, height, oz, dx, 0, dz, remaining, ignore)
+        local hit, distance = engine.raycast(ox, y, oz, dx, 0, dz, remaining, ignore)
         if not hit then break end
         local tag = engine.tag(hit)
         if BACKSTOP[tag] or ((tag == "car" or tag == "cop" or tag == "wreck") and hit ~= car) then return false end

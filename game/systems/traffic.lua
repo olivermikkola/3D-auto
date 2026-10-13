@@ -164,7 +164,7 @@ local function update(id, c, dt)
     if not c.keep and (c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
       local nx, nz, nyaw2 = place(c, 90)
       if nx then
-        engine.set_pos(id, nx, 0.8, nz)
+        engine.set_pos(id, nx, 0.8 + U.ground(nx, nz), nz)
         engine.orient(id, nyaw2)
         engine.set_vel(id, 0, 0, 0)
         engine.set_angvel(id, 0, 0, 0)

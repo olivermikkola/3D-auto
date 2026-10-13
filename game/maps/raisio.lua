@@ -19,6 +19,7 @@ return {
   paved = osm.paved,
   footprints = osm.footprints,
   cover = osm.cover,
+  terrain = osm.terrain, -- real heights (Maanmittauslaitos), roads graded in
   pitches = osm.pitches,
   footbridges = osm.footbridges,
   -- The map data's towers, and the police station's radio mast behind it.

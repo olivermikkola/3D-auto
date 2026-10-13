@@ -16,6 +16,9 @@ function U.right(yaw) return -math.cos(yaw), math.sin(yaw) end
 
 function U.dist2d(ax, az, bx, bz) return math.sqrt((ax - bx) ^ 2 + (az - bz) ^ 2) end
 
+-- The ground's height at (x, z): 0 except on a map with real terrain.
+function U.ground(x, z) return require("lib.roadnet").ground(x, z) end
+
 -- Position of whatever the player currently is (person or car).
 function U.player_pos()
   local G = require "lib.state"

@@ -11,7 +11,7 @@ M.tags = {car = true, cop = true}
 
 function M.spawn(x, z, yaw, color_index, mesh, tag)
   local n = color_index or math.random(8)
-  local id = engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75, z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
+  local id = engine.spawn{mesh = mesh or "car" .. n, pos = {x, 0.75 + U.ground(x, z), z}, yaw = yaw or 0, size = {2.0, 1.4, 4.4},
                           body = "dynamic", mass = 1200, friction = 0, step = 0.35, tag = tag or "car"}
   return id
 end
@@ -81,5 +81,25 @@ function M.drive(id, dt, input)
   engine.set_vel(id, fx * v + rx * side + ux * lift, fy * v + ry * side + uy * lift, fz * v + rz * side + uz * lift)
   return true
 end
+
+-- Cars nobody is driving have the handbrake on: on a slope they'd roll
+-- away otherwise (they have no friction of their own; grip is M.drive's
+-- doing). Slow ones are held, so a car knocked flying still flies.
+function M.driven(id)
+  if id == require("lib.state").vehicle then return true end
+  local traffic, police = package.loaded["systems.traffic"], package.loaded["systems.police"]
+  local cop = police and police.cops[id]
+  return (traffic and traffic.cars[id] ~= nil) or (cop ~= nil and not cop.deployed)
+end
+
+engine.on("tick", function()
+  if not engine.terrain_height(0, 0) then return end -- flat maps don't need it
+  for _, id in ipairs(engine.find("car")) do
+    if not M.driven(id) and engine.grounded(id) then
+      local vx, vy, vz = engine.vel(id)
+      if vx * vx + vz * vz < 9 then engine.set_vel(id, vx * 0.8, vy, vz * 0.8) end
+    end
+  end
+end)
 
 return M

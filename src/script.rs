@@ -461,12 +461,36 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         if w < 2 || d < 2 || step <= 0.0 {
             return Err(mlua::Error::runtime("terrain needs w, d >= 2 and step > 0"));
         }
-        let heights: Vec<f32> = t.get::<Table>("heights")?.sequence_values().collect::<Result<_>>()?;
+        // Heights as numbers, or a file: w * d little-endian i16 centimeters,
+        // then optionally a byte per point picking its color from `palette`.
+        let (heights, classes): (Vec<f32>, Option<Vec<u8>>) = match t.get::<Value>("heights")? {
+            Value::String(rel) => {
+                let path = game_path(&e.root, &rel.to_str()?)?;
+                let bytes = std::fs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
+                let n = w * d;
+                if bytes.len() != 2 * n && bytes.len() != 3 * n {
+                    return Err(mlua::Error::runtime(format!("{} is {} bytes, not {} or {}", rel.to_str()?, bytes.len(), 2 * n, 3 * n)));
+                }
+                let hs = bytes[..2 * n].chunks(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 100.0).collect();
+                (hs, (bytes.len() == 3 * n).then(|| bytes[2 * n..].to_vec()))
+            }
+            Value::Table(tb) => (tb.sequence_values().collect::<Result<_>>()?, None),
+            _ => return Err(mlua::Error::runtime("terrain heights must be a table of numbers or a file name")),
+        };
         if heights.len() != w * d {
             return Err(mlua::Error::runtime(format!("terrain has {} heights, not w * d = {}", heights.len(), w * d)));
         }
-        let colors = match t.get::<Option<Table>>("colors")? {
+        let palette = match t.get::<Option<Table>>("palette")? {
             None => None,
+            Some(p) => Some(
+                p.sequence_values::<Table>().map(|c| color(&Value::Table(c?)).map(|c| [c[0], c[1], c[2]])).collect::<Result<Vec<_>>>()?,
+            ),
+        };
+        let colors = match t.get::<Option<Table>>("colors")? {
+            None => match (classes, palette) {
+                (Some(cl), Some(pal)) if !pal.is_empty() => Some(cl.iter().map(|&k| pal[(k as usize).min(pal.len() - 1)]).collect()),
+                _ => None,
+            },
             Some(c) => {
                 let v: Vec<f32> = c.sequence_values().collect::<Result<_>>()?;
                 if v.len() != 3 * w * d {
@@ -496,9 +520,10 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             if let Some(axis) = p.get::<Option<String>>("axis")? {
                 src.reorient(&axis).map_err(mlua::Error::runtime)?;
             }
-            let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
+            let angle = |k: &str| -> Result<f32> { Ok(p.get::<Option<f32>>(k)?.unwrap_or(0.0)) };
+            let turn = (angle("yaw")?, angle("pitch")?, angle("roll")?);
             let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
-            out.append(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, yaw, size, v3(c[0], c[1], c[2]), glow);
+            out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, turn, size, v3(c[0], c[1], c[2]), glow);
         }
         let tris = out.tri_count();
         e.add_mesh(&name, out);

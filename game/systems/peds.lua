@@ -196,7 +196,7 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
   if city.network() then
     local p, x, z = net.spawn(near_x, near_z, min_d, max_d)
     if not p then return end
-    local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15, z}, size = {0.7, 1.8, 0.7},
+    local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15 + U.ground(x, z), z}, size = {0.7, 1.8, 0.7},
                             body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
     H.set(id, 30)
     p.id, p.speed, p.state, p.stuck = id, WALK * (0.8 + math.random() * 0.4), "walk", 0
@@ -217,7 +217,7 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
     local x, z = a + (c - a) * t, b + (d - b) * t
     local dist = U.dist2d(x, z, near_x, near_z)
     if dist >= min_d and dist <= max_d and not engine.nearest(x, 1, z, 1.5) then
-      local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15, z}, size = {0.7, 1.8, 0.7},
+      local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15 + U.ground(x, z), z}, size = {0.7, 1.8, 0.7},
                               body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
       H.set(id, 30)
       local p = {id = id, i = i, j = j, k = n, dir = 1, speed = WALK * (0.8 + math.random() * 0.4), state = "walk", stuck = 0}

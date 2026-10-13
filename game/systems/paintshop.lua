@@ -51,14 +51,14 @@ function M.build()
   local lx, lz = city.place("lot")
   M.x, M.z = lx + 9, lz + 10
   local x, z = M.x, M.z
-  engine.spawn{mesh = "plane", pos = {x, 0.27, z}, size = {6, 1, 9}, color = {0.55, 0.15, 0.55}, tag = "shop"}
+  engine.spawn{mesh = "plane", pos = {x, 0.27 + U.ground(x, z), z}, size = {6, 1, 9}, color = {0.55, 0.15, 0.55}, tag = "shop"}
   for _, side in ipairs{-1, 1} do
-    engine.spawn{mesh = "cube", pos = {x + side * 3.5, 2.4, z}, size = {0.35, 4.4, 9}, body = "static",
+    engine.spawn{mesh = "cube", pos = {x + side * 3.5, 2.4 + U.ground(x + side * 3.5, z), z}, size = {0.35, 4.4, 9}, body = "static",
                  color = {0.45, 0.2, 0.5}, tag = "shop"}
   end
-  engine.spawn{mesh = "cube", pos = {x, 4.8, z}, size = {8, 0.4, 9}, body = "static", color = {0.25, 0.1, 0.3}, tag = "shop"}
-  engine.spawn{mesh = "cube", pos = {x, 4.4, z - 4.4}, size = {7, 0.4, 0.15}, color = {1, 0.3, 0.9}, glow = 1, tag = "shop"}
-  engine.light{pos = {x, 3.8, z}, color = {1, 0.4, 0.9}, radius = 12, intensity = 1.5}
+  engine.spawn{mesh = "cube", pos = {x, 4.8 + U.ground(x, z), z}, size = {8, 0.4, 9}, body = "static", color = {0.25, 0.1, 0.3}, tag = "shop"}
+  engine.spawn{mesh = "cube", pos = {x, 4.4 + U.ground(x, z - 4.4), z - 4.4}, size = {7, 0.4, 0.15}, color = {1, 0.3, 0.9}, glow = 1, tag = "shop"}
+  engine.light{pos = {x, 3.8 + U.ground(x, z), z}, color = {1, 0.4, 0.9}, radius = 12, intensity = 1.5}
   engine.synth("spray", {wave = "noise", freq = 4000, dur = 1.2, attack = 0.1, release = 0.4, volume = 0.35, lowpass = 0.7})
   shop.add{name = "PAY 'N' SPRAY", x = x, z = z, hw = 2, hd = 2.5, letter = "P", color = {1, 0.4, 0.9}, car = true,
            prompt = function()
