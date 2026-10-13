@@ -14,7 +14,7 @@ return {
 
     local gx, gz = city.place("joyride_garage")
     local garage = m:marker(gx, gz)
-    m:say("Drive it to the garage before the owner notices.")
+    m:say("Drive it to the garage" .. m:on_street(gx, gz) .. " before the owner notices.")
     m:timer(75)
     m:wait(function() return m:near(garage, 5) end)
 

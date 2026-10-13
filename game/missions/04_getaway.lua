@@ -10,7 +10,7 @@ return {
   start = {city.place("getaway_start")},
   reward = 1200,
   run = function(m)
-    m:say("Get a fast car and drive to the bank.")
+    m:say("Get a fast car and drive to the bank" .. m:on_street(bx, bz) .. ".")
     m:wait(function() return m:in_car() end)
     local bank = m:marker(bx, bz, {0.3, 1, 0.4})
     m:wait(function() return m:near(bank, 5) end)

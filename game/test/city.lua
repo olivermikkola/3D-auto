@@ -213,6 +213,18 @@ local function road_layout(L, M, want, at_least)
     check(roadnet.wet((big[1] + big[3]) / 2, (big[2] + big[4]) / 2) and wet == 0,
           "the surveyed water stops you, and no junction (bridges included) is in it")
   end
+  if M.areas then
+    local first = (M.junction_order or {})[1]
+    local x, z = city.pos(roadnet.net().id[first])
+    local street, area = roadnet.where(x, z)
+    local mine = true
+    for _, a in ipairs(M.areas) do
+      local _, at = roadnet.where(a[2], a[3])
+      if at ~= a[1] then mine = false end
+    end
+    check(street and first:find(street, 1, true) and area and mine,
+          string.format("%s is on %s in %s, and each named area is where its name is", first, street, area))
+  end
   local houses, apartments, sheds = 0, 0, 0
   for _, id in ipairs(engine.find("building")) do
     local m = engine.mesh_of(id) or ""

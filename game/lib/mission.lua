@@ -26,6 +26,11 @@ local Mission = {}
 Mission.__index = Mission
 
 function Mission:say(text) self.objective = text end
+-- " on <street>" for a spot on a named street, for objectives; "" if not.
+function Mission:on_street(x, z)
+  local s = require("lib.city").street(x, z)
+  return s and (" on " .. s) or ""
+end
 function Mission:timer(seconds) self.deadline = engine.time() + seconds end
 function Mission:clear_timer() self.deadline = nil end
 function Mission:fail(reason) coroutine.yield("fail", reason) end

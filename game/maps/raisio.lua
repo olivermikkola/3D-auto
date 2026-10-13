@@ -27,6 +27,16 @@ return {
     for _, v in ipairs(osm.towers) do t[#t + 1] = v end
     return t
   end)(),
+  -- The parts of town the HUD names: the map data's suburbs (Turku's too,
+  -- past the bay), the center, and Mylly.
+  areas = (function()
+    local t = {{"Mylly", 2700, -2200}}
+    for _, a in ipairs(osm.areas) do
+      if a[4] == "suburb" then t[#t + 1] = a
+      elseif a[4] == "town" then t[#t + 1] = {"Keskusta", a[2], a[3]} end
+    end
+    return t
+  end)(),
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {170, 700}, -- see across the bay to the shipyard
