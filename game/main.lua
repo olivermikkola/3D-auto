@@ -34,7 +34,8 @@ engine.on("init", function()
   seed = seed and assert(math.tointeger(tonumber(seed)), "SEED must be an integer") or 1337
   math.randomseed(seed)
   print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
-  engine.fog(110, 380)
+  local fog = city.map().fog or {110, 380} -- a map can see further
+  engine.fog(fog[1], fog[2])
 
   prefabs.build()
   sfx.build()

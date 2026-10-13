@@ -21,6 +21,15 @@ return {
   cover = osm.cover,
   pitches = osm.pitches,
   footbridges = osm.footbridges,
+  -- The map data's towers, and the police station's radio mast behind it.
+  towers = (function()
+    local t = {{1295, -1825, 45, "lattice"}}
+    for _, v in ipairs(osm.towers) do t[#t + 1] = v end
+    return t
+  end)(),
+  cranes = osm.cranes,
+  piers = osm.piers,
+  fog = {170, 700}, -- see across the bay to the shipyard
   trees = 6000,
   lamp_every = 60,
 
