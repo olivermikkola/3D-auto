@@ -117,10 +117,13 @@ engine.on("key", function(k, down)
     -- Next weapon you have (the gamepad's LB goes the other way).
     local i, dir = 1, k == "q" and 1 or -1
     for n, w in ipairs(W.order) do if w == G.weapon then i = n end end
+    local was = G.weapon
     for step = 1, #W.order do
       local w = W.order[(i - 1 + dir * step) % #W.order + 1]
       if W.has(w) then G.weapon = w break end
     end
+    -- Nothing else to switch to: say why instead of doing nothing.
+    if G.weapon == was then U.message("NO AMMO: BUY SOME AT THE GUN SHOP (G)", 2) end
   end
   if (k == "mouse1" or k == "f") and G.player then
     local x, y, z = W.aim_point()

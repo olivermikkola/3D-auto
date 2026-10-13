@@ -3184,7 +3184,7 @@ return {
     {name = "Kivelänkuja", kind = "street", width = 9, "n1634", "n1618"},
     {kind = "street", width = 9, "n1898", {2186.2, -2282.4}, "n1905"},
     {kind = "street", width = 9, "n1895", {2155.2, -2270.7}, {2137.3, -2265.5}, {2002.4, -2221.2}, {1963.5, -2208}, "n1861"},
-    {name = "Nesteentie", kind = "main", width = 10, bridge = true, deck = true, "Nesteentie / Raisiontie 4", "Nesteentie / Raisiontie 2"},
+    {name = "Nesteentie", kind = "main", width = 10, bridge = true, "Nesteentie / Raisiontie 4", "Nesteentie / Raisiontie 2"},
     {name = "Raisiontie", kind = "main", width = 9, "Nesteentie / Raisiontie 3", "Nesteentie / Raisiontie 4"},
     {name = "Raisiontie", kind = "main", width = 9, "Nesteentie / Raisiontie 4", "n1564"},
     {name = "Raisiontie", kind = "main", width = 9, "Nesteentie / Raisiontie 2", "Nesteentie / Raisiontie"},
