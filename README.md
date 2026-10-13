@@ -41,7 +41,7 @@ A gamepad works too (see [Gamepads](#gamepads)).
 |---|---|---|
 | `src/math.rs` | ~250 | `Vec3`, `Quat`, column-major `Mat4`. Y up, right-handed. |
 | `src/mesh.rs` | ~250 | Flat-shaded unit primitives, OBJ+MTL loader, part baking. |
-| `src/physics.rs` | ~700 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses, a grid broad phase. |
+| `src/physics.rs` | ~1000 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses, a grid broad phase, rays along it; heightfield terrain. |
 | `src/audio.rs` | ~530 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
 | `src/script.rs` | ~740 | The `engine` Lua table and the event bus. |
@@ -131,6 +131,9 @@ engine.set_voice(voice, {volume=, pitch=, pos=})  engine.stop(voice)  engine.pla
 engine.volume([master]) -> master
 
 -- world
+engine.terrain{x0=, z0=, step=, w=, d=, heights={w*d, row by row toward +z}, colors={r,g,b per height}}
+engine.terrain(nil)                            -- the ground as a heightfield; nil removes it
+engine.terrain_height(x, z) -> h, nx,ny,nz     -- nothing off the grid
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
 engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g)  -- shorthands
 
@@ -150,6 +153,18 @@ engine.time()  engine.ticks()  engine.stats()  engine.files(dir)  engine.dirs(di
 engine.reload()                                -- start the scripts afresh after this frame, as F5 does
 engine.load_mods(folder)  engine.load_mod(folder)        -- sandboxed; see MODDING.md
 ```
+
+## Terrain
+
+`engine.terrain` takes the ground as a grid of heights. Each cell is two triangles, split the same
+way for drawing and for collisions, so what you see is what you drive on. It's drawn in chunks of
+64 × 64 cells (tag `terrain_mesh`), colored per height point if `colors` is given. Moving boxes
+collide with it corner by corner: each corner below the surface gets a contact pushing out along
+the surface's normal there, through the same solver as box-on-box contacts, so cars drive up
+hills and crates rest on slopes or slide off steep ones. Rays stop at it (it answers to tag
+`terrain`), and `engine.terrain_height` gives the height and normal anywhere on it.
+`TERRAIN_TEST=1` builds a 10 m hill past the edge of town and checks all of that, a car included.
+No map uses it yet: it's the first step toward Raisio's real hills.
 
 ## Lighting and day/night
 

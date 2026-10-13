@@ -85,6 +85,88 @@ pub fn extents(half: Vec3, rot: Quat) -> Vec3 {
     a + b + c
 }
 
+/// A heightfield: `w` x `d` heights, `step` meters apart, row by row from
+/// (x0, z0) toward +x then +z. Each cell is two triangles split along its
+/// (x+1, z)-(x, z+1) diagonal, and drawing and collision use that same
+/// surface. `id` is its entity, the "b" side of terrain contacts.
+pub struct Terrain {
+    pub x0: f32,
+    pub z0: f32,
+    pub step: f32,
+    pub w: usize,
+    pub d: usize,
+    pub heights: Vec<f32>,
+    pub id: usize,
+    pub top: f32,
+}
+
+impl Terrain {
+    pub fn new(x0: f32, z0: f32, step: f32, w: usize, d: usize, heights: Vec<f32>) -> Terrain {
+        let top = heights.iter().copied().fold(f32::MIN, f32::max);
+        Terrain { x0, z0, step, w, d, heights, id: usize::MAX, top }
+    }
+
+    pub fn at(&self, i: usize, j: usize) -> f32 {
+        self.heights[j * self.w + i]
+    }
+
+    /// Height and upward normal at (x, z); None off the grid.
+    pub fn surface(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
+        let (u, v) = ((x - self.x0) / self.step, (z - self.z0) / self.step);
+        if !(u >= 0.0 && v >= 0.0) {
+            return None;
+        }
+        let (i, j) = (u as usize, v as usize);
+        if i + 1 >= self.w || j + 1 >= self.d {
+            return None;
+        }
+        let (fx, fz) = (u - i as f32, v - j as f32);
+        let (h00, h10, h01, h11) = (self.at(i, j), self.at(i + 1, j), self.at(i, j + 1), self.at(i + 1, j + 1));
+        let (h, dx, dz) = if fx + fz <= 1.0 {
+            (h00 + (h10 - h00) * fx + (h01 - h00) * fz, h10 - h00, h01 - h00)
+        } else {
+            (h11 + (h01 - h11) * (1.0 - fx) + (h10 - h11) * (1.0 - fz), h11 - h01, h11 - h10)
+        };
+        Some((h, v3(-dx / self.step, 1.0, -dz / self.step).norm()))
+    }
+
+    /// Where a ray coming from above first meets the surface: distance and
+    /// normal. Marches half a cell at a time, then bisects.
+    pub fn ray(&self, o: Vec3, dir: Vec3, max: f32) -> Option<(f32, Vec3)> {
+        let below = |t: f32| {
+            let p = o + dir * t;
+            self.surface(p.x, p.z).map(|(h, _)| p.y < h)
+        };
+        let dt = self.step * 0.5;
+        let (mut t0, mut t) = (0.0f32, 0.0f32);
+        if below(0.0) == Some(true) {
+            return None; // starts underground
+        }
+        while t < max {
+            t = (t + dt).min(max);
+            let p = o + dir * t;
+            if p.y > self.top && dir.y >= 0.0 {
+                return None; // above every hill and climbing
+            }
+            if below(t) == Some(true) {
+                let (mut lo, mut hi) = (t0, t);
+                for _ in 0..16 {
+                    let mid = (lo + hi) * 0.5;
+                    if below(mid) == Some(true) {
+                        hi = mid;
+                    } else {
+                        lo = mid;
+                    }
+                }
+                let p = o + dir * hi;
+                return self.surface(p.x, p.z).map(|(_, n)| (hi, n));
+            }
+            t0 = t;
+        }
+        None
+    }
+}
+
 pub struct Contact {
     pub a: u32,
     pub b: u32,
@@ -210,7 +292,14 @@ impl Broad {
     }
 }
 
-pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmCache, broad: &mut Broad) -> Vec<Contact> {
+pub fn step(
+    ents: &mut [Option<Entity>],
+    dt: f32,
+    gravity: f32,
+    warm: &mut WarmCache,
+    broad: &mut Broad,
+    terrain: Option<&Terrain>,
+) -> Vec<Contact> {
     // 1. Forces. Also notice whether any static body changed since the grid was built.
     let mut dynamic = Vec::new();
     let mut movers = Vec::new();
@@ -312,6 +401,53 @@ pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmC
                 ents[j].as_mut().unwrap().body.as_mut().unwrap().grounded = true;
             }
             manifolds.push(m);
+        }
+    }
+
+    // 2b. Terrain: each corner of a moving box that's below the surface
+    // pushes off it along the surface's normal there, one contact each.
+    if let Some(t) = terrain
+        && ents.get(t.id).is_some_and(|e| e.is_some())
+    {
+        let mut grounded = Vec::new();
+        for &i in &dynamic {
+            let (ea, ba) = body(ents, i);
+            let (eb, bb) = body(ents, t.id);
+            if ba.sensor || ea.pos.y - ba.half.len() > t.top {
+                continue;
+            }
+            let mut closing: f32 = 0.0;
+            let mut hit = false;
+            for (k, p) in corners(ea.pos, &ea.rot.axes(), ba.half).into_iter().enumerate() {
+                let Some((h, n)) = t.surface(p.x, p.z) else { continue };
+                if p.y >= h {
+                    continue;
+                }
+                let feature = 24 + k as u8;
+                let (ra, rb) = (p - ea.pos, p - eb.pos);
+                let kk = |dir: Vec3| {
+                    let ia = ba.inv_mass + ba.inv_inertia_world(ea.rot, ra.cross(dir)).cross(ra).dot(dir);
+                    1.0 / ia.max(1e-9)
+                };
+                let vn = rel_vel(ba, bb, ra, rb).dot(n);
+                closing = closing.max(-vn);
+                let bounce = if vn < -1.0 { -ba.restitution * vn } else { 0.0 };
+                let (pn, pt1, pt2) = warm.get(&(i, t.id, feature)).copied().unwrap_or_default();
+                let (t1, t2) = tangents(n);
+                let depth = (h - p.y) * n.y;
+                let point = Point { feature, ra, rb, depth, t1, t2, mass_n: kk(n), mass_t1: kk(t1), mass_t2: kk(t2), bounce, pn, pt1, pt2 };
+                manifolds.push(Manifold { a: i, b: t.id, n, mu: (ba.friction * bb.friction).sqrt(), points: vec![point] });
+                hit = true;
+                if n.y > 0.7 {
+                    grounded.push(i);
+                }
+            }
+            if hit {
+                touching.push((i, t.id, closing));
+            }
+        }
+        for i in grounded {
+            ents[i].as_mut().unwrap().body.as_mut().unwrap().grounded = true;
         }
     }
 
@@ -651,12 +787,87 @@ mod tests {
     fn run(w: &mut [Option<Entity>], seconds: f32) {
         let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
         for _ in 0..(seconds * 60.0) as usize {
-            step(w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+            step(w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         }
     }
 
     fn get(w: &[Option<Entity>], i: usize) -> &Entity {
         w[i].as_ref().unwrap()
+    }
+
+    /// A plane rising `slope` meters per meter toward +x, 40 x 40 m, as a
+    /// terrain whose entity is slot `id`.
+    fn ramp_terrain(slope: f32, id: usize) -> Terrain {
+        let (w, d, step) = (21, 21, 2.0);
+        let mut hs = Vec::new();
+        for _j in 0..d {
+            for i in 0..w {
+                hs.push(5.0 + (i as f32 * step - 20.0) * slope);
+            }
+        }
+        let mut t = Terrain::new(-20.0, -20.0, step, w, d, hs);
+        t.id = id;
+        t
+    }
+
+    fn holder() -> Option<Entity> {
+        ent(v3(0., -10_000., 0.), Kind::Static, Vec3::ZERO)
+    }
+
+    #[test]
+    fn terrain_surface_is_the_drawn_triangles() {
+        // Grid points exactly, planes in between, and nothing off the edge.
+        let t = ramp_terrain(0.25, 0);
+        let (h, n) = t.surface(3.0, -7.3).unwrap();
+        assert!((h - (5.0 + 3.0 * 0.25)).abs() < 1e-4, "{h}");
+        assert!((n - v3(-0.25, 1.0, 0.0).norm()).len() < 1e-4, "{n:?}");
+        assert!(t.surface(-21.0, 0.0).is_none() && t.surface(0.0, 20.5).is_none());
+        // A bump: the four triangles around one raised point.
+        let mut b = Terrain::new(0.0, 0.0, 1.0, 3, 3, vec![0., 0., 0., 0., 2., 0., 0., 0., 0.]);
+        b.id = 0;
+        assert!((b.surface(1.0, 1.0).unwrap().0 - 2.0).abs() < 1e-5);
+        assert!((b.surface(0.75, 0.75).unwrap().0 - 1.0).abs() < 1e-5, "lower triangle: halfway along both");
+        assert!((b.surface(1.25, 1.25).unwrap().0 - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn rays_meet_the_terrain() {
+        let t = ramp_terrain(0.25, 0);
+        // Straight down from 30 m over x = 4: the ground is at 6 m.
+        let (d, n) = t.ray(v3(4., 30., 0.), v3(0., -1., 0.), 100.).unwrap();
+        assert!((d - 24.0).abs() < 0.01, "{d}");
+        assert!(n.x < 0.0 && n.y > 0.9);
+        // Level, toward the rising side from x = -10 at 6 m: meets it at x = 4.
+        let (d, _) = t.ray(v3(-10., 6., 0.), v3(1., 0., 0.), 100.).unwrap();
+        assert!((d - 14.0).abs() < 0.01, "{d}");
+        // Away from it, or starting underground: nothing.
+        assert!(t.ray(v3(-10., 6., 0.), v3(-1., 0., 0.), 100.).is_none());
+        assert!(t.ray(v3(10., 0., 0.), v3(1., 0., 0.), 100.).is_none());
+    }
+
+    #[test]
+    fn boxes_rest_on_gentle_slopes_and_slide_off_steep_ones() {
+        for (slope, slides) in [(0.0, false), (0.2, false), (1.2, true)] {
+            let mut w = vec![holder(), ent(v3(0., 12., 0.), Kind::Dynamic, v3(1., 0.5, 1.))];
+            w[1].as_mut().unwrap().body.as_mut().unwrap().friction = 0.6;
+            let t = ramp_terrain(slope, 0);
+            let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+            for _ in 0..240 {
+                step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, Some(&t));
+            }
+            let e = get(&w, 1);
+            let b = e.body.as_ref().unwrap();
+            if slides {
+                assert!(e.pos.x < -5.0 || b.vel.x < -2.0, "slope {slope}: still at x {} going {}", e.pos.x, b.vel.x);
+            } else {
+                assert!(e.pos.x.abs() < 1.5 && b.vel.len() < 0.05, "slope {slope}: drifted to {:?} at {:?}", e.pos, b.vel);
+                let ground = t.surface(e.pos.x, e.pos.z).unwrap().0;
+                // Resting on the surface, not sunk into it or floating.
+                let most = ground + 0.5 / (1.0 + slope * slope).sqrt() + slope + 0.1;
+                assert!(e.pos.y > ground && e.pos.y < most, "slope {slope}: y {} ground {ground}", e.pos.y);
+                assert!(b.grounded, "slope {slope}: not grounded");
+            }
+        }
     }
 
     #[test]
@@ -679,7 +890,7 @@ mod tests {
         }
         w.push(ent(v3(3., 1., 3.), Kind::Dynamic, v3(1., 1., 1.)));
         let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
-        step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+        step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         w.push(ent(v3(-20., 1., 0.), Kind::Static, v3(1., 3., 1.)));
         w[5].as_mut().unwrap().pos = v3(0., 1., -30.);
         let touched = [5u32];
@@ -704,13 +915,13 @@ mod tests {
         let mut w = vec![ground(), platform, ent(v3(40., 4.0, 0.), Kind::Dynamic, v3(0.5, 0.5, 0.5))];
         let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
         for _ in 0..120 {
-            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         }
         assert!((get(&w, 2).pos.y - 4.0).abs() < 0.05, "crate rests on the platform");
         assert_eq!(broad.rebuilds, 1, "nothing static changed, so one build");
         w[1].as_mut().unwrap().pos.x = 80.0;
         for _ in 0..60 {
-            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         }
         assert_eq!(broad.rebuilds, 2, "moving the platform rebuilt the grid");
         assert!(get(&w, 2).pos.y < 1.0, "and the crate fell to the ground (y = {})", get(&w, 2).pos.y);
@@ -785,7 +996,7 @@ mod tests {
             let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
             for _ in 0..90 {
                 w[2].as_mut().unwrap().body.as_mut().unwrap().vel.x = 4.0;
-                step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+                step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
             }
             get(&w, 2).pos
         };
