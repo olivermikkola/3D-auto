@@ -718,7 +718,7 @@ local function classify(map)
               local s = across > 0 and 1 or 2
               if gap < best[s] then
                 best[s] = gap
-                side[s] = gap > 0.6 and {kind = "median", w = gap / 2} or {kind = "none"}
+                side[s] = gap > 0.6 and {kind = "median", w = gap / 2} or {kind = "none", overlap = true}
               end
             end
           end)
@@ -755,17 +755,53 @@ end
 -- `o0` to `o1` meters out on side (rx, rz) is off every other road's
 -- asphalt: runs {from, to} of meters along it. Pavements stop where a
 -- side street crosses them.
+-- The other roads' stretches that come within `pad` of edge ei's asphalt
+-- (at its junctions, or passing close), found once per edge:
+-- {ax, az, bx, bz, half width}.
+local function neighbours(ei, pad)
+  local e = NET.edges[ei]
+  if e.near then return e.near end
+  local out, seen = {}, {}
+  if e.deck or e.over then e.near = out return out end
+  for i = 2, #e.pts do
+    local a, b = e.pts[i - 1], e.pts[i]
+    local x0, x1 = math.min(a[1], b[1]) - pad - 10, math.max(a[1], b[1]) + pad + 10
+    local z0, z1 = math.min(a[2], b[2]) - pad - 10, math.max(a[2], b[2]) + pad + 10
+    for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
+      for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
+        for _, it in ipairs(NET.grid[cell_key(ci, cj)] or {}) do
+          local oj, q = it[1], it[2]
+          local o, key = NET.edges[oj], oj * 100000 + q
+          if oj ~= ei and not seen[key] and not (o.deck or o.over) and o.tunnel == e.tunnel then
+            local c, d = o.pts[q - 1], o.pts[q]
+            local r = o.width / 2 + pad
+            local near = crossing(a[1], a[2], b[1], b[2], c[1], c[2], d[1], d[2])
+                         or dist_seg(c[1], c[2], a[1], a[2], b[1], b[2]) < r or dist_seg(d[1], d[2], a[1], a[2], b[1], b[2]) < r
+                         or dist_seg(a[1], a[2], c[1], c[2], d[1], d[2]) < r or dist_seg(b[1], b[2], c[1], c[2], d[1], d[2]) < r
+            if near then
+              seen[key] = true
+              out[#out + 1] = {c[1], c[2], d[1], d[2], o.width / 2 + 0.2}
+            end
+          end
+        end
+      end
+    end
+  end
+  e.near = out
+  return out
+end
+
 local function clear_runs(ei, ax, az, ux, uz, len, rx, rz, o0, o1)
   local mx, mz = ax + ux * len / 2 + rx * (o0 + o1) / 2, az + uz * len / 2 + rz * (o0 + o1) / 2
   local e, near = NET.edges[ei], {}
   local reach = len / 2 + (o1 - o0) / 2 + 1
-  near_edges(mx, mz, reach + 10, function(oj, q)
-    local o = NET.edges[oj]
-    if oj == ei or o.deck or o.over or o.tunnel ~= e.tunnel or e.deck or e.over then return end
-    local a, b, r = o.pts[q - 1], o.pts[q], o.width / 2 + reach
-    if math.min(a[1], b[1]) <= mx + r and math.max(a[1], b[1]) >= mx - r and math.min(a[2], b[2]) <= mz + r
-       and math.max(a[2], b[2]) >= mz - r and dist_seg(mx, mz, a[1], a[2], b[1], b[2]) < r then near[#near + 1] = {a[1], a[2], b[1], b[2], o.width / 2 + 0.2} end
-  end)
+  for _, sg in ipairs(neighbours(ei, NET.edges[ei].width / 2 + 8)) do
+    local r = sg[5] + reach
+    if math.min(sg[1], sg[3]) <= mx + r and math.max(sg[1], sg[3]) >= mx - r and math.min(sg[2], sg[4]) <= mz + r
+       and math.max(sg[2], sg[4]) >= mz - r and dist_seg(mx, mz, sg[1], sg[2], sg[3], sg[4]) < r then
+      near[#near + 1] = sg
+    end
+  end
   if #near == 0 then return {{0, len}} end
   local runs, from = {}, nil
   local n = math.max(1, math.ceil(len / 0.5))
@@ -914,9 +950,10 @@ function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
 
 build = function(map, kit)
   local sx, sz = map.size[1], map.size[2]
+  local midx, midz = (map.center or {0, 0})[1], (map.center or {0, 0})[2] -- the map's middle
   local r = kit.rng(7, 11)
   local H = hash(40)
-  local L = {map = map.id or map.name, network = true, sx = sx, sz = sz, curb = kit.CURB, walk = SIDEWALK,
+  local L = {map = map.id or map.name, network = true, sx = sx, sz = sz, cx = midx, cz = midz, curb = kit.CURB, walk = SIDEWALK,
              avenue = 14, street = 12, kinds = {}, landmarks = {}, labels = {}}
   -- Is (x, z) under a tunnel's roof (where nothing tall can stand on the road)?
   local function under_roof(x, z)
@@ -930,15 +967,15 @@ build = function(map, kit)
 
   -- Land (the terrain, if there is one), the sea round it, and invisible
   -- walls at the shore.
-  if not GROUND then kit.static{mesh = "cube", pos = {0, -1.5, 0}, size = {sx, 3, sz}, color = LAND, tag = "ground"} end
+  if not GROUND then kit.static{mesh = "cube", pos = {midx, -1.5, midz}, size = {sx, 3, sz}, color = LAND, tag = "ground"} end
   local W = 1500
   for _, f in ipairs{{0, -(sz + W) / 2, sx + 2 * W, W}, {0, (sz + W) / 2, sx + 2 * W, W},
                      {-(sx + W) / 2, 0, W, sz}, {(sx + W) / 2, 0, W, sz}} do
-    engine.spawn{mesh = "cube", pos = {f[1], 0.04 - 0.5, f[2]}, size = {f[3], 1, f[4]}, color = WATER, tag = "water", abs = true}
+    engine.spawn{mesh = "cube", pos = {midx + f[1], 0.04 - 0.5, midz + f[2]}, size = {f[3], 1, f[4]}, color = WATER, tag = "water", abs = true}
   end
   for _, s in ipairs{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} do
-    kit.static{pos = {s[1] * sx / 2, 60, s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 140, s[2] == 0 and sz or 1}, visible = false,
-               tag = "wall", abs = true}
+    kit.static{pos = {midx + s[1] * sx / 2, 60, midz + s[2] * sz / 2}, size = {s[1] == 0 and sx or 1, 140, s[2] == 0 and sz or 1},
+               visible = false, tag = "wall", abs = true}
   end
 
   -- Rivers: water ribbons with nothing built on them; railings where a road
@@ -1706,7 +1743,7 @@ build = function(map, kit)
               local cx, cz = mx + fx * w / 2 + nx * off, mz + fz * w / 2 + nz * off
               local rad = math.sqrt(w * w + d * d) / 2
               local circles = box_circles(cx, cz, fx, fz, w, d)
-              local ok = r() > K.empty and math.abs(cx) < sx / 2 - rad and math.abs(cz) < sz / 2 - rad
+              local ok = r() > K.empty and math.abs(cx - midx) < sx / 2 - rad and math.abs(cz - midz) < sz / 2 - rad
               for _, c in ipairs(circles) do ok = ok and free(H, c[1], c[2], c[3] * 0.96) end
               ok = ok and box_clear(H, cx, cz, fx, fz, w, d)
               if ok then
@@ -1779,11 +1816,6 @@ build = function(map, kit)
     end
   end
   L.buildings, L.trees = count, trees
-  -- Which pavements are clear, worked out now rather than when the first
-  -- pedestrian asks (half a second on a big town).
-  for ei, e in ipairs(NET.edges) do
-    if e.kind ~= "highway" then R.pavement(ei, 1); R.pavement(ei, -1) end
-  end
   -- Each junction's height, on its road (a tunnel's, a deck's), for
   -- telling levels apart.
   if GROUND then
@@ -1927,31 +1959,19 @@ function R.wet(x, z)
 end
 
 -- Is the pavement on side `side` of edge e (+1: right of its first bend
--- toward its last) clear to walk? Not where it lies on another road's
--- asphalt, as between the two halves of a divided road. The ends, where
--- every pavement crosses the side street, don't count.
+-- toward its last, classify's side 1) clear to walk? Not where it lies on
+-- another road's asphalt, as between the two halves of a divided road with
+-- little or no median: no more than a fifth of the way.
 function R.pavement(e, side)
   NET.pave = NET.pave or {}
   local key = e * 2 + (side > 0 and 1 or 0)
   if NET.pave[key] == nil then
-    local E, ed = NET.edges, NET.edges[e]
-    local n, bad = 0, 0
-    for i = 2, #ed.pts do
-      local a, b = ed.pts[i - 1], ed.pts[i]
-      local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
-      if len > 0 then
-        local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
-        local o = (ed.width / 2 + SIDEWALK / 2) * side
-        local from, to = i == 2 and math.min(15, len / 2) or 2, i == #ed.pts and math.max(len - 15, len / 2) or len - 2
-        for t = from, to, 4 do
-          local x, z = a[1] + fx * t + fz * o, a[2] + fz * t - fx * o
-          local oe, _, _, _, d = R.nearest_edge(x, z)
-          n = n + 1
-          if oe ~= e and d < E[oe].width / 2 then bad = bad + 1 end
-        end
-      end
+    local pieces, s, bad = NET.edges[e].pieces or {}, side > 0 and 1 or 2, 0
+    for _, pc in ipairs(pieces) do
+      local sd = pc.side[s]
+      if sd.overlap or (sd.kind == "median" and sd.w < 0.9) then bad = bad + 1 end
     end
-    NET.pave[key] = n == 0 or bad <= n * 0.2
+    NET.pave[key] = bad <= #pieces * 0.2
   end
   return NET.pave[key]
 end

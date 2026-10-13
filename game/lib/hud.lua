@@ -32,11 +32,11 @@ local function map_base(L)
   local city = require "lib.city"
   local rects = {}
   local function add(x0, z0, x1, z1, c)
-    rects[#rects + 1] = {(x0 + L.sx / 2) / L.sx, (z0 + L.sz / 2) / L.sz, (x1 - x0) / L.sx, (z1 - z0) / L.sz, c}
+    rects[#rects + 1] = {(x0 - (L.cx or 0) + L.sx / 2) / L.sx, (z0 - (L.cz or 0) + L.sz / 2) / L.sz, (x1 - x0) / L.sx, (z1 - z0) / L.sz, c}
   end
   if L.network then
     -- Land, then rivers and roads as chains of dots, so curves show.
-    add(-L.sx / 2, -L.sz / 2, L.sx / 2, L.sz / 2, COLORS.land)
+    add((L.cx or 0) - L.sx / 2, (L.cz or 0) - L.sz / 2, (L.cx or 0) + L.sx / 2, (L.cz or 0) + L.sz / 2, COLORS.land)
     local function dots(pts, w, c)
       for i = 2, #pts do
         local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
@@ -184,7 +184,7 @@ local function minimap(sw, sh)
   local H = math.floor(math.min(230, sh * 0.3))
   local W = math.floor(H * L.sx / L.sz)
   local x0, y0 = sw - W - 20, sh - H - 20
-  local function map(wx, wz) return x0 + (wx + L.sx / 2) / L.sx * W, y0 + (wz + L.sz / 2) / L.sz * H end
+  local function map(wx, wz) return x0 + (wx - (L.cx or 0) + L.sx / 2) / L.sx * W, y0 + (wz - (L.cz or 0) + L.sz / 2) / L.sz * H end
   engine.rect(x0 - 4, y0 - 4, W + 8, H + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, W, H, 0.18, 0.32, 0.55, 0.85)
   for _, r in ipairs(map_base(L)) do

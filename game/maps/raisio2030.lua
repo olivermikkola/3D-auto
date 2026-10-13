@@ -39,7 +39,18 @@ for i, road in ipairs(base.roads) do
   end
   m.roads[i] = r
 end
-m.roads[#m.roads + 1] = {name = "Elauksenkatu", kind = "street", width = 9, "n1446", {888, -1412}, "Elauksenkatu / Kreetankuja"}
+-- Hosleniuksenkuja's end has no name of its own in the map data (its
+-- number changes as the data does): the junction there, by where it is.
+local function junction_at(x, z)
+  local best, bd
+  for name, p in pairs(base.junctions) do
+    local d = (p[1] - x) ^ 2 + (p[2] - z) ^ 2
+    if not bd or d < bd then best, bd = name, d end
+  end
+  return best
+end
+m.roads[#m.roads + 1] = {name = "Elauksenkatu", kind = "street", width = 9, junction_at(867.3, -1437.6), {888, -1412},
+                         "Elauksenkatu / Kreetankuja"}
 
 -- The tunnel: along Nesteentie's two carriageways from just west of
 -- Elauksenkatu to past Raisiontie, 7.5 m down, the ramps 110 m long.

@@ -1,6 +1,7 @@
 -- The pause menu and settings, across a restart. CI runs:
 --   MENU_TEST=1 auto game --headless 900 --save-dir DIR   pause, change settings, quit from the menu
---   MENU_TEST=2 ...                                       settings came back; reset; minimize pauses
+--   MENU_TEST=2 ...                                       settings came back; reset; minimize pauses;
+--                                                         pick another city, and the game restarts there
 -- Steps count frames, not ticks: frames keep coming while the game is paused.
 local G = require "lib.state"
 local U = require "lib.util"
@@ -80,6 +81,16 @@ if phase == 1 then
     print("MENU TEST PHASE 1 PASSED")
     key("enter")
   end
+elseif phase == 2 and engine.load("menu_test_city") then
+  -- After picking another city in the menu (below): the game came back
+  -- there, though it was started with MAP=<the old one>.
+  steps[2] = function()
+    local want = engine.load("menu_test_city")
+    check(require("lib.city").map().id == want, "picking " .. want .. " under CITY takes you there, whatever MAP says")
+    engine.save("menu_test_city", nil)
+    print("MENU TEST PASSED")
+    engine.quit()
+  end
 elseif phase == 2 then
   steps[2] = function()
     check(settings.get("volume") == 80 and math.abs(engine.volume() - 0.8) < 1e-6, "volume survives a restart and is applied")
@@ -98,8 +109,16 @@ elseif phase == 2 then
     select("RESUME")
     key("enter")
     check(not engine.paused(), "RESUME resumes")
-    print("MENU TEST PASSED")
-    engine.quit()
+    -- Another city, picked in the menu: the game starts afresh there.
+    local city = require "lib.city"
+    local want = city.map().id == "harbor" and "manhattan" or "harbor"
+    engine.save("menu_test_city", want)
+    key("escape")
+    select("CITY")
+    key("enter")
+    check(menu.page == "city", "CITY lists the cities")
+    select(want == "harbor" and "HARBOR" or "MANHATTAN")
+    key("enter")
   end
 end
 

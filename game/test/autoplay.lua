@@ -75,11 +75,27 @@ at(0.5, function()
   press("e")
   check(G.vehicle == id, "entered the nearest car")
   car = id
-  -- Put it at the start of a long north-south avenue.
-  local ax, az = long_avenue()
-  engine.set_pos(car, ax, 0.8 + U.ground(ax, az + 10), az + 10)
-  engine.set_yaw(car, 0)
-  yaw0 = 0
+  -- Put it at the start of a long north-south avenue, or on a map drawn
+  -- as roads, the longest straight stretch of road on the ground.
+  local ax, az, yaw = nil, nil, 0
+  if city.network() then
+    local best = 0
+    for _, e in ipairs(require("lib.roadnet").net().edges) do
+      if not (e.bridge or e.tunnel or e.deck or e.over) then
+        for i = 2, #e.pts do
+          local a, b = e.pts[i - 1], e.pts[i]
+          local l = U.dist2d(a[1], a[2], b[1], b[2])
+          if l > best then best, ax, az, yaw = l, a[1], a[2], math.atan(b[1] - a[1], b[2] - a[2]) end
+        end
+      end
+    end
+  else
+    ax, az = long_avenue()
+  end
+  ax, az = ax + math.sin(yaw) * 10, az + math.cos(yaw) * 10
+  engine.set_pos(car, ax, 0.8 + U.ground(ax, az), az)
+  engine.set_yaw(car, yaw)
+  yaw0 = yaw
   held.w = true
 end)
 at(3.5, function()
@@ -88,7 +104,8 @@ at(3.5, function()
 end)
 at(4.2, function()
   held.a, held.w = false, false
-  check(math.abs(engine.yaw(car) - yaw0) > 0.3, "car steers")
+  local turned = (engine.yaw(car) - yaw0 + math.pi) % (2 * math.pi) - math.pi
+  check(math.abs(turned) > 0.3, "car steers")
   held.s = true
 end)
 at(7.0, function()

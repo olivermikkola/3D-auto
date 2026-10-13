@@ -181,22 +181,40 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
     eng.borrow_mut().saves = saves;
     // Mix (and discard) audio in step with ticks so headless runs exercise it too.
     let mut sink = vec![0.0f32; 2 * (audio::RATE as f64 / TICK_HZ) as usize];
-    let script = load(&eng);
+    let mut script = load(&eng);
     let t0 = std::time::Instant::now();
-    if let Some(s) = &script {
-        for _ in 0..ticks {
-            if !eng.borrow().paused {
-                tick(&eng, s);
-            }
-            eng.borrow_mut().hud.clear();
-            s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
-            eng.borrow_mut().update_audio();
-            mixer.lock().unwrap().mix(&mut sink);
-            if eng.borrow().quit {
-                break;
-            }
+    let mut n = 0;
+    while let Some(s) = &script {
+        if n >= ticks {
+            s.emit(&eng, "quit", ());
+            break;
         }
-        s.emit(&eng, "quit", ());
+        n += 1;
+        if !eng.borrow().paused {
+            tick(&eng, s);
+        }
+        eng.borrow_mut().hud.clear();
+        s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
+        eng.borrow_mut().update_audio();
+        mixer.lock().unwrap().mix(&mut sink);
+        if eng.borrow().quit {
+            s.emit(&eng, "quit", ());
+            break;
+        }
+        // engine.reload(), as the windowed game does it: the old scripts
+        // save, then everything starts afresh, saves kept.
+        if std::mem::take(&mut eng.borrow_mut().reload) {
+            s.emit(&eng, "quit", ());
+            let (root, saves) = {
+                let mut e = eng.borrow_mut();
+                (e.root.clone(), std::mem::take(&mut e.saves))
+            };
+            drop(script.take()); // the old Lua state goes before the new one is built
+            *eng.borrow_mut() = Engine::new(root, mixer.clone());
+            eng.borrow_mut().saves = saves;
+            script = load(&eng);
+            println!("reloaded");
+        }
     }
     let e = eng.borrow();
     println!("headless: {} ticks in {:.1} ms, {} entities, {} meshes", e.tick, t0.elapsed().as_secs_f64() * 1e3, e.live, e.meshes.len());

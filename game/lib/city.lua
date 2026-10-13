@@ -105,7 +105,17 @@ end
 function C.choose(name)
   local ok, err = engine.save("city", name)
   if not ok then print("city: " .. tostring(err)) end
+  engine.save("city_picked", true)
   engine.reload()
+end
+
+-- The city to start in: one just picked in the pause menu, else MAP=<name>
+-- (which a picked one beats: the game may well have been started with it),
+-- else the one picked last, else Manhattan.
+function C.start()
+  local picked = engine.load("city_picked")
+  if picked then engine.save("city_picked", nil) end
+  return (not picked and os.getenv("MAP")) or C.chosen() or "manhattan"
 end
 
 -- ---- shape of the land -------------------------------------------------------
