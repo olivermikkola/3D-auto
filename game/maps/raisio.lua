@@ -21,6 +21,15 @@ return {
   cover = osm.cover,
   pitches = osm.pitches,
   footbridges = osm.footbridges,
+  -- The map data's towers, and the police station's radio mast behind it.
+  towers = (function()
+    local t = {{1295, -1825, 45, "lattice"}}
+    for _, v in ipairs(osm.towers) do t[#t + 1] = v end
+    return t
+  end)(),
+  cranes = osm.cranes,
+  piers = osm.piers,
+  fog = {170, 700}, -- see across the bay to the shipyard
   trees = 6000,
   lamp_every = 60,
 
@@ -44,10 +53,12 @@ return {
     {x = 2700, z = -2200, letter = "M", name = "Kauppakeskus Mylly"},
     {x = 850, z = -1700, letter = "R", name = "Raisiontori"},
     {x = -2760, z = 1820, letter = "S", name = "the harbor"},
+    {x = 1260, z = -1805, letter = "P", name = "Raision poliisiasema"},
   },
 
   places = {
     hospital = {at = {945, -1741}},  -- Mehiläinen, by Raisiontori
+    police_station = {at = {1233, -1796}}, -- Raision poliisiasema: busted, you walk out here
     taxi_rank = {at = {870, -1700}},
     joyride_garage = {junction = "Kuloistentie / Sarkamaantie"}, -- the car dealers past Mylly
     race_start = {junction = "Peltopohjankatu / Sarkamaantie"},

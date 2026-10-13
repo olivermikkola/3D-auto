@@ -273,6 +273,13 @@ until_(function() return nearest_cop() < 25 end, 40, "cops chased the player dow
 until_(function() return busts == 1 end, 30, "busted when caught standing next to a cop", function()
   check(wanted.stars() == 0 and police.count() == 0, "busting clears the wanted level and the cops")
   check(G.cash < cash_before, string.format("fined $%d", cash_before - G.cash))
+  local px, _, pz = engine.pos(G.player)
+  local sx, sz = G.spawn[1], G.spawn[3]
+  if city.has("police_station") then sx, sz = city.place("police_station") end
+  check(math.sqrt((px - sx) ^ 2 + (pz - sz) ^ 2) < 12, city.has("police_station") and "released outside the police station"
+                                         or "released where the game starts")
+  -- The rest of the run plays out from the start, wherever the station is.
+  engine.set_pos(G.player, G.spawn[1], G.spawn[2], G.spawn[3])
 end)
 
 after(1.0, function() wanted.set(1) end)

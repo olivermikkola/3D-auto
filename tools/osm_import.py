@@ -265,6 +265,7 @@ def cover_class(t):
 
 def building_kind(t, A):
     b = t.get("building", "yes")
+    if t.get("amenity") == "police": return "police"
     if b in ("garage", "garages", "shed", "carport", "hut", "cabin", "roof", "greenhouse", "service", "kiosk"): return "shed"
     if b in ("house", "detached", "semidetached_house", "bungalow", "farm"): return "house"
     if b == "terrace": return "terrace"
@@ -280,6 +281,21 @@ def building_kind(t, A):
     return "flats"
 
 
+COLOURS = {"red": (0.6, 0.22, 0.17), "darkred": (0.45, 0.15, 0.12), "brown": (0.42, 0.28, 0.2), "darksalmon": (0.72, 0.42, 0.33),
+           "orange": (0.75, 0.42, 0.22), "black": (0.16, 0.16, 0.17), "dimgrey": (0.33, 0.33, 0.34), "dimgray": (0.33, 0.33, 0.34),
+           "grey": (0.5, 0.5, 0.5), "gray": (0.5, 0.5, 0.5), "darkgrey": (0.4, 0.4, 0.41), "darkgray": (0.4, 0.4, 0.41),
+           "silver": (0.7, 0.7, 0.72), "white": (0.88, 0.88, 0.86), "green": (0.25, 0.4, 0.28), "blue": (0.25, 0.32, 0.45)}
+
+
+def roof_colour(t):
+    """A roof:colour as r, g, b: a name or #rrggbb; None if untagged."""
+    c = t.get("roof:colour", "").strip().lower()
+    if c in COLOURS: return COLOURS[c]
+    if len(c) == 7 and c[0] == "#":
+        try: return tuple(round(int(c[i:i + 2], 16) / 255, 2) for i in (1, 3, 5))
+        except ValueError: return None
+
+
 def height_of(t, kind, A):
     for key in ("height", "building:height"):
         try: return max(2.5, float(t[key].split()[0]))
@@ -289,7 +305,7 @@ def height_of(t, kind, A):
     floor = {"house": 2.9, "terrace": 2.9, "shed": 2.6}.get(kind, 3.4)
     if levels is None:
         levels = {"shed": 1, "house": 1 if A < 160 else 2, "terrace": 1, "flats": 3 if A < 900 else 4,
-                  "shop": 2, "civic": 2, "church": 3, "works": 2.5}[kind]
+                  "shop": 2, "civic": 2, "church": 3, "works": 2.5, "police": 3}[kind]
     return max(2.5, levels * floor)
 
 
@@ -486,7 +502,7 @@ def main():
                 if hit:
                     dropped += 1
                     continue
-                footprints.append((x, z, bw, bd, ang, h, kind, name))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof_colour(t)))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -544,6 +560,42 @@ def main():
                    for _, c, d in G.near(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])))
         if over: footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts))
 
+    # ---- towers, gantry cranes, piers ----
+    towers, cranes, piers = [], [], []
+    for el in els:
+        t = el.get("tags", {})
+        mm = t.get("man_made")
+        if mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower",):
+            g = el.get("geometry") or ([{"lat": el["lat"], "lon": el["lon"]}] if "lat" in el else [])
+            if not g: continue
+            pts = [P(p["lat"], p["lon"]) for p in g]
+            x, z = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+            if not inside(x, z, pad=10): continue
+            try: h = float(t.get("height", "").split()[0])
+            except (ValueError, IndexError): h = 40
+            lattice = t.get("tower:construction") == "lattice" or t.get("tower:type") == "communication" or mm == "mast"
+            towers.append((x, z, h, "lattice" if lattice and t.get("tower:type") == "communication" else
+                           "pylon" if t.get("tower:type") in ("monument", "advertising") else "lattice"))
+        elif mm == "crane" and t.get("crane:type") == "gantry_crane":
+            for ring in rings(el):
+                poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+                ang, (cx, cz), cl, cw = min_rect(poly)
+                if cl < cw: ang, cl, cw = ang + math.pi / 2, cw, cl
+                if inside(cx, cz): cranes.append((cx, cz, cl, cw, -ang, int(t.get("count", "1") or 1)))
+        elif mm == "pier":
+            pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.5)
+            if len(pts) >= 2 and all(inside(*p, pad=5) for p in pts):
+                closed = len(el.get("geometry") or []) > 3 and el["geometry"][0] == el["geometry"][-1]
+                if closed:  # a pier drawn as an area: its long middle line
+                    ang, (cx, cz), pl, pw = min_rect(pts)
+                    if pl < pw: ang, pl, pw = ang + math.pi / 2, pw, pl
+                    c, s_ = math.cos(ang), math.sin(ang)
+                    pts = [(cx - c * pl / 2, cz - s_ * pl / 2), (cx + c * pl / 2, cz + s_ * pl / 2)]
+                    width = max(2, min(pw, 12))
+                else:
+                    width = 2.5
+                piers.append((width, pts))
+
     # ---- write ----
     def f(v): return f"{v:.1f}".rstrip("0").rstrip(".")
     def q(s): return json.dumps(s, ensure_ascii=False)
@@ -573,12 +625,13 @@ def main():
     for wd, svc, pts in paved:
         L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
-    L.append("  -- {x, z, w, d, yaw, height, kind[, name]}: yaw turns the box's w side off the x axis")
+    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or nil}: yaw turns the box's w side off the x axis")
     L.append("  footprints = {")
-    for x, z, bw, bd, ang, h, kind, name in footprints:
+    for x, z, bw, bd, ang, h, kind, name, roof in footprints:
         # The engine's yaw turns +z toward +x: a box whose w runs at angle
         # `ang` (from +x toward +z) has yaw = -ang.
         tail = f", {q(name)}" if name else ""
+        if roof: tail = (tail or ", false") + ", {" + ", ".join(f(v) for v in roof) + "}"
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")
@@ -586,6 +639,15 @@ def main():
     L.append("  -- foot and cycle bridges over roads: {width, points...}")
     L.append("  footbridges = {")
     for wd, pts in footbridges:
+        L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    L.append("  },")
+    L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
+    L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
+    L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
+    L.append("  cranes = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(l)}, {f(w)}, {a:.3f}, {n}}}" for x, z, l, w, a, n in cranes) + "},")
+    L.append("  -- piers: {width, points...}")
+    L.append("  piers = {")
+    for wd, pts in piers:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
     L.append("  -- {x0, z0, x1, z1} strips")
@@ -599,7 +661,8 @@ def main():
     print(f"{dest.relative_to(ROOT)}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({dropped} too close to a road), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
-          + f", {len(pitches)} pitches, {len(footbridges)} footbridges; {dest.stat().st_size // 1024} KB")
+          + f", {len(pitches)} pitches, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
+          f" {len(piers)} piers; {dest.stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":

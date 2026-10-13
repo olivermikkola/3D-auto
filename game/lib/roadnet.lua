@@ -363,26 +363,31 @@ local COVER = {
 }
 local LINE = {0.95, 0.95, 0.92}
 
--- A church: stone walls under a steep roof along its length, unit
--- footprint, real height; with `tower`, a bell tower and spire at one end.
+-- A Finnish stone church: grey fieldstone walls, a steep black roof, and
+-- red wooden boards in its gables. Unit footprint, real height.
 local churches = {}
-local function church_mesh(h, tower)
-  local name = string.format("church_%g_%s", h, tower and "t" or "n")
+local CHURCH_ROOF = 12
+local function church_mesh(h)
+  local name = string.format("church_%g", h)
   if churches[name] then return name end
-  local wall, roof = {0.8, 0.78, 0.74}, {0.22, 0.2, 0.2}
-  local hw = math.min(h, 8)
-  local parts = {{mesh = "cube", pos = {0, hw / 2, 0}, size = {1, hw, 1}, color = wall}}
-  parts[#parts + 1] = {mesh = "wedge", pos = {0, hw + 3, -0.25}, size = {1.02, 6, 0.52}, color = roof}
-  parts[#parts + 1] = {mesh = "wedge", pos = {0, hw + 3, 0.25}, yaw = math.pi, size = {1.02, 6, 0.52}, color = roof}
-  for k = -2, 2 do -- tall narrow windows down both sides
-    parts[#parts + 1] = {mesh = "cube", pos = {k * 0.17, hw * 0.55, 0}, size = {0.04, hw * 0.45, 1.01}, color = {0.2, 0.22, 0.28},
+  local hw, R = math.min(h, 7), CHURCH_ROOF
+  local parts = {{mesh = "cube", pos = {0, hw / 2, 0}, size = {1, hw, 1}, color = {0.6, 0.58, 0.55}}}
+  for _, back in ipairs{-1, 1} do
+    parts[#parts + 1] = {mesh = "wedge", pos = {0, hw + R / 2, 0.26 * back}, yaw = back > 0 and math.pi or 0,
+                         size = {1.03, R, 0.53}, color = {0.12, 0.12, 0.13}}
+    for _, e in ipairs{-1, 1} do -- the gables' red boarding
+      parts[#parts + 1] = {mesh = "wedge", pos = {e * 0.518, hw + R * 0.45, 0.24 * back}, yaw = back > 0 and math.pi or 0,
+                           size = {0.01, R * 0.9, 0.48}, color = {0.5, 0.2, 0.14}}
+    end
+  end
+  for k = -2, 2 do -- small deep windows
+    parts[#parts + 1] = {mesh = "cube", pos = {k * 0.17, hw * 0.6, 0}, size = {0.025, hw * 0.25, 1.01}, color = {0.15, 0.15, 0.18},
                          emissive = 1}
   end
   engine.mesh(name, parts)
   churches[name] = true
   return name
 end
-
 -- A strip along a polyline: a box per segment and a disc at each bend, so
 -- curves have no gaps.
 local function strip(parts, pts, width, top, color, discs)
@@ -416,10 +421,10 @@ end
 local HOUSE = {{0.72, 0.2, 0.15}, {0.9, 0.78, 0.4}, {0.88, 0.88, 0.84}, {0.45, 0.55, 0.62}, {0.6, 0.38, 0.25}, {0.78, 0.7, 0.55}}
 local ROOF = {{0.25, 0.22, 0.22}, {0.45, 0.18, 0.12}, {0.3, 0.32, 0.35}}
 local baked = {}
-local function house_mesh(v, floors)
-  local name = string.format("house%d_%d", v, floors)
+local function house_mesh(v, floors, roof)
+  local name = string.format("house%d_%d", v, floors) .. (roof and string.format("_%g_%g_%g", roof[1], roof[2], roof[3]) or "")
   if baked[name] then return name end
-  local h, c, rc = floors * 2.9, HOUSE[v], ROOF[v % #ROOF + 1]
+  local h, c, rc = floors * 2.9, HOUSE[v], roof or ROOF[v % #ROOF + 1]
   local parts = {{mesh = "cube", size = {1, h, 1}, color = c}}
   for f = 0, floors - 1 do -- windows front and back
     for _, x in ipairs{-0.28, 0.28} do
@@ -431,6 +436,27 @@ local function house_mesh(v, floors)
   -- The roof overhangs a little; two wedges back to back.
   parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 1.1, -0.28}, size = {1.08, 2.2, 0.56}, color = rc}
   parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 1.1, 0.28}, yaw = math.pi, size = {1.08, 2.2, 0.56}, color = rc}
+  engine.mesh(name, parts)
+  baked[name] = true
+  return name
+end
+
+-- A row house (rivitalo): one long low block under a pitched roof, a door
+-- and window per home along the front. Unit footprint, real height.
+local TILE = {{0.55, 0.24, 0.17}, {0.24, 0.22, 0.22}, {0.62, 0.36, 0.25}}
+local function row_mesh(v, roof)
+  local name = string.format("row%d_%g_%g_%g", v, roof[1], roof[2], roof[3])
+  if baked[name] then return name end
+  local h = 2.9
+  local parts = {{mesh = "cube", size = {1, h, 1}, color = HOUSE[v]}}
+  for k = 0, 9 do -- ten homes' worth of doors and windows, front and back
+    local x = -0.45 + k * 0.1
+    parts[#parts + 1] = {mesh = "cube", pos = {x, -h / 2 + 1.05, 0.5}, size = {0.025, 2.1, 0.02}, color = {0.95, 0.95, 0.92}}
+    parts[#parts + 1] = {mesh = "cube", pos = {x + 0.04, -h / 2 + 1.6, 0}, size = {0.035, 1.0, 1.01}, color = {0.22, 0.26, 0.32},
+                         emissive = (v + k) % 3 == 0 and 1 or 0}
+  end
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.9, -0.28}, size = {1.04, 1.8, 0.56}, color = roof}
+  parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.9, 0.28}, yaw = math.pi, size = {1.04, 1.8, 0.56}, color = roof}
   engine.mesh(name, parts)
   baked[name] = true
   return name
@@ -696,6 +722,93 @@ function R.build(map, kit)
     end
   end
 
+  -- Towers and masts: steel lattice, or a sign pylon (Mylly's).
+  for _, t in ipairs(map.towers or {}) do
+    local tx, tz, th, kind = t[1], t[2], t[3], t[4]
+    if kind == "pylon" then
+      kit.static{mesh = "cube", pos = {tx, th / 2, tz}, size = {4, th, 4}, color = {0.13, 0.13, 0.14}, tag = "landmark"}
+      engine.spawn{mesh = "cube", pos = {tx, th - 6, tz}, size = {4.2, 10, 4.2}, color = {0.86, 0.3, 0.2}}
+      engine.spawn{mesh = "cube", pos = {tx, th - 16, tz}, size = {4.3, 5, 4.3}, color = {0.95, 0.95, 0.95}, glow = 0.6}
+    else
+      local base = math.max(2, th / 12)
+      for k = 0, 3 do -- four legs leaning in
+        local a = k * math.pi / 2 + math.pi / 4
+        local lx, lz = math.cos(a) * base * 0.7, math.sin(a) * base * 0.7
+        engine.spawn{mesh = "cube", pos = {tx + lx * 0.6, th / 2, tz + lz * 0.6}, size = {0.25, th, 0.25}, color = {0.62, 0.63, 0.65}}
+      end
+      for y = 4, th - 2, 4 do
+        local wd = base * 1.2 * (1 - y / th * 0.6)
+        engine.spawn{mesh = "cube", pos = {tx, y, tz}, size = {wd, 0.12, wd}, color = {0.62, 0.63, 0.65}}
+      end
+      kit.static{pos = {tx, th / 2, tz}, size = {base, th, base}, visible = false, tag = "landmark"}
+      engine.spawn{mesh = "cube", pos = {tx, th + 1.5, tz}, size = {0.6, 3, 0.6}, color = {0.85, 0.85, 0.85}}
+    end
+  end
+
+  -- Gantry cranes over a shipyard's dock, and a cruise ship building under them.
+  for _, cr in ipairs(map.cranes or {}) do
+    local cx, cz, len, span, yaw, n = cr[1], cr[2], cr[3], cr[4], cr[5], cr[6]
+    local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
+    local H, BLUE = 78, {0.16, 0.26, 0.62}
+    for k = 1, n do
+      local t = (k / (n + 1) - 0.5) * len * 0.8
+      local gx, gz = cx + ux * t, cz + uz * t
+      for _, side in ipairs{-1, 1} do
+        local lx, lz = gx + vx * side * span / 2, gz + vz * side * span / 2
+        kit.static{mesh = "cube", pos = {lx, H / 2, lz}, yaw = yaw, size = {14, H, 3}, color = BLUE, tag = "landmark"}
+      end
+      engine.spawn{mesh = "cube", pos = {gx, H + 4, gz}, yaw = yaw, size = {9, 8, span + 8}, color = BLUE}
+      engine.spawn{mesh = "cube", pos = {gx, H + 4, gz}, yaw = yaw, size = {9.2, 1.8, span + 6}, color = {0.95, 0.95, 0.95}}
+      engine.spawn{mesh = "cube", pos = {gx + vx * span * 0.15, H - 2, gz + vz * span * 0.15}, yaw = yaw, size = {11, 5, 9},
+                   color = {0.9, 0.75, 0.15}}
+    end
+    -- The ship: blue hull, white decks stacked high, a funnel aft.
+    local sl, sb = math.min(300, len * 0.6), 42
+    kit.static{mesh = "cube", pos = {cx, 7, cz}, yaw = yaw, size = {sl, 14, sb}, color = {0.12, 0.3, 0.7}, tag = "landmark"}
+    engine.spawn{mesh = "cube", pos = {cx, 2, cz}, yaw = yaw, size = {sl + 0.2, 4, sb + 0.2}, color = {0.5, 0.15, 0.12}}
+    kit.static{mesh = "cube", pos = {cx - ux * 8, 32, cz - uz * 8}, yaw = yaw, size = {sl * 0.85, 36, sb - 2}, color = {0.94, 0.94, 0.92},
+               tag = "landmark"}
+    for y = 18, 46, 3.5 do -- rows of balconies
+      engine.spawn{mesh = "cube", pos = {cx - ux * 8, y, cz - uz * 8}, yaw = yaw, size = {sl * 0.85 + 0.2, 0.8, sb - 1.6},
+                   color = {0.3, 0.38, 0.48}}
+    end
+    local fx, fz = cx - ux * sl * 0.33, cz - uz * sl * 0.33
+    engine.spawn{mesh = "cube", pos = {fx, 56, fz}, yaw = yaw, size = {14, 14, 8}, color = {0.85, 0.15, 0.12}}
+    engine.spawn{mesh = "cube", pos = {fx, 60, fz}, yaw = yaw, size = {14.2, 3, 8.2}, color = {0.1, 0.25, 0.65}}
+  end
+
+  -- Piers: wooden decks you can walk, boats moored along them.
+  local boats = chunked()
+  for pi, p in ipairs(map.piers or {}) do
+    local width = p[1]
+    for i = 3, #p do
+      local ax, az, bx, bz = p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]
+      local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      if len > 0.5 then
+        local yaw = math.atan(bx - ax, bz - az)
+        local rx, rz, fx, fz = math.cos(yaw), -math.sin(yaw), (bx - ax) / len, (bz - az) / len
+        kit.static{mesh = "cube", pos = {(ax + bx) / 2, 0.35, (az + bz) / 2}, yaw = yaw, size = {width, 0.5, len + 0.5},
+                   color = {0.55, 0.5, 0.42}, tag = "pier"}
+        if width < 4 then
+          for t = 3, len - 2, 4.2 do
+            for _, side in ipairs{-1, 1} do
+              if r() < 0.7 then
+                local bx2, bz2 = ax + fx * t + rx * side * (width / 2 + 4), az + fz * t + rz * side * (width / 2 + 4)
+                local by = yaw + math.pi / 2
+                boats.add(bx2, bz2, {mesh = "cube", pos = {bx2, 0.6, bz2}, yaw = by, size = {2.6, 1.3, 7}, color = {0.95, 0.95, 0.94}})
+                boats.add(bx2, bz2, {mesh = "cube", pos = {bx2, 1.6, bz2}, yaw = by, size = {1.8, 0.9, 2.8}, color = {0.75, 0.78, 0.82}})
+                if r() < 0.4 then
+                  boats.add(bx2, bz2, {mesh = "cylinder", pos = {bx2, 6.5, bz2}, size = {0.15, 11, 0.15}, color = {0.9, 0.9, 0.9}})
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  boats.bake("boats", "cover")
+
   -- Pads for the game's features (the lot, the stunt park...).
   for kind, p in pairs(map.specials or {}) do
     kit.static{mesh = "cube", pos = {p[1], kit.CURB / 2, p[2]}, size = {40, kit.CURB, 40}, color = PAVE, tag = "sidewalk"}
@@ -733,7 +846,7 @@ function R.build(map, kit)
   end
 
   -- Surveyed buildings, each a box (or a few), clear of what's placed.
-  local count = 0
+  local count, yards = 0, {}
   for i, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
     local fx, fz = math.cos(yaw), -math.sin(yaw)
@@ -757,6 +870,9 @@ function R.build(map, kit)
                        size = {0.1, 0.01, d / 2 - 8}, color = LINE}
         end
       end
+      -- The facade: a black band under the roof, a red stripe through it.
+      engine.spawn{mesh = "cube", pos = {x, h2 - 1.4, z}, yaw = yaw, size = {w + 0.2, 2.6, d + 0.2}, color = {0.14, 0.14, 0.15}}
+      engine.spawn{mesh = "cube", pos = {x, h2 - 1.7, z}, yaw = yaw, size = {w + 0.25, 0.8, d + 0.25}, color = {0.86, 0.3, 0.2}}
       for _, side in ipairs{-1, 1} do -- a low wall round the edge
         kit.static{mesh = "cube", pos = {x + vx * side * d / 2, h2 + 0.5, z + vz * side * d / 2}, yaw = yaw, size = {w, 1, 0.3},
                    color = {0.7, 0.68, 0.62}, tag = "wall"}
@@ -765,29 +881,44 @@ function R.build(map, kit)
       count = count + 1
     elseif ok and kind == "church" then
       local main = f[8] and f[8]:lower():find("kirkko")
-      kit.static{mesh = church_mesh(h, main), pos = {x, 0, z}, yaw = yaw, size = {w, math.min(h, 8) + 6, d}, scale = {w, 1, d},
-                 tag = "building"}
-      if main then -- the church itself (not its chapels) gets a tower, at its east end
+      local hw = math.min(h, 7)
+      -- The mapped outline takes in vestries and porches; the nave under
+      -- the roof is narrower.
+      d = math.min(d, 15)
+      engine.spawn{mesh = church_mesh(h), pos = {x, 0, z}, yaw = yaw, scale = {w, 1, d}}
+      kit.static{pos = {x, hw / 2, z}, yaw = yaw, size = {w, hw, d}, visible = false, tag = "building"}
+      if main then -- a small red bell turret on the ridge at the west gable, a cross on top
         local ux, uz = math.cos(yaw), -math.sin(yaw)
-        local e = ux > 0 and 1 or -1
-        local tx, tz = x + ux * e * (w / 2 - 3.5), z + uz * e * (w / 2 - 3.5)
-        kit.static{mesh = "cube", pos = {tx, 9, tz}, yaw = yaw, size = {7, 18, 7}, color = {0.8, 0.78, 0.74}, tag = "building"}
-        for _, turn in ipairs{0, math.pi / 2} do -- two steep gables crossed: a spire
-          for _, back in ipairs{-1, 1} do -- back to back, like a house roof
+        local e = ux > 0 and -1 or 1
+        local tx, tz = x + ux * e * (w / 2 - 2), z + uz * e * (w / 2 - 2)
+        local top = hw + CHURCH_ROOF
+        engine.spawn{mesh = "cube", pos = {tx, top + 0.5, tz}, yaw = yaw, size = {2.6, 3.4, 2.6}, color = {0.52, 0.2, 0.14}}
+        for _, turn in ipairs{0, math.pi / 2} do
+          for _, back in ipairs{-1, 1} do
             local a = yaw + turn
-            engine.spawn{mesh = "wedge", pos = {tx + math.sin(a) * 1.8 * back, 24, tz + math.cos(a) * 1.8 * back},
-                         yaw = a + (back > 0 and math.pi or 0), size = {7.2, 12, 3.6}, color = {0.2, 0.2, 0.2}}
+            engine.spawn{mesh = "wedge", pos = {tx + math.sin(a) * 0.75 * back, top + 3.4, tz + math.cos(a) * 0.75 * back},
+                         yaw = a + (back > 0 and math.pi or 0), size = {3, 2.6, 1.5}, color = {0.12, 0.12, 0.13}}
           end
         end
-        engine.spawn{mesh = "cube", pos = {tx, 31.5, tz}, size = {0.2, 3, 0.2}, color = {0.85, 0.75, 0.3}}
+        engine.spawn{mesh = "cube", pos = {tx, top + 5.6, tz}, size = {0.15, 1.8, 0.15}, color = {0.3, 0.3, 0.3}}
+        engine.spawn{mesh = "cube", pos = {tx, top + 5.9, tz}, yaw = yaw, size = {0.9, 0.15, 0.15}, color = {0.3, 0.3, 0.3}}
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
     elseif ok then
-      if kind == "house" or kind == "terrace" then
+      if kind == "terrace" or (kind == "house" and w > 2.4 * d and w > 25) then
+        kit.static{mesh = row_mesh(1 + i % #HOUSE, f[9] or TILE[1 + i % #TILE]), pos = {x, 1.45, z}, yaw = yaw,
+                   size = {w, 2.9, d}, scale = {w, 1, d}, tag = "building"}
+      elseif kind == "house" then
         local floors = h < 4.5 and 1 or 2
-        kit.static{mesh = house_mesh(1 + i % #HOUSE, floors), pos = {x, floors * 1.45, z}, yaw = yaw,
+        kit.static{mesh = house_mesh(1 + i % #HOUSE, floors, f[9]), pos = {x, floors * 1.45, z}, yaw = yaw,
                    size = {w, floors * 2.9, d}, scale = {w, 1, d}, tag = "building"}
+      elseif kind == "police" then -- red brick, and a wing of glass
+        local floors = math.max(3, math.floor(h / kit.FLOOR + 0.5))
+        local glass = i % 2 == 0
+        kit.static{mesh = kit.building_mesh(glass and "glass" or "brick", floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z},
+                   yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
+                   tag = "building"}
       elseif kind == "shed" then
         kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = HOUSE[1 + i % #HOUSE], tag = "building"}
       elseif kind == "works" or (kind == "shop" and w * d > 1500) then
@@ -802,6 +933,22 @@ function R.build(map, kit)
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
+      if kind == "house" or kind == "terrace" then yards[#yards + 1] = {x, z, w, d, yaw} end
+    end
+  end
+  -- A tree or two in the yards round homes, once every building stands.
+  pine_mesh()
+  local planted = 0
+  for _, y in ipairs(yards) do
+    for _ = 1, r() < 0.5 and 2 or 1 do
+      local a = r() * 2 * math.pi
+      local reach = math.max(y[3], y[4]) / 2 + 3 + r() * 5
+      local tx, tz = y[1] + math.cos(a) * reach, y[2] + math.sin(a) * reach
+      if free(H, tx, tz, 2) then
+        kit.static{mesh = r() < 0.6 and "pine" or "tree", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.7 + r() * 0.6, tag = "tree"}
+        add_circle(H, tx, tz, 1.5)
+        planted = planted + 1
+      end
     end
   end
 
@@ -932,6 +1079,11 @@ function R.wet(x, z)
   end
   for _, st in ipairs(wet_rows[math.floor(z / ROW)] or {}) do
     if x >= st[1] and x <= st[3] then
+      for _, p in ipairs(NET.map.piers or {}) do -- out on a pier is dry
+        for i = 3, #p do
+          if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
+        end
+      end
       local e, _, _, _, d = R.nearest_edge(x, z)
       return not (e and d < NET.edges[e].width / 2 + 1)
     end
