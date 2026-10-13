@@ -32,18 +32,27 @@ ROOT = Path(__file__).resolve().parent.parent
 
 AREAS = {
     "raisio": {
-        # The center, Mylly, and Nesteentie down to the harbor.
-        "bbox": (60.444, 22.085, 60.497, 22.215),  # south, west, north, east
+        # The center, Mylly, and Nesteentie down to the harbor; north to
+        # Raision sairaala, ABC and Haunisten allas, east to IKEA, south to
+        # the tip of Pansionnokka.
+        "bbox": (60.4385, 22.085, 60.5085, 22.2375),  # south, west, north, east
+        # The game's 0, 0: kept where it was when the map was smaller, so
+        # what the hand-written map places doesn't move as the area grows.
+        "origin": (60.47050, 22.15000),
         "first": "Nesteentie / Raisiontie",
         # Maanmittauslaitos 10 m elevation sheets covering it (see tools/dem.py).
         "dem": ["L3322", "L3324", "L3411", "L3413"],
     },
 }
 
-OVERPASS = os.environ.get("OVERPASS_URL", "https://maps.mail.ru/osm/tools/overpass/api/interpreter")
+# Overpass servers, tried in turn (OVERPASS_URL first, if set).
+OVERPASS = [u for u in (os.environ.get("OVERPASS_URL"), "https://overpass-api.de/api/interpreter",
+                        "https://maps.mail.ru/osm/tools/overpass/api/interpreter") if u]
+TILE = (0.025, 0.05)  # degrees of latitude, longitude fetched at a time
 QUERY = """[out:json][timeout:300][bbox:{s},{w},{n},{e}];
 (way["highway"];way["building"];relation["building"];way["natural"];relation["natural"];
- way["waterway"];way["landuse"];relation["landuse"];way["leisure"];way["amenity"];way["railway"];);
+ way["waterway"];way["landuse"];relation["landuse"];way["leisure"];way["amenity"];way["railway"];
+ way["man_made"];node["man_made"~"^(tower|mast)$"];);
 out geom tags;"""
 # Named parts of town, fetched on their own (small) into <area>_places.json.
 PLACES_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
@@ -359,6 +368,23 @@ def height_of(t, kind, A):
     return max(2.5, levels * floor)
 
 
+def overpass(q, timeout, tries=4):
+    """Run an Overpass query, trying each server a few times."""
+    import time
+    err = None
+    for attempt in range(tries):
+        for url in OVERPASS:
+            req = urllib.request.Request(url, data=urllib.parse.urlencode({"data": q}).encode(),
+                                         headers={"User-Agent": "3D-auto osm_import"})
+            try:
+                return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+            except (OSError, ValueError) as e:
+                err = e
+                print(f"  {url}: {e}", file=sys.stderr)
+        if attempt + 1 < tries: time.sleep(10 * (attempt + 1))
+    raise SystemExit(f"Overpass failed: {err}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("area", choices=sorted(AREAS))
@@ -372,28 +398,62 @@ def main():
     s, w, n, e = cfg["bbox"]
     if args.fetch:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        q = QUERY.format(s=s - 0.003, w=w - 0.006, n=n + 0.003, e=e + 0.006)
-        req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
-                                     headers={"User-Agent": "3D-auto osm_import"})
-        print(f"fetching {args.area} from Overpass...", file=sys.stderr)
-        cache.write_bytes(urllib.request.urlopen(req, timeout=600).read())
+        # In tiles: the servers time out on a whole town at once. A way
+        # crossing tiles comes whole with each; it's kept once.
+        S, W, N, E = s - 0.003, w - 0.006, n + 0.003, e + 0.006
+        rows, cols = math.ceil((N - S) / TILE[0]), math.ceil((E - W) / TILE[1])
+        # Each tile is kept as it comes (in <cache>_tiles/), so a run that
+        # fails part way carries on from there; one that times out is
+        # fetched as four smaller ones instead.
+        tiles = cache.with_name(cache.stem + "_tiles")
+        tiles.mkdir(exist_ok=True)
+        merged, seen, stamp = [], set(), None
+
+        def fetch_tile(ts, tw, tn, te, name, depth=0):
+            path = tiles / f"{name}.json"
+            if path.exists():
+                return [json.loads(path.read_text())]
+            print(f"fetching {args.area} from Overpass, tile {name}...", file=sys.stderr)
+            try:
+                part = overpass(QUERY.format(s=ts, w=tw, n=tn, e=te), 600, tries=1 if depth < 3 else 4)
+            except SystemExit:
+                if depth >= 3: raise
+                ms, mw = (ts + tn) / 2, (tw + te) / 2
+                return [p for k, (a, b, c, d) in enumerate(((ts, tw, ms, mw), (ts, mw, ms, te), (ms, tw, tn, mw), (ms, mw, tn, te)))
+                        for p in fetch_tile(a, b, c, d, f"{name}{k}", depth + 1)]
+            path.write_text(json.dumps(part))
+            return [part]
+        for i in range(rows):
+            for j in range(cols):
+                ts, tw = S + i * (N - S) / rows, W + j * (E - W) / cols
+                for part in fetch_tile(ts, tw, ts + (N - S) / rows, tw + (E - W) / cols, f"{i}_{j}_"):
+                    stamp = stamp or part.get("osm3s")
+                    for el in part["elements"]:
+                        if (el["type"], el["id"]) not in seen:
+                            seen.add((el["type"], el["id"]))
+                            merged.append(el)
+        cache.write_text(json.dumps({"osm3s": stamp or {}, "elements": merged}))
+        import shutil
+        shutil.rmtree(tiles)
     places_cache = cache.with_name(cache.stem + "_places.json")
     if args.fetch or not places_cache.exists():
         q = PLACES_QUERY.format(s=s - 0.01, w=w - 0.02, n=n + 0.01, e=e + 0.02)
-        req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
-                                     headers={"User-Agent": "3D-auto osm_import"})
         print(f"fetching {args.area}'s place names from Overpass...", file=sys.stderr)
-        places_cache.write_bytes(urllib.request.urlopen(req, timeout=120).read())
+        places_cache.write_text(json.dumps(overpass(q, 120)))
     data = json.loads(cache.read_text())
     stamp = data.get("osm3s", {}).get("timestamp_osm_base", "?")
     els = data["elements"]
-    # The middle of the area is 0, 0: the game's ground is centered there.
-    origin = ((s + n) / 2, (w + e) / 2)
+    # 0, 0 is the area's `origin` if it has one, else its middle (and the
+    # area is trimmed to be even round it).
+    origin = cfg.get("origin") or ((s + n) / 2, (w + e) / 2)
     P = Proj(*origin)
     X0, Z1 = P(s, w)
     X1, Z0 = P(n, e)
-    X1, Z1 = math.floor(min(-X0, X1)), math.floor(min(-Z0, Z1))
-    X0, Z0 = -X1, -Z1
+    if cfg.get("origin"):
+        X0, Z0, X1, Z1 = math.ceil(X0), math.ceil(Z0), math.floor(X1), math.floor(Z1)
+    else:
+        X1, Z1 = math.floor(min(-X0, X1)), math.floor(min(-Z0, Z1))
+        X0, Z0 = -X1, -Z1
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
 
     # ---- roads ----
@@ -568,8 +628,10 @@ def main():
                     r = math.hypot(bw, bd) / 2
                     for ed, a, b in road_grid.near(x - r, z - r, x + r, z + r):
                         clear = ed["width"] / 2 + (1.5 if ed["kind"] == "highway" else 3)
-                        for fu in (-0.5, -0.25, 0, 0.25, 0.5):
-                            for fv in (-0.5, -0.25, 0, 0.25, 0.5):
+                        # Points at most 3 m apart, so no road slips between them.
+                        nu, nv = max(4, math.ceil(bw / 3)), max(4, math.ceil(bd / 3))
+                        for fu in (k / nu - 0.5 for k in range(nu + 1)):
+                            for fv in (k / nv - 0.5 for k in range(nv + 1)):
                                 px, pz = x + c * bw * fu - s_ * bd * fv, z + s_ * bw * fu + c * bd * fv
                                 if seg_dist((px, pz), a, b) < clear: return False
                     return True
@@ -654,7 +716,7 @@ def main():
     for el in els:
         t = el.get("tags", {})
         mm = t.get("man_made")
-        if mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower",):
+        if mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower", "lighting"):  # not floodlights
             g = el.get("geometry") or ([{"lat": el["lat"], "lon": el["lon"]}] if "lat" in el else [])
             if not g: continue
             pts = [P(p["lat"], p["lon"]) for p in g]

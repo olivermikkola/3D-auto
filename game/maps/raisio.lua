@@ -13,6 +13,7 @@ local osm = require "maps.raisio_osm"
 return {
   name = "Raisio",
   size = {osm.bounds[3] - osm.bounds[1], osm.bounds[4] - osm.bounds[2]},
+  center = {(osm.bounds[1] + osm.bounds[3]) / 2, (osm.bounds[2] + osm.bounds[4]) / 2}, -- 0, 0 isn't the middle
   junctions = osm.junctions,
   junction_order = {osm.first},
   roads = osm.roads,

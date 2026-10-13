@@ -8,7 +8,7 @@ local prefabs = require "lib.prefabs"
 local city = require "lib.city"
 -- The map, before anything asks the city where things are: the one picked
 -- in the pause menu, or MAP=<name> for any in maps/.
-city.use(os.getenv("MAP") or city.chosen() or "manhattan")
+city.use(city.start())
 local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
@@ -74,8 +74,9 @@ local TESTS = {"AUTO_TEST", "SOAK", "GARAGE_TEST", "SAVE_TEST", "MENU_TEST", "SH
                "CITY_TEST", "PAD_TEST", "RELIABILITY_TEST", "MISSION_TEST"}
 for _, var in ipairs(TESTS) do
   if os.getenv(var) then
-    local quit, finished = engine.quit, false
+    local quit, reload, finished = engine.quit, engine.reload, false
     engine.quit = function(...) finished = true; return quit(...) end
+    engine.reload = function(...) finished = true; return reload(...) end -- it carries on afresh
     engine.on("quit", function()
       if not finished then error("TEST FAILED: " .. var .. " ran out of ticks before finishing", 0) end
     end)

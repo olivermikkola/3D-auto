@@ -286,15 +286,21 @@ city test on every map.
 ### Maps drawn as roads: Raisio
 
 A map can list its roads instead of a grid. Raisio, Finland, is one, at real size and from real
-map data: the center, Mylly, and Nesteentie all the way down to the harbor, about 7 by 6 km. Its
-2,100 junctions, 8,000 buildings, the bay, the river, forest and fields come from
+map data: the center, Mylly, and Nesteentie all the way down to the harbor, north to Raision
+sairaala, ABC and Haunisten allas, east past IKEA into Turku, and south to the naval harbor at the
+tip of Pansionnokka, about 8 by 8 km. Its 2,900 junctions, 13,500 buildings, the bay, the river,
+forest and fields come from
 [OpenStreetMap](https://www.openstreetmap.org/). Pick it in the pause menu (Esc, then CITY), or
-run `MAP=raisio auto game`. The game remembers the city you picked.
+run `MAP=raisio auto game`. The game remembers the city you picked, and a city picked in the menu
+wins over `MAP` when the game restarts there.
 
 ![Raisio from the air: Raisionlahti, the docks, E18, the center and Mylly beyond](docs/raisio.png)
 
-`tools/osm_import.py raisio` turns the map data into `game/maps/raisio_osm.lua` (`--fetch`
-downloads it fresh first). That holds junctions, named after the streets that meet there, and
+`tools/osm_import.py raisio` turns the map data into `game/maps/raisio_osm.lua`. `--fetch`
+downloads it fresh first, a tile at a time (a tile that times out is fetched as four smaller
+ones, and a fetch that stops part way carries on where it left off). An area can name an
+`origin`, the game's 0, 0, so it can grow in any direction without moving anything a
+hand-written map has placed; the map's `center` says where its middle is then. That holds junctions, named after the streets that meet there, and
 each road as the junctions and bends it passes through:
 
 ```lua
