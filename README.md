@@ -41,7 +41,7 @@ A gamepad works too (see [Gamepads](#gamepads)).
 |---|---|---|
 | `src/math.rs` | ~250 | `Vec3`, `Quat`, column-major `Mat4`. Y up, right-handed. |
 | `src/mesh.rs` | ~250 | Flat-shaded unit primitives, OBJ+MTL loader, part baking. |
-| `src/physics.rs` | ~1000 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses, a grid broad phase, rays along it; heightfield terrain. |
+| `src/physics.rs` | ~1200 | Oriented boxes: SAT, corner contacts, warm-started sequential impulses, a grid broad phase, rays along it; heightfield terrain. |
 | `src/audio.rs` | ~530 | Mixer with pitch and 3D panning, synth, WAV loader, output backends. |
 | `src/render.rs` | ~620 | miniquad/GL: sun shadow map, sky, lit pass with 16 lights, emissive, fog, HUD. |
 | `src/script.rs` | ~740 | The `engine` Lua table and the event bus. |
@@ -131,7 +131,8 @@ engine.set_voice(voice, {volume=, pitch=, pos=})  engine.stop(voice)  engine.pla
 engine.volume([master]) -> master
 
 -- world
-engine.terrain{x0=, z0=, step=, w=, d=, heights={w*d, row by row toward +z}, colors={r,g,b per height}}
+engine.terrain{x0=, z0=, step=, w=, d=, heights={w*d, row by row toward +z}, colors={r,g,b per height},
+               roads={ax,az,ay, bx,bz,by, half width, road number, ...}}   -- roads: see "Terrain"
 engine.terrain(nil)                            -- the ground as a heightfield; nil removes it
 engine.terrain_height(x, z) -> h, nx,ny,nz     -- nothing off the grid
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
@@ -164,7 +165,14 @@ the surface's normal there, through the same solver as box-on-box contacts, so c
 hills and crates rest on slopes or slide off steep ones. Rays stop at it (it answers to tag
 `terrain`), and `engine.terrain_height` gives the height and normal anywhere on it.
 `TERRAIN_TEST=1` builds a 10 m hill past the edge of town and checks all of that, a car included.
-No map uses it yet: it's the first step toward Raisio's real hills.
+
+`roads` lays roads over the grid as pieces of centerline with a height at each end, level across
+out to `half width`. On a road the surface is the road's own, smooth along it, instead of the
+grid's triangles (which crease every 10 m wherever a road curves or climbs); just past its edge it
+eases back to the grid over 2 m. A point beside two pieces of the same road (inside a bend) takes
+both, and where different roads overlap, around junctions, they're averaged, nearer centerlines
+counting more, so the surface leans from one to the other without a step. Collisions, rays and
+`engine.terrain_height` all see the roads; the drawn grid stays as it is, under them.
 
 ## Lighting and day/night
 
@@ -306,11 +314,13 @@ Raisio isn't flat: it runs from the sea at Raisionlahti up to rocky ridges over 
 ground comes from the National Land Survey of Finland's 10 m elevation model (Maanmittauslaitos,
 CC BY 4.0): `tools/osm_import.py` samples it every 10 m (fetching the sheets with a free open data
 key in `~/.config/3d-auto/mml-key`; see `tools/dem.py`) and grades the roads into it. Each
-road's height is the ground along it smoothed over 40 m and bent to meet its junctions, and the
-ground under it is made level across it, out past its pavements, blending back over 20 m. The
-result, `game/maps/raisio_terrain.bin`, is heights and a ground cover class per point; the game
-hands it to `engine.terrain`, colored by class, so fields, woods and car parks are painted on
-the hills.
+road's height is the ground along it smoothed over 40 m (80 m for main roads and highways) and
+bent to meet its junctions, and the ground under it is made level across it, out past its
+pavements, blending back over 20 m. The result, `game/maps/raisio_terrain.bin`, is heights and a
+ground cover class per point; the game hands it to `engine.terrain`, colored by class, so
+fields, woods and car parks are painted on the hills. Each road's heights also go in the map
+(every 10 m or so), and the game lays them over the ground as the surface you drive on, so roads
+are smooth instead of following the 10 m grid's creases.
 
 While the map builds, everything placed on the ground goes onto it: roads in tilted pieces of
 at most 6 m (mesh parts take `pitch` now), buildings on the lowest corner of their footprint,

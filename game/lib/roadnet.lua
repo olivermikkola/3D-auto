@@ -61,7 +61,7 @@ function R.load(map)
     local label = road.name or ("road " .. ri)
     assert(#road >= 2, label .. " needs at least two points")
     -- Ends that aren't junctions become nameless ones (dead ends).
-    local pts, ids = {}, {}
+    local pts, ids, cum = {}, {}, {0}
     for i, p in ipairs(road) do
       local id
       if type(p) == "string" then id = junction(p)
@@ -71,7 +71,10 @@ function R.load(map)
       end
       pts[i] = id and n.pos[id] or p
       ids[i] = id
+      if i > 1 then cum[i] = cum[i - 1] + math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2) end
     end
+    -- Graded heights along the whole road, evenly spaced end to end.
+    local prof = road.heights and #road.heights >= 2 and {hs = road.heights, step = math.max(cum[#cum], 1e-3) / (#road.heights - 1)}
     local start = 1
     for i = 2, #pts do
       if ids[i] then
@@ -89,7 +92,7 @@ function R.load(map)
         table.insert(n.links[b], a)
         n.roads[#n.roads + 1] = {a, b}
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck}
+                                 deck = road.deck, prof = prof, s0 = cum[start]}
         start = i
       end
     end
@@ -577,6 +580,38 @@ local KINDS = {
   industrial = {w = {28, 48}, d = {24, 36}, back = {6, 10}, floors = {0, 0}, gap = {8, 14}, empty = 0.25},
 }
 
+-- The roads as the engine's driving surface over the terrain: their graded
+-- profiles in pieces of 10 m or less, {ax, az, ay, bx, bz, by, half width,
+-- edge},
+-- level across out past their pavements. Bridge decks are solid already.
+local function road_surface()
+  local out = {}
+  for ei, e in ipairs(NET and NET.edges or {}) do
+    if e.prof and not e.deck then
+      local hs, step = e.prof.hs, e.prof.step
+      local function h(s)
+        local u = math.max(0, s / step)
+        local k = math.min(math.floor(u), #hs - 2)
+        return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
+      end
+      local half = e.width / 2 + (e.kind ~= "highway" and SIDEWALK or 1)
+      local s = e.s0
+      for i = 2, #e.pts do
+        local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+        local n = math.max(1, math.ceil(len / 10))
+        for k = 0, n - 1 do
+          local t0, t1 = k / n, (k + 1) / n
+          local seg = {ax + (bx - ax) * t0, az + (bz - az) * t0, h(s + len * t0), ax + (bx - ax) * t1, az + (bz - az) * t1, h(s + len * t1), half, ei}
+          table.move(seg, 1, 8, #out + 1, out)
+        end
+        s = s + len
+      end
+    end
+  end
+  return out
+end
+
 local build
 
 -- Build the map. With terrain, everything placed during the build sits on
@@ -590,7 +625,8 @@ function R.build(map, kit)
   for _, name in ipairs(t.classes) do
     for _, c in ipairs(COVER) do if c[1] == name then palette[#palette + 1] = c[2] end end
   end
-  engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette}
+  engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
+                 roads = road_surface()}
   GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
   local spawn = engine.spawn
   engine.spawn = function(e)

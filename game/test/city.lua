@@ -203,6 +203,36 @@ local function road_layout(L, M, want, at_least)
     end
   end
   check(blocked == 0, string.format("all %d stretches of road are clear to drive, in both lanes", segs))
+  -- On terrain, the road is what you drive on: smooth, without the ground
+  -- model's 10 m creases. Down a lane every 2 m, how much the grade changes
+  -- from one step to the next (the old ground-following roads: 0.34% on
+  -- average, 42% at worst).
+  if M.terrain then
+    local worst, worst_at, sum, steps = 0, nil, 0, 0
+    for _, e in ipairs(roadnet.net().edges) do
+      if not e.deck then
+        for i = 2, #e.pts do
+          local prev, prev2
+          local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+          local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+          local fx, fz = (bx - ax) / len, (bz - az) / len
+          for s = 0, len - 0.01, 2 do
+            local x, z = ax + fx * s + fz * 2, az + fz * s - fx * 2
+            local h = engine.terrain_height(x, z)
+            if h and prev and prev2 then
+              local bend = math.abs((h - prev) - (prev - prev2)) / 2
+              sum, steps = sum + bend, steps + 1
+              if bend > worst then worst, worst_at = bend, string.format("%s at (%.0f, %.0f)", e.name, x, z) end
+            end
+            prev2, prev = prev, h
+          end
+        end
+      end
+    end
+    check(steps > 0 and sum / steps < 0.0025 and worst < 0.15,
+          string.format("roads are smooth: the grade changes %.2f%% a step on average, at most %.0f%% (%s)",
+                        100 * sum / math.max(steps, 1), 100 * worst, worst_at or "-"))
+  end
   local west, wx, wz = math.huge
   for _, j in ipairs(city.junctions()) do
     local x, z = city.pos(j)
