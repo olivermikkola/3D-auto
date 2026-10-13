@@ -403,13 +403,9 @@ after(1.0, function()
   wanted.set(3)
 end)
 until_(function() return police.officer_count() > 0 end, 45, "at 3 stars, officers get out of their cars")
-until_(function() return H.player.hp < H.player.max end, 25, "officers shoot at the player", function()
-  H.player.hp = 12 -- two more real officer hits must still kill the player
-end)
-local last_hp, last_hit
-until_(function()
-  -- This phase is about dying to gunfire, not being arrested: an officer
-  -- who walks right up (they stop shooting inside 6 m) is sent back.
+-- These phases are about gunfire, not being arrested: an officer who walks
+-- right up (they stop shooting inside 6 m) is sent back.
+local function keep_off()
   local px, _, pz
   if G.player and engine.exists(G.player) then px, _, pz = engine.pos(G.player) end
   for id in pairs(police.officers) do
@@ -420,6 +416,17 @@ until_(function()
       police.officers[id] = nil
     end
   end
+  return px, pz
+end
+until_(function()
+  keep_off()
+  return H.player.hp < H.player.max
+end, 25, "officers shoot at the player", function()
+  H.player.hp = 12 -- two more real officer hits must still kill the player
+end)
+local last_hp, last_hit
+until_(function()
+  local px, pz = keep_off()
   -- Nor about hiding: if no officer has landed a shot for a while (out of
   -- sight round a building), stand where one has a clear line of fire.
   local now = engine.time()

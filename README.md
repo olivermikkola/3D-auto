@@ -293,6 +293,11 @@ are called the dispatcher names them too ("All units, suspect seen on Nesteentie
 parts of town are OpenStreetMap's suburbs and neighbourhoods, which the importer writes as
 `areas`, plus a few added by hand; `roadnet.where(x, z)` gives the street and area for any spot.
 
+The map data says where a building is, not what it looks like, so the places locals know get a
+hand-picked `looks` entry in `maps/raisio.lua` (a wall color, brick or glass, floors, or an air
+dome): the library, Ulpukka, Raseko, Tiedonpuiston koulu, Raision lukio, and the white dome of
+the LähiTapiola Areena next to them.
+
 ![Raisio's center at street level: apartment blocks along Raisiontie, E18 beyond](docs/raisio-center.png)
 
 ### Make your own city

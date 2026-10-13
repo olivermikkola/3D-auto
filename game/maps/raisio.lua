@@ -40,6 +40,19 @@ return {
   end)(),
   -- Roads the map data knows only by number.
   street_names = {["185"] = "Naantalin pikatie"},
+  -- Buildings that look like themselves: footprints within r of {x, z, r}
+  -- get the look (a wall color, brick or glass, floors; or an air dome h
+  -- meters high).
+  looks = {
+    {772, -1125, 50, {color = {0.42, 0.52, 0.64}, floors = 3}},                  -- Raision kirjasto: blue-grey panels
+    {625, -806, 50, {style = "glass", color = {0.85, 0.92, 0.97}, floors = 3}},  -- Uintikeskus Ulpukka
+    {826, -968, 40, {dome = 18}},                                                -- LähiTapiola Areena, the air dome
+    {945, -990, 60, {color = {0.6, 0.53, 0.47}, floors = 3}},                    -- Tiedonpuiston koulu, grey-brown brick
+    {790, -880, 70, {color = {0.66, 0.34, 0.26}, floors = 2}},                   -- Raseko, Eeronkuja 3: red brick
+    {665, -953, 30, {color = {0.86, 0.77, 0.6}, floors = 3}},                    -- Raseko, Eeronkuja 4: the new tan block
+    {537, -960, 40, {color = {0.66, 0.34, 0.26}, floors = 3}},                   -- Raseko, Purokatu 1
+    {1110, -1160, 60, {color = {0.86, 0.85, 0.8}, floors = 2}},                  -- Raision lukio
+  },
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {170, 700}, -- see across the bay to the shipyard
