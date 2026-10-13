@@ -27,16 +27,19 @@ return {
     for _, v in ipairs(osm.towers) do t[#t + 1] = v end
     return t
   end)(),
-  -- The parts of town the HUD names: the map data's suburbs (Turku's too,
-  -- past the bay), the center, and Mylly.
+  -- The parts of town the HUD names: the map data's suburbs and
+  -- neighbourhoods (Turku's too, past the bay; the names Google Maps shows),
+  -- the center, and Mylly.
   areas = (function()
-    local t = {{"Mylly", 2700, -2200}}
+    local t, seen = {{"Mylly", 2700, -2200}}, {}
     for _, a in ipairs(osm.areas) do
-      if a[4] == "suburb" then t[#t + 1] = a
-      elseif a[4] == "town" then t[#t + 1] = {"Keskusta", a[2], a[3]} end
+      if a[4] == "town" then t[#t + 1] = {"Raision keskusta", a[2], a[3]}
+      elseif not seen[a[1]] then t[#t + 1], seen[a[1]] = a, true end
     end
     return t
   end)(),
+  -- Roads the map data knows only by number.
+  street_names = {["185"] = "Naantalin pikatie"},
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {170, 700}, -- see across the bay to the shipyard
@@ -64,6 +67,7 @@ return {
     {x = 850, z = -1700, letter = "R", name = "Raisiontori"},
     {x = -2760, z = 1820, letter = "S", name = "the harbor"},
     {x = 1260, z = -1805, letter = "P", name = "Raision poliisiasema"},
+    {x = 1077, z = -1144, letter = "L", name = "Raision lukio"},
   },
 
   places = {

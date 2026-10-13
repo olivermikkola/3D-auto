@@ -152,14 +152,17 @@ function R.nearest_edge(x, z, walkable)
 end
 
 -- Where (x, z) is, for the HUD: the street it's on (nil off the road or on
--- one without a name; a numbered road is "Road 40") and the part of town,
+-- one without a name; a numbered road is the map's `street_names` for it,
+-- or "Road 40") and the part of town,
 -- the nearest of the map's named `areas` (nil if it has none).
 function R.where(x, z)
   local street
   local e, _, _, _, d = R.nearest_edge(x, z)
   if e and d < NET.edges[e].width / 2 + SIDEWALK + 2 then
     street = NET.edges[e].street
-    if street and street:match("^%d+$") then street = "Road " .. street end
+    if street and street:match("^%d+$") then
+      street = (NET.map.street_names or {})[street] or ("Road " .. street)
+    end
   end
   local area, best = nil, math.huge
   for _, a in ipairs(NET.map.areas or {}) do
