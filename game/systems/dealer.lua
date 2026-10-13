@@ -43,11 +43,11 @@ function M.build()
   M.space = {lx - 9, lz + 11}
   M.x, M.z = lx - 13, lz + 4
   -- The sales booth, and your space with a blue outline.
-  engine.spawn{mesh = "cube", pos = {M.x - 1, 1.5, M.z}, size = {2, 2.6, 2.4}, body = "static", color = {0.85, 0.85, 0.8}, tag = "shop"}
-  engine.spawn{mesh = "cube", pos = {M.x - 1, 2.95, M.z}, size = {2.4, 0.3, 2.8}, color = {0.2, 0.5, 1}, glow = 1, tag = "shop"}
+  engine.spawn{mesh = "cube", pos = {M.x - 1, 1.5 + U.ground(M.x - 1, M.z), M.z}, size = {2, 2.6, 2.4}, body = "static", color = {0.85, 0.85, 0.8}, tag = "shop"}
+  engine.spawn{mesh = "cube", pos = {M.x - 1, 2.95 + U.ground(M.x - 1, M.z), M.z}, size = {2.4, 0.3, 2.8}, color = {0.2, 0.5, 1}, glow = 1, tag = "shop"}
   local sx, sz = M.space[1], M.space[2]
   for _, e in ipairs{{0, -3, 3.4, 0.15}, {0, 3, 3.4, 0.15}, {-1.7, 0, 0.15, 6}, {1.7, 0, 0.15, 6}} do
-    engine.spawn{mesh = "plane", pos = {sx + e[1], 0.25, sz + e[2]}, size = {e[3], 1, e[4]}, color = {0.2, 0.5, 1}, glow = 0.5}
+    engine.spawn{mesh = "plane", pos = {sx + e[1], 0.25 + U.ground(sx + e[1], sz + e[2]), sz + e[2]}, size = {e[3], 1, e[4]}, color = {0.2, 0.5, 1}, glow = 0.5}
   end
   shop.add{name = "CAR DEALER", x = M.x + 0.6, z = M.z, hw = 1.6, hd = 2, letter = "D", color = {0.3, 0.6, 1},
            use = function() menu.show("dealer") end}

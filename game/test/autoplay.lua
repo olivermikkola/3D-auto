@@ -1,6 +1,7 @@
 -- Scripted playthrough: fakes the keyboard, checks the game reacts, quits.
 -- Run: AUTO_TEST=1 auto game --headless 9000
 local G = require "lib.state"
+local U = require "lib.util"
 local vehicle = require "lib.vehicle"
 local mission = require "lib.mission"
 local city = require "lib.city"
@@ -70,13 +71,13 @@ at(0.5, function()
   local x, y, z = engine.pos(G.player)
   local id = engine.nearest(x, y, z, 50, "car")
   local cx, _, cz = engine.pos(id)
-  engine.set_pos(G.player, cx, 1.0, cz - 3.5) -- just behind its trunk
+  engine.set_pos(G.player, cx, 1.0 + U.ground(cx, cz - 3.5), cz - 3.5) -- just behind its trunk
   press("e")
   check(G.vehicle == id, "entered the nearest car")
   car = id
   -- Put it at the start of a long north-south avenue.
   local ax, az = long_avenue()
-  engine.set_pos(car, ax, 0.8, az + 10)
+  engine.set_pos(car, ax, 0.8 + U.ground(ax, az + 10), az + 10)
   engine.set_yaw(car, 0)
   yaw0 = 0
   held.w = true
@@ -96,13 +97,13 @@ at(7.0, function()
   -- Teleport onto the Joyride start marker.
   local def
   for _, d in ipairs(mission.defs) do if d.title == "Joyride" then def = d end end
-  engine.set_pos(car, def.start[1], 0.8, def.start[2])
+  engine.set_pos(car, def.start[1], 0.8 + U.ground(def.start[1], def.start[2]), def.start[2])
   engine.set_vel(car, 0, 0, 0)
 end)
 at(7.5, function()
   check(G.mission and G.mission.def.title == "Joyride", "mission starts at its marker")
   local gx, gz = city.place("joyride_garage")
-  engine.set_pos(car, gx, 0.8, gz)
+  engine.set_pos(car, gx, 0.8 + U.ground(gx, gz), gz)
   engine.set_vel(car, 0, 0, 0)
 end)
 local stunts, cash0, max_y = 0, 0, 0
@@ -117,7 +118,7 @@ at(8.5, function()
   press("e")
   check(G.player and not G.vehicle, "exited the driving car before the independent stunt")
   car = vehicle.spawn(cx + 2, cz - 26, 0, 1)
-  engine.set_pos(G.player, cx + 2, 2.75, cz - 26)
+  engine.set_pos(G.player, cx + 2, 2.75 + U.ground(cx + 2, cz - 26), cz - 26)
   press("e")
   check(G.vehicle == car, "entered the separate stunt car with E")
   check(require("lib.health").get(car) == require("lib.health").VEHICLE_HP, "stunt car starts healthy")
@@ -130,8 +131,8 @@ at(8.5, function()
 end)
 engine.on("tick", function()
   if car and engine.exists(car) then
-    local _, y = engine.pos(car)
-    max_y = math.max(max_y, y)
+    local x, y, z = engine.pos(car)
+    max_y = math.max(max_y, y - U.ground(x, z))
   end
 end)
 at(13.0, function()
@@ -218,10 +219,10 @@ after(5.0, function()
   local x, z, dx, dz = table.unpack(line)
   local id = nearest_ped("walk", false)
   local p = peds.peds[id]
-  engine.set_pos(id, x, 1.2, z)
+  engine.set_pos(id, x, 1.2 + U.ground(x, z), z)
   p.tx, p.tz, p.crossing = x+dx*8, z+dz*8, false
   runovers:start(car)
-  engine.set_pos(car, x - dx * 6, 0.8, z - dz * 6)
+  engine.set_pos(car, x - dx * 6, 0.8 + U.ground(x - dx * 6, z - dz * 6), z - dz * 6)
   engine.orient(car, math.atan(dx, dz))
   engine.set_angvel(car, 0, 0, 0)
   engine.set_vel(car, dx * 16, 0, dz * 16)
@@ -263,7 +264,7 @@ after(0.5, function()
   -- police sight. Start this independent chase on the nearest junction.
   local x, _, z = engine.pos(G.player)
   x, z = beside_junction(x, z)
-  engine.set_pos(G.player, x, 1.2, z)
+  engine.set_pos(G.player, x, 1.2 + U.ground(x, z), z)
   cash_before = G.cash
   wanted.set(1)
   check(wanted.stars() == 1, "wanted level set to 1 star")
@@ -293,7 +294,7 @@ until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 
     local d = (x - cx) ^ 2 + (z - cz) ^ 2
     if d > best then best, bx, bz = d, x, z end
   end
-  engine.set_pos(G.player, bx, 1.2, bz)
+  engine.set_pos(G.player, bx, 1.2 + U.ground(bx, bz), bz)
 end)
 until_(function() return wanted.stars() == 0 end, 10, "lost the cops by leaving the search circle unseen")
 -- ---- combat -----------------------------------------------------------------
@@ -323,7 +324,7 @@ local function stand_by(id, dx, dz)
     end
     if ok then sx, sz = cx, cz break end
   end
-  engine.set_pos(G.player, sx, 1.2, sz)
+  engine.set_pos(G.player, sx, 1.2 + U.ground(sx, sz), sz)
 end
 local target, victim
 after(0.5, function()
@@ -339,7 +340,7 @@ after(0.5, function()
   -- ambient population's iteration order, so proximity isn't guaranteed.
   for id in pairs(peds.peds) do
     if id ~= target then
-      engine.set_pos(id, x + 8, 1.2, z)
+      engine.set_pos(id, x + 8, 1.2 + U.ground(x + 8, z), z)
       break
     end
   end
@@ -380,7 +381,7 @@ after(0.3, function()
   local lx, lz = city.place("lot")
   victim = engine.nearest(lx, 1, lz, 30, "car")
   local x, _, z = engine.pos(victim)
-  engine.set_pos(G.player, x, 1.4, z - 9)
+  engine.set_pos(G.player, x, 1.4 + U.ground(x, z - 9), z - 9)
   G.ammo.pistol = 60
 end)
 until_(function()
@@ -396,7 +397,7 @@ after(1.0, function()
   -- Police still spawn at distance and have to drive here normally.
   local x, _, z = engine.pos(G.player)
   x, z = beside_junction(x, z)
-  engine.set_pos(G.player, x, 1.2, z)
+  engine.set_pos(G.player, x, 1.2 + U.ground(x, z), z)
   H.heal_player(100)
   wanted.clear()
   police.clear()
@@ -439,7 +440,7 @@ until_(function()
           local a = k * math.pi / 4
           local tx, tz = ox + math.sin(a) * 14, oz + math.cos(a) * 14
           if not engine.raycast(ox, oy + 1, oz, tx - ox, 0, tz - oz, 14.5, id) and not engine.nearest(tx, 1, tz, 2) then
-            engine.set_pos(G.player, tx, 1.2, tz)
+            engine.set_pos(G.player, tx, 1.2 + U.ground(tx, tz), tz)
             last_hit = now
             return wastes == 1
           end
@@ -460,7 +461,7 @@ after(0.5, function()
   H.player.hp = 40
   local spot
   for _, s in ipairs(pickups.spots) do if s.kind == "health" and s.id then spot = spot or s end end
-  engine.set_pos(G.player, spot.x, 1.2, spot.z)
+  engine.set_pos(G.player, spot.x, 1.2 + U.ground(spot.x, spot.z), spot.z)
 end)
 until_(function() return H.player.hp > 40 end, 2, "a health pickup heals (" .. "40 -> 90)")
 

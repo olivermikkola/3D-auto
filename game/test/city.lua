@@ -180,12 +180,23 @@ local function road_layout(L, M, want, at_least)
       local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
       local fx, fz = (bx - ax) / len, (bz - az) / len
       segs = segs + 1
+      -- A meter over the road, in pieces that follow it up and down hills
+      -- (or a bridge's deck).
+      local surface = e.height or roadnet.ground
+      local n = math.max(1, math.ceil(len / 6))
       for _, lane in ipairs{-3.2, 0, 3.2} do
-        local hit, _, hx, _, hz = engine.raycast(ax + fz * lane, 1, az - fx * lane, fx, 0, fz, len)
-        if hit and solid[engine.tag(hit)] then
-          blocked = blocked + 1
-          if blocked <= 3 then
-            print(string.format("    blocked: %s %s on %s at (%.0f, %.0f)", engine.tag(hit), engine.mesh_of(hit) or "", e.name, hx, hz))
+        for k = 0, n - 1 do
+          local x0, z0 = ax + fx * len * k / n + fz * lane, az + fz * len * k / n - fx * lane
+          local x1, z1 = ax + fx * len * (k + 1) / n + fz * lane, az + fz * len * (k + 1) / n - fx * lane
+          local y0, y1 = surface(x0, z0) + 1, surface(x1, z1) + 1
+          local l = math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2 + (z1 - z0) ^ 2)
+          local hit, _, hx, _, hz = engine.raycast(x0, y0, z0, (x1 - x0) / l, (y1 - y0) / l, (z1 - z0) / l, l)
+          if hit and solid[engine.tag(hit)] then
+            blocked = blocked + 1
+            if blocked <= 3 then
+              print(string.format("    blocked: %s %s on %s at (%.0f, %.0f)", engine.tag(hit), engine.mesh_of(hit) or "", e.name, hx, hz))
+            end
+            break
           end
         end
       end
@@ -197,7 +208,7 @@ local function road_layout(L, M, want, at_least)
     local x, z = city.pos(j)
     if x < west then west, wx, wz = x, x, z end
   end
-  local hit = engine.raycast(wx, 1, wz, -1, 0, 0, 60)
+  local hit = engine.raycast(wx, roadnet.ground(wx, wz) + 1, wz, -1, 0, 0, 60)
   check(hit and engine.tag(hit) == "wall", "a wall at the shore keeps cars out of the sea")
   local water = (M.cover or {}).water
   if water and #water > 0 then

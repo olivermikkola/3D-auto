@@ -14,7 +14,7 @@ engine.on("key", function(k, down)
     local fx, _, fz = engine.forward(id)
     for level = 0, 4 do
       for side = -1, 1 do
-        engine.spawn{mesh = "crate", pos = {x + fx * 6 + side * 1.05, 0.5 + level * 1.0, z + fz * 6},
+        engine.spawn{mesh = "crate", pos = {x + fx * 6 + side * 1.05, 0.5 + level * 1.0 + U.ground(x + fx * 6 + side * 1.05, z + fz * 6), z + fz * 6},
                      size = 1, body = "dynamic", mass = 30, tag = "crate"}
       end
     end

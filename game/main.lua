@@ -2,6 +2,7 @@
 --   init, tick(dt), frame(dt), key(name, down), contact(a, b, speed)
 -- Everything below is ordinary game code; change it and it hot-reloads.
 local G = require "lib.state"
+local U = require "lib.util"
 require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
@@ -49,7 +50,7 @@ engine.on("init", function()
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
   local lx, lz = city.place("lot")
   for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0) end
-  G.spawn = {lx - 6, 1.2, lz - 15}
+  G.spawn = {lx - 6, 1.2 + U.ground(lx - 6, lz - 15), lz - 15}
   player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
   G.cam_yaw = 0.3
 
@@ -58,7 +59,7 @@ engine.on("init", function()
   pickups.start()
   -- The hospital: where you wake up after getting wasted.
   local hx, hz = city.place("hospital")
-  G.hospital = {hx, 1.2, hz}
+  G.hospital = {hx, 1.2 + U.ground(hx, hz), hz}
   mission.load_all("missions")
   require("systems.garage").build()
   require("systems.gunshop").build()

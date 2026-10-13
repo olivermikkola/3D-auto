@@ -1,6 +1,7 @@
 -- Focused regressions at the consuming seams, plus a natural off-road chase.
 -- RELIABILITY_TEST=1 auto game --headless 4000
 local G = require "lib.state"
+local U = require "lib.util"
 local city = require "lib.city"
 local P = require "systems.police"
 local H = require "lib.health"
@@ -161,7 +162,7 @@ local function fixtures()
   check(flight ~= nil, "a genuine clear road flight fixture is available")
   local fx,fz,dx,dz = table.unpack(flight)
   check(F.clear_flight(fx,fz,dx,dz), "flight fixture is clear before adding its backstop")
-  local backstop = engine.spawn{pos = {fx+dx*16,2,fz+dz*16}, size = {4,4,4}, body = "static", tag = "building"}
+  local backstop = engine.spawn{pos = {fx+dx*16, 2 + U.ground(fx+dx*16, fz+dz*16), fz+dz*16}, size = {4,4,4}, body = "static", tag = "building"}
   check(not F.clear_flight(fx,fz,dx,dz), "flight clearance rejects a building beyond the real collision point")
   engine.despawn(backstop)
   check(F.clear_flight(fx,fz,dx,dz), "removing only the backstop restores flight clearance")
@@ -169,7 +170,7 @@ local function fixtures()
   -- Drive the real walking handler into a solid fixture. Its commanded
   -- velocity stays nonzero, while physics stops it; recovery must use the
   -- previous physics result rather than the just-written intent.
-  blocked_ped = engine.spawn{mesh = "ped1", pos = {bx+8,1.2,bz-9}, size = {0.7,1.8,0.7},
+  blocked_ped = engine.spawn{mesh = "ped1", pos = {bx+8, 1.2 + U.ground(bx+8, bz-9), bz-9}, size = {0.7,1.8,0.7},
                             body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
   H.set(blocked_ped,30)
   local where = {i=G.city.lot and G.city.lot[1], j=G.city.lot and G.city.lot[2], k=1}
@@ -177,7 +178,7 @@ local function fixtures()
   local walker = {id=blocked_ped,dir=1,state="walk",speed=1.4,stuck=0,tx=bx+18,tz=bz-9}
   for key, v in pairs(where) do walker[key] = v end
   peds.peds[blocked_ped] = walker
-  blocker = engine.spawn{pos = {bx+9,2,bz-9}, size = {0.5,4,4}, body = "static", tag = "wall"}
+  blocker = engine.spawn{pos = {bx+9, 2 + U.ground(bx+9, bz-9), bz-9}, size = {0.5,4,4}, body = "static", tag = "wall"}
 
   -- Remote cars don't disturb pursuit/population. The first explosion
   -- ignites all others through the production killed handler.
@@ -203,7 +204,7 @@ engine.on("tick", function()
     -- Same off-road lot target that failed in the baseline: no cop moves,
     -- no bypass of its graph, sight, deployment or shooting requirements.
     local x,z = city.place("lot")
-    engine.set_pos(G.player,x,1.2,z-9)
+    engine.set_pos(G.player, x, 1.2 + U.ground(x, z-9), z-9)
     wanted.clear(); P.clear(); wanted.set(3)
     phase,start = 2,engine.time()
   elseif phase == 2 then

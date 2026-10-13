@@ -32,7 +32,7 @@ end
 
 local function show(s)
   local k = KINDS[s.kind]
-  s.id = engine.spawn{mesh = s.kind == "health" and "pickup_health" or "pickup_box", pos = {s.x, 1.0, s.z}, scale = 1,
+  s.id = engine.spawn{mesh = s.kind == "health" and "pickup_health" or "pickup_box", pos = {s.x, 1.0 + U.ground(s.x, s.z), s.z}, scale = 1,
                       color = k.color, glow = 0.8, tag = "pickup"}
 end
 
@@ -46,7 +46,8 @@ engine.on("frame", function()
   for _, s in ipairs(P.spots) do
     if s.id then
       engine.set_yaw(s.id, t * 2)
-      engine.set_pos(s.id, s.x, 1.0 + math.sin(t * 3) * 0.15, s.z)
+      s.g = s.g or U.ground(s.x, s.z)
+      engine.set_pos(s.id, s.x, s.g + 1.0 + math.sin(t * 3) * 0.15, s.z)
     end
   end
 end)

@@ -54,7 +54,7 @@ end
 -- A glowing column; returns its entity id.
 function Mission:marker(x, z, color)
   color = color or {1, 0.85, 0.1}
-  local id = self:spawn{mesh = "marker", pos = {x, 2.5, z}, scale = 5, color = {color[1], color[2], color[3], 0.35}}
+  local id = self:spawn{mesh = "marker", pos = {x, 2.5 + U.ground(x, z), z}, scale = 5, color = {color[1], color[2], color[3], 0.35}}
   G.markers[#G.markers + 1] = {id = id, color = color}
   return id
 end
@@ -155,7 +155,7 @@ function M.show_start_markers()
   for _, def in ipairs(M.defs) do
     if M.unlocked(def) then
       local c = def.passed and {0.3, 1, 0.3} or {1, 0.85, 0.1}
-      def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5, def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
+      def.marker = engine.spawn{mesh = "marker", pos = {def.start[1], 1.5 + U.ground(def.start[1], def.start[2]), def.start[2]}, scale = {2.5, 3, 2.5}, color = {c[1], c[2], c[3], 0.45}}
       G.markers[#G.markers + 1] = {id = def.marker, color = c}
     end
   end

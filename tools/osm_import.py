@@ -10,8 +10,14 @@ footprints as boxes, and ground cover (water, forest, fields, parking) as
 strips. The hand-written map (game/maps/<name>.lua) loads it and adds the game:
 places, missions, landmarks.
 
-Coordinates are meters, x east and z south, from the middle of the area. The ground
-is flat. Data (c) OpenStreetMap contributors, ODbL: the output carries that.
+With a "dem" list for the area it also writes game/maps/<name>_terrain.bin: the
+ground's height every 10 m from Maanmittauslaitos' elevation model (tools/dem.py;
+needs Pillow and, to download sheets, a free key), with the roads graded into it,
+and each point's ground cover class.
+
+Coordinates are meters, x east and z south, from the middle of the area. Data (c)
+OpenStreetMap contributors, ODbL: the output carries that. Heights: National Land
+Survey of Finland, CC BY 4.0.
 """
 import argparse
 import json
@@ -29,6 +35,8 @@ AREAS = {
         # The center, Mylly, and Nesteentie down to the harbor.
         "bbox": (60.444, 22.085, 60.497, 22.215),  # south, west, north, east
         "first": "Nesteentie / Raisiontie",
+        # Maanmittauslaitos 10 m elevation sheets covering it (see tools/dem.py).
+        "dem": ["L3322", "L3324", "L3411", "L3413"],
     },
 }
 
@@ -54,6 +62,10 @@ ROADS = {
 PAVED = {"service": 5, "footway": 2.5, "cycleway": 3, "path": 2, "pedestrian": 6}
 
 ROW = 4.0  # ground cover is rasterized in strips this tall
+STEP = 10.0  # terrain heights every this many meters
+# Cover classes in the order the game draws them (lib/roadnet.lua's COVER):
+# a terrain point takes the last one it's in; 0 is plain land.
+DRAW_ORDER = ["field", "forest", "park", "cemetery", "works", "parking", "track", "sand", "court", "pitch", "water"]
 
 
 # ---- geometry --------------------------------------------------------------------------
@@ -393,12 +405,14 @@ def main():
         width = w1 if oneway else w2
         name = t.get("name") or t.get("ref")
         bridge = t.get("bridge") not in (None, "no") or t.get("tunnel") not in (None, "no") or t.get("layer", "0") not in ("0",)
+        layer = int(t.get("layer", "0")) if t.get("layer", "0").lstrip("-").isdigit() else 0
+        deck = t.get("bridge") not in (None, "no") or layer > 0  # up on a bridge, not on the ground
         start = 0
         for k in range(1, len(run)):
             if run[k][0] in is_j or k == len(run) - 1:
                 seg = run[start:k + 1]
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "hw": hw})
+                              "name": name, "bridge": bridge, "deck": deck, "hw": hw})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -451,7 +465,7 @@ def main():
                     # The bigger road is the bridge.
                     order = list(ROADS)
                     lift = ed if order.index(ed["hw"]) < order.index(other["hw"]) else other
-                    lift["bridge"] = True
+                    lift["bridge"] = lift["deck"] = True
 
     # Junction names: the streets that meet there.
     meet = {}
@@ -630,6 +644,92 @@ def main():
             areas.append((t["name"], x, z, t["place"]))
     areas.sort(key=lambda d: (d[3], d[0]))
 
+    # ---- terrain: real heights, with the roads graded into them ----
+    terrain = None
+    if cfg.get("dem"):
+        import dem
+        Z = dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
+        def ground(x, z):
+            return Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
+        # Each junction's height, then each road's profile: the ground along
+        # it smoothed over 40 m and bent to meet its junctions. A road on a
+        # bridge runs straight between its ends instead.
+        jh = {j: sum(ground(pos[j][0] + dx, pos[j][1] + dz) for dx, dz in ((0, 0), (5, 0), (-5, 0), (0, 5), (0, -5))) / 5
+              for j in {ed_["a"] for ed_ in edges} | {ed_["b"] for ed_ in edges}}
+        prof_grid = Grid(50)
+        for ed_ in edges:
+            pts = ed_["pts"]
+            ss, xs = [0.0], [pts[0]]
+            for a, b in zip(pts, pts[1:]):
+                L_ = math.hypot(b[0] - a[0], b[1] - a[1])
+                n = max(1, int(L_ // 5))
+                for k in range(1, n + 1):
+                    xs.append((a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n))
+                    ss.append(ss[-1] + L_ / n)
+            total = ss[-1] or 1.0
+            ha, hb = jh[ed_["a"]], jh[ed_["b"]]
+            if ed_["deck"]:
+                hs = [ha + (hb - ha) * s_ / total for s_ in ss]
+            else:
+                raw = [ground(*p) for p in xs]
+                sm = []
+                for k in range(len(raw)):
+                    lo, hi = k, k
+                    while lo > 0 and ss[k] - ss[lo - 1] <= 20: lo -= 1
+                    while hi < len(raw) - 1 and ss[hi + 1] - ss[k] <= 20: hi += 1
+                    sm.append(sum(raw[lo:hi + 1]) / (hi - lo + 1))
+                hs = [sm[k] + (ha - sm[0]) * (1 - ss[k] / total) + (hb - sm[-1]) * ss[k] / total for k in range(len(sm))]
+            ed_["profile"] = list(zip(xs, hs))
+            if not ed_["deck"]:
+                for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
+                    prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
+        # Cover classes, for colors and water.
+        cls_grid = {c: Grid(50) for c in DRAW_ORDER}
+        for c in DRAW_ORDER:
+            for st in strips.get(c, []):
+                cls_grid[c].add(st, (st[0], st[1]), (st[2], st[3]))
+        def cover_at(x, z):
+            for k in range(len(DRAW_ORDER) - 1, -1, -1):
+                for st in cls_grid[DRAW_ORDER[k]].near(x, z, x, z):
+                    if st[0] <= x <= st[2] and st[1] <= z <= st[3]:
+                        return k + 1
+            return 0
+        # Water lies flat at its own level (the sea at 0, a reservoir higher):
+        # each strip at the ground model's height there, the bed below it.
+        levels = []
+        for st in strips.get("water", []):
+            levels.append(round(max(0.0, ground((st[0] + st[2]) / 2, (st[1] + st[3]) / 2)), 1))
+        tw, td = int(math.ceil((X1 - X0) / STEP)) + 1, int(math.ceil((Z1 - Z0) / STEP)) + 1
+        hgt, cls = [], []
+        water_k = DRAW_ORDER.index("water") + 1
+        for j in range(td):
+            for i in range(tw):
+                x, z = X0 + i * STEP, Z0 + j * STEP
+                h = ground(x, z)
+                # Graded to the nearest road: flat across it out to its
+                # pavements and a few meters more, blending back over 20 m.
+                best = None
+                for ed_, a, b, ya, yb in prof_grid.near(x, z, x, z):
+                    dx, dz = b[0] - a[0], b[1] - a[1]
+                    l2 = dx * dx + dz * dz or 1e-9
+                    t_ = max(0.0, min(1.0, ((x - a[0]) * dx + (z - a[1]) * dz) / l2))
+                    d = math.hypot(x - a[0] - dx * t_, z - a[1] - dz * t_) - ed_["width"] / 2 - 6
+                    if best is None or d < best[0]:
+                        best = (d, ya + (yb - ya) * t_)
+                if best and best[0] < 20:
+                    w_ = 1.0 if best[0] <= 0 else 1 - best[0] / 20
+                    h = h + (best[1] - h) * w_
+                k = cover_at(x, z)
+                if k == water_k:
+                    h = min(h, ground(x, z) - 1.5)
+                hgt.append(max(-327, min(327, h)))
+                cls.append(k)
+        terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels}
+        tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
+        import struct
+        tdest.write_bytes(struct.pack(f"<{tw * td}h", *(round(h * 100) for h in hgt)) + bytes(cls))
+        terrain["file"] = tdest
+
     # ---- write ----
     def f(v): return f"{v:.1f}".rstrip("0").rstrip(".")
     def q(s): return json.dumps(s, ensure_ascii=False)
@@ -652,6 +752,7 @@ def main():
         attrs = f"kind = {q(ed['kind'])}, width = {ed['width']}"
         if ed["name"]: attrs = f"name = {q(ed['name'])}, " + attrs
         if ed["bridge"]: attrs += ", bridge = true"
+        if ed.get("deck") and cfg.get("dem"): attrs += ", deck = true"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")
     L.append("  },")
     L.append("  -- {width, service road?, points...}")
@@ -689,10 +790,18 @@ def main():
     for name, x, z, kind in areas:
         L.append(f"    {{{q(name)}, {f(x)}, {f(z)}, {q(kind)}}},")
     L.append("  },")
-    L.append("  -- {x0, z0, x1, z1} strips")
+    if terrain:
+        L.append(f"  -- the ground's height every {f(STEP)} m from (x0, z0), in {terrain['file'].name} (Maanmittauslaitos")
+        L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")
+        L.append(f"  terrain = {{x0 = {X0}, z0 = {Z0}, step = {f(STEP)}, w = {terrain['w']}, d = {terrain['d']}, "
+                 f"file = {q('maps/' + terrain['file'].name)}, classes = {{{', '.join(q(c) for c in DRAW_ORDER)}}}}},")
+    L.append("  -- {x0, z0, x1, z1} strips; water's have its level too")
     L.append("  cover = {")
     for cls, out in strips.items():
-        L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)}}}" for a, b, c, d in out) + "},")
+        if cls == "water" and terrain:
+            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}}}" for (a, b, c, d), y in zip(out, terrain["levels"])) + "},")
+        else:
+            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)}}}" for a, b, c, d in out) + "},")
     L.append("  },")
     L.append("}")
     dest.write_text("\n".join(L) + "\n")

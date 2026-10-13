@@ -3,6 +3,7 @@
 --   SHOP_TEST=2 ...                                       ammo and the car (in its new color) came back
 -- Steps count frames: buying happens in menus, which pause the game.
 local G = require "lib.state"
+local U = require "lib.util"
 local shop = require "lib.shop"
 local menu = require "lib.menu"
 local wanted = require "lib.wanted"
@@ -35,7 +36,7 @@ local function drive(id)
   G.player, G.vehicle = nil, id
 end
 local function park_in_bay(id)
-  engine.set_pos(id, paint.x, 0.95, paint.z)
+  engine.set_pos(id, paint.x, 0.95 + U.ground(paint.x, paint.z), paint.z)
   engine.orient(id, 0)
   engine.set_vel(id, 0, 0, 0)
   engine.set_angvel(id, 0, 0, 0)
@@ -49,7 +50,7 @@ if phase == 1 then
     check(G.cash == 0 and G.ammo.pistol == 36 and G.ammo.smg == 0 and G.owned_car == nil, "a new game: no cash, starting ammo, no car")
 
     -- Gun shop, on foot.
-    engine.set_pos(G.player, gunshop.x, 1.1, gunshop.z)
+    engine.set_pos(G.player, gunshop.x, 1.1 + U.ground(gunshop.x, gunshop.z), gunshop.z)
     check(shop.current() and shop.current().name == "GUN SHOP", "standing at the gun shop counter")
     key("r")
     check(menu.open and menu.page == "gunshop" and engine.paused(), "R opens the gun shop (and pauses)")
@@ -64,7 +65,7 @@ if phase == 1 then
     check(not menu.open and not engine.paused(), "Esc leaves the shop")
 
     -- Car dealer, on foot.
-    engine.set_pos(G.player, dealer.x + 0.6, 1.1, dealer.z)
+    engine.set_pos(G.player, dealer.x + 0.6, 1.1 + U.ground(dealer.x + 0.6, dealer.z), dealer.z)
     check(shop.current() and shop.current().name == "CAR DEALER", "standing at the dealer's booth")
     key("r")
     pick("YELLOW CAR")
@@ -76,7 +77,7 @@ if phase == 1 then
 
     -- Drive it into the spray shop; it needs a moment to settle on its wheels.
     drive(dealer.car)
-    engine.set_pos(dealer.car, gunshop.x, 1, gunshop.z)
+    engine.set_pos(dealer.car, gunshop.x, 1 + U.ground(gunshop.x, gunshop.z), gunshop.z)
     check(shop.current() == nil, "the gun shop doesn't serve drivers")
     park_in_bay(dealer.car)
   end
@@ -104,7 +105,7 @@ if phase == 1 then
     local cop = vehicle.spawn(paint.x + 30, paint.z, 0, 1, nil, "cop")
     drive(cop)
     park_in_bay(cop)
-    engine.set_pos(car, dealer.space[1], 0.95, dealer.space[2])
+    engine.set_pos(car, dealer.space[1], 0.95 + U.ground(dealer.space[1], dealer.space[2]), dealer.space[2])
   end
   steps[200] = function()
     key("r")

@@ -302,6 +302,25 @@ lining its roads by district. The bay and the river stop you like a wall, except
 Traffic and police follow the bends, pedestrians walk the pavements from junction to junction,
 and on a town this big the minimap is a radar that follows you. Every test runs on it.
 
+Raisio isn't flat: it runs from the sea at Raisionlahti up to rocky ridges over 50 m high. Its
+ground comes from the National Land Survey of Finland's 10 m elevation model (Maanmittauslaitos,
+CC BY 4.0): `tools/osm_import.py` samples it every 10 m (fetching the sheets with a free open data
+key in `~/.config/3d-auto/mml-key`; see `tools/dem.py`) and grades the roads into it. Each
+road's height is the ground along it smoothed over 40 m and bent to meet its junctions, and the
+ground under it is made level across it, out past its pavements, blending back over 20 m. The
+result, `game/maps/raisio_terrain.bin`, is heights and a ground cover class per point; the game
+hands it to `engine.terrain`, colored by class, so fields, woods and car parks are painted on
+the hills.
+
+While the map builds, everything placed on the ground goes onto it: roads in tilted pieces of
+at most 6 m (mesh parts take `pitch` now), buildings on the lowest corner of their footprint,
+trees, lamps, pitches and the game's pads at the ground under them, water flat at its own level
+(the sea at 0, the reservoir higher). Bridges, from the map data's bridge tags, are solid decks
+running straight from one end to the other over whatever is below, with railings and piers
+where they don't stand on another road; drive under one and you're on the ground below. Cars,
+pedestrians, police, pickups and shops spawn at the ground's height (`util.ground(x, z)`, 0 on
+the flat maps).
+
 You always know where you are: the street you're on and the part of town (Raision keskusta,
 Kerttula, Mylly, Nuorikkala...) come up in the corner whenever either changes, and when the cops
 are called the dispatcher names them too ("All units, suspect seen on Nesteentie, Kerttula"). The
@@ -600,6 +619,8 @@ and remixed, but not sold.
   and including v0.2.0 were released entirely under MIT, and those copies stay MIT.
 - **ODbL 1.0**: `game/maps/raisio_osm.lua`, generated from OpenStreetMap data,
   © OpenStreetMap contributors (see [game/maps/LICENSE](game/maps/LICENSE)).
+- **CC BY 4.0**: `game/maps/raisio_terrain.bin`, Raisio's ground heights: contains data from the
+  National Land Survey of Finland (Maanmittauslaitos) elevation model, 2026.
 
 **The name.** Neither license covers the name "3D-auto". Fork it, build your own town on it, and
 release that, but under a name of your own, so nobody mistakes your game for this one (or this one

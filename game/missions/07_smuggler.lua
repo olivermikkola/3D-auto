@@ -16,7 +16,7 @@ return {
   run = function(m)
     m:timer(240)
     for i, n in ipairs(route) do
-      local pkg = m:spawn{mesh = "crate", pos = {n[1], 0.6, n[2]}, size = 0.9, color = {0.75, 0.55, 0.3}}
+      local pkg = m:spawn{mesh = "crate", pos = {n[1], 0.6 + U.ground(n[1], n[2]), n[2]}, size = 0.9, color = {0.75, 0.55, 0.3}}
       local marker = m:marker(n[1], n[2], {1, 0.5, 0.1})
       m:say(string.format("Pick up package %d of %d%s.", i, #route, m:on_street(n[1], n[2])))
       m:wait(function() return m:near(marker, 5) end)
