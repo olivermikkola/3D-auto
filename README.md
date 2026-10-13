@@ -349,6 +349,27 @@ street don't head for the tunnel under it, and cars spawn on a road's own level,
 a tunnel's, not just on the ground. The interchange's ramps and roundabouts west of the tunnel,
 Soliniuksenkatu, and the later three-level interchange with valtatie 8 aren't built yet.
 
+**Raisio 1980** (`MAP=raisio1980`, RAISIO 1980 under City) goes the other way: the centre the
+1970s built on two levels, with cars on the ground and people up on the concrete:
+- **The market square** north of Raisiontie, where Torikuja is now, with its stalls and grill
+  kiosk.
+- **A raised deck** on round columns round three sides of the square, in front of the shops.
+- **Concrete footbridges with solid parapets:** two over Raisiontie to Tasala, a ramp down into
+  the square, and Keonsilta (1978) east over Kerttulantie and Nesteentie. Only Keonsilta's
+  stretch over Nesteentie still stands.
+- **What it leaves out:** the 2000s took the rest down and strung the lanterns over Raisiontie,
+  and the flats and the glass cube came later. None of that is on this map.
+
+The map adds three features any map can use:
+- `decks`: `{x0, z0, x1, z1, open = "nswe"}`, a slab on columns at a footbridge's height, with
+  parapets that leave gaps where bridges land or decks join.
+- `squares`: paving.
+- `market`: stalls.
+
+A footbridge's end can stay `up` to meet a deck, and `concrete` gives it solid parapets. The
+sources are Raisio's local history pictures in digi.kirjastot.fi, the town's plan documents and
+Finnish Wikipedia. The rest of town is today's.
+
 You always know where you are: the street you're on and the part of town (Raision keskusta,
 Kerttula, Mylly, Nuorikkala...) come up in the corner whenever either changes, and when the cops
 are called the dispatcher names them too ("All units, suspect seen on Nesteentie, Kerttula"). The

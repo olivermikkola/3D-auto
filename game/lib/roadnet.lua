@@ -922,14 +922,20 @@ build = function(map, kit)
   lines.bake("lines", "cover")
 
   -- Foot and cycle bridges over roads: a deck high enough to drive under,
-  -- ramping down to the paths at its ends; solid where it's up.
+  -- ramping down to the paths at its ends (unless an end is `up`: it meets
+  -- a raised deck there); solid where it's up. `concrete` ones have the
+  -- 1970s' solid parapets.
+  local TOP = 5.6
   for _, b in ipairs(map.footbridges or {}) do
     local width, pts = b[1], {}
     for i = 2, #b do pts[#pts + 1] = b[i] end
     local total = 0
     for i = 2, #pts do total = total + math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2) end
-    local TOP = 5.6
-    local function height(sv) return math.min(TOP, math.min(sv, total - sv) * 0.35) + 0.2 end
+    local up = b.up or {}
+    local function height(sv)
+      local a, z = up[1] and math.huge or sv, up[2] and math.huge or total - sv
+      return math.min(TOP, math.min(a, z) * 0.35) + 0.2
+    end
     local sv = 0
     for i = 2, #pts do
       local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
@@ -942,13 +948,18 @@ build = function(map, kit)
         local h0, h1 = height(sv + seg * t0), height(sv + seg * t1)
         local x, z = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
         local l, pitch = seg / n, -math.atan(h1 - h0, seg / n)
-        local up = math.min(h0, h1) >= TOP
+        local high = math.min(h0, h1) >= TOP
         local deck = {mesh = "cube", pos = {x, (h0 + h1) / 2, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
                       color = {0.62, 0.62, 0.6}, tag = "bridge"}
-        if up then kit.static(deck) else engine.spawn(deck) end
+        if high then kit.static(deck) else engine.spawn(deck) end
         for _, side in ipairs{-1, 1} do
-          engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, (h0 + h1) / 2 + 0.6, z + rz * side * width / 2}, yaw = yaw,
-                       pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}}
+          if b.concrete then
+            kit.static{mesh = "cube", pos = {x + rx * side * (width / 2 - 0.1), (h0 + h1) / 2 + 0.35, z + rz * side * (width / 2 - 0.1)},
+                       yaw = yaw, pitch = pitch, size = {0.25, 1.3, l * 1.02}, color = {0.72, 0.71, 0.68}, tag = "wall"}
+          else
+            engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, (h0 + h1) / 2 + 0.6, z + rz * side * width / 2}, yaw = yaw,
+                         pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}}
+          end
         end
         -- Pillars off the asphalt, every few pieces.
         if k % 3 == 1 and (h0 + h1) / 2 > 2.5 then
@@ -959,6 +970,71 @@ build = function(map, kit)
         end
       end
       sv = sv + seg
+    end
+  end
+
+  -- Raised decks for walking, at a footbridge's height, the 1970s way:
+  -- {x0, z0, x1, z1, open = "nswe" sides without a parapet}, a slab on
+  -- round columns. Paved squares: {x0, z0, x1, z1}. Market stalls:
+  -- {x, z, columns, rows}, white awnings over tables.
+  for _, dk in ipairs(map.decks or {}) do
+    local x0, z0, x1, z1 = dk[1], dk[2], dk[3], dk[4]
+    local nx, nz = math.max(1, math.ceil((x1 - x0) / 7)), math.max(1, math.ceil((z1 - z0) / 7))
+    local px, pz = (x1 - x0) / nx, (z1 - z0) / nz
+    for i = 0, nx - 1 do
+      for j = 0, nz - 1 do
+        local cx, cz = x0 + px * (i + 0.5), z0 + pz * (j + 0.5)
+        kit.static{mesh = "cube", pos = {cx, TOP + 0.2, cz}, size = {px + 0.05, 0.4, pz + 0.05}, color = {0.66, 0.65, 0.62}, tag = "bridge"}
+        if (i + j) % 2 == 0 then
+          kit.static{mesh = "cylinder", pos = {cx, TOP / 2, cz}, size = {0.8, TOP, 0.8}, color = {0.7, 0.69, 0.66}, tag = "bridge"}
+        end
+      end
+    end
+    -- Parapets round the edges (but the `open` ones), in pieces, with a gap
+    -- wherever a footbridge comes up onto the deck or another deck joins.
+    local function landing(x, z)
+      for _, b in ipairs(map.footbridges or {}) do
+        local up = b.up or {}
+        if (up[1] and (b[2][1] - x) ^ 2 + (b[2][2] - z) ^ 2 < 16) or (up[2] and (b[#b][1] - x) ^ 2 + (b[#b][2] - z) ^ 2 < 16) then
+          return true
+        end
+      end
+    end
+    local open = dk.open or ""
+    local sides = {n = {x0, z0, x1, z0}, s = {x0, z1, x1, z1}, w = {x0, z0, x0, z1}, e = {x1, z0, x1, z1}}
+    for name, sd in pairs(sides) do
+      if not open:find(name) then
+        local len = math.sqrt((sd[3] - sd[1]) ^ 2 + (sd[4] - sd[2]) ^ 2)
+        local n = math.max(1, math.ceil(len / 3.5))
+        for k = 0, n - 1 do
+          local f = (k + 0.5) / n
+          local x, z = sd[1] + (sd[3] - sd[1]) * f, sd[2] + (sd[4] - sd[2]) * f
+          local joined = false -- where another deck carries on
+          for _, o in ipairs(map.decks) do
+            if o ~= dk and x > o[1] - 0.5 and x < o[3] + 0.5 and z > o[2] - 0.5 and z < o[4] + 0.5 then joined = true end
+          end
+          if not landing(x, z) and not joined then
+            kit.static{mesh = "cube", pos = {x, TOP + 0.85, z}, yaw = math.atan(sd[3] - sd[1], sd[4] - sd[2]), size = {0.25, 1.3, len / n + 0.02},
+                       color = {0.72, 0.71, 0.68}, tag = "wall"}
+          end
+        end
+      end
+    end
+  end
+  for _, sq in ipairs(map.squares or {}) do
+    engine.spawn{mesh = "cube", pos = {(sq[1] + sq[3]) / 2, 0.03, (sq[2] + sq[4]) / 2}, size = {sq[3] - sq[1], 0.06, sq[4] - sq[2]},
+                 color = {0.66, 0.64, 0.6}, tag = "plaza"}
+  end
+  for _, mk in ipairs(map.market or {}) do
+    for i = 0, mk[3] - 1 do
+      for j = 0, mk[4] - 1 do
+        local x, z = mk[1] + (i - (mk[3] - 1) / 2) * 7, mk[2] + (j - (mk[4] - 1) / 2) * 8
+        kit.static{mesh = "cube", pos = {x, 0.45, z}, size = {3.6, 0.9, 1.6}, color = {0.55, 0.42, 0.3}, tag = "stall"}
+        engine.spawn{mesh = "cube", pos = {x, 2.3, z}, size = {4.2, 0.12, 3.2}, color = {0.95, 0.95, 0.93}}
+        for _, c in ipairs{{-1, -1}, {1, -1}, {-1, 1}, {1, 1}} do
+          engine.spawn{mesh = "cube", pos = {x + c[1] * 2, 1.15, z + c[2] * 1.5}, size = {0.08, 2.3, 0.08}, color = {0.8, 0.8, 0.8}}
+        end
+      end
     end
   end
 
