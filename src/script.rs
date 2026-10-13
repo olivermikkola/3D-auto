@@ -426,9 +426,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let m = e.get(id).and_then(|x| x.mesh);
         Ok(m.and_then(|m| e.mesh_ids.iter().find(|(_, i)| **i == m).map(|(n, _)| n.clone())))
     });
-    f!("find", |e, _lua, tag: String| {
-        Ok(e.find(&tag))
-    });
+    f!("find", |e, _lua, tag: String| Ok(e.find(&tag)));
     f!("nearest", |e, lua, (x, y, z, r, tag, ignore): (f32, f32, f32, f32, Option<String>, Option<u32>)| {
         let p = v3(x, y, z);
         let best = e
