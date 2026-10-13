@@ -92,6 +92,10 @@ pub struct Engine {
     pub lights: Vec<Option<Light>>,
     warm: WarmCache,
     broad: Broad,
+    /// Statics moved since the last step, which the broad-phase grid doesn't know about yet.
+    touched: Vec<u32>,
+    /// Live entity ids by tag, ascending (ids only ever grow).
+    tagged: HashMap<String, Vec<u32>>,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -177,6 +181,8 @@ impl Engine {
             live: 0,
             warm: WarmCache::new(),
             broad: Broad::default(),
+            touched: Vec::new(),
+            tagged: HashMap::new(),
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -235,17 +241,29 @@ impl Engine {
     }
 
     pub fn spawn(&mut self, e: Entity) -> u32 {
+        let id = self.ents.len() as u32;
+        self.tagged.entry(e.tag.clone()).or_default().push(id);
         self.ents.push(Some(e));
         self.live += 1;
-        (self.ents.len() - 1) as u32
+        id
     }
 
     pub fn despawn(&mut self, id: u32) {
         if let Some(slot) = self.ents.get_mut(id as usize)
-            && slot.take().is_some()
+            && let Some(e) = slot.take()
         {
             self.live -= 1;
+            if let Some(ids) = self.tagged.get_mut(&e.tag)
+                && let Ok(k) = ids.binary_search(&id)
+            {
+                ids.remove(k);
+            }
         }
+    }
+
+    /// Live entities with this tag, in spawn order.
+    pub fn find(&self, tag: &str) -> Vec<u32> {
+        self.tagged.get(tag).cloned().unwrap_or_default()
     }
 
     pub fn get(&self, id: u32) -> Option<&Entity> {
@@ -254,6 +272,20 @@ impl Engine {
 
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Entity> {
         self.ents.get_mut(id as usize)?.as_mut()
+    }
+
+    /// For moving or turning an entity: notes a static, so rays still find it there.
+    pub fn pose_mut(&mut self, id: u32) -> Option<&mut Entity> {
+        let en = self.ents.get_mut(id as usize)?.as_mut()?;
+        if en.body.as_ref().is_some_and(|b| b.kind == physics::Kind::Static) {
+            self.touched.push(id);
+        }
+        Some(en)
+    }
+
+    /// The nearest body a ray hits; see physics::raycast_near.
+    pub fn raycast(&self, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>) -> Option<physics::RayHit> {
+        physics::raycast_near(&self.ents, &self.broad, &self.touched, o, dir, max, ignore)
     }
 
     /// World-space position and direction of a light, if its anchor exists.
@@ -280,7 +312,9 @@ impl Engine {
     pub fn step(&mut self, dt: f32) -> Vec<Contact> {
         self.tick += 1;
         self.time += dt as f64;
-        physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm, &mut self.broad)
+        let contacts = physics::step(&mut self.ents, dt, self.env.gravity, &mut self.warm, &mut self.broad);
+        self.touched.clear();
+        contacts
     }
 
     /// Put the listener at the camera and move entity-following voices.
@@ -335,6 +369,23 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_lists_live_entities_by_tag_in_spawn_order() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        let tagged = |tag: &str| {
+            let mut en = Entity::new(Vec3::ZERO);
+            en.tag = tag.to_string();
+            en
+        };
+        let ids: Vec<u32> = ["car", "ped", "car", "car"].iter().map(|t| e.spawn(tagged(t))).collect();
+        e.despawn(ids[2]);
+        e.despawn(ids[2]); // twice is fine
+        let last = e.spawn(tagged("car"));
+        assert_eq!(e.find("car"), vec![ids[0], ids[3], last]);
+        assert_eq!(e.find("ped"), vec![ids[1]]);
+        assert!(e.find("cop").is_empty());
+    }
 
     #[test]
     fn pausing_releases_held_keys_once() {

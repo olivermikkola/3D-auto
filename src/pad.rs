@@ -139,6 +139,9 @@ mod evdev {
         pub state: State,
         pub ranges: [Range; ABS_COUNT],
         hat: (i32, i32),
+        /// The xpad driver (Xbox pads) sends Y as BTN_WEST and X as BTN_NORTH,
+        /// the other way round from the gamepad spec other drivers follow.
+        pub swap_xy: bool,
     }
 
     impl Device {
@@ -173,6 +176,10 @@ mod evdev {
                     }
                 }
             }
+            d.swap_xy = path
+                .file_name()
+                .and_then(|n| std::fs::read_link(format!("/sys/class/input/{}/device/device/driver", n.to_string_lossy())).ok())
+                .is_some_and(|drv| drv.file_name().is_some_and(|f| f == "xpad"));
             d.file = Some(file);
             Some(d)
         }
@@ -189,6 +196,7 @@ mod evdev {
                 state: State { name, ..Default::default() },
                 ranges: [Range::default(); ABS_COUNT],
                 hat: (0, 0),
+                swap_xy: false,
             }
         }
 
@@ -197,6 +205,11 @@ mod evdev {
             match ty {
                 EV_KEY => {
                     // Digital triggers are covered by the analog ones (or added below).
+                    let code = match code {
+                        0x133 if self.swap_xy => 0x134,
+                        0x134 if self.swap_xy => 0x133,
+                        c => c,
+                    };
                     if let Some(name) = button(code) {
                         out.push(Event::Button(name, value != 0));
                     } else if code == 0x138 || code == 0x139 {

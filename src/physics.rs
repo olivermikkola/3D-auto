@@ -143,6 +143,9 @@ pub struct Broad {
     poses: Vec<Option<[f32; 10]>>,
     statics: usize,
     pub rebuilds: u64,
+    /// As of the last step: the moving bodies, and how many slots there were.
+    movers: Vec<usize>,
+    len: usize,
 }
 
 impl Broad {
@@ -234,6 +237,8 @@ pub fn step(ents: &mut [Option<Entity>], dt: f32, gravity: f32, warm: &mut WarmC
     if stale || statics != broad.statics {
         broad.rebuild(ents);
     }
+    broad.movers.clone_from(&movers);
+    broad.len = ents.len();
 
     // 2. Narrow phase. Moving bodies' AABBs are computed fresh; statics' come from the grid.
     let aabb = |e: &Entity| (e.pos, extents(e.body.as_ref().unwrap().half, e.rot));
@@ -512,55 +517,120 @@ pub struct RayHit {
 
 /// Slab test in each box's local frame. `dir` must be normalized.
 pub fn raycast(ents: &[Option<Entity>], o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>) -> Option<RayHit> {
-    let mut best: Option<RayHit> = None;
-    for (i, e) in ents.iter().enumerate() {
-        let Some(e) = e else { continue };
-        let Some(b) = &e.body else { continue };
-        if b.sensor || Some(i as u32) == ignore {
-            continue;
+    let mut best = None;
+    for i in 0..ents.len() {
+        ray_test(ents, i, o, dir, max, ignore, &mut best);
+    }
+    best
+}
+
+/// The same ray, testing only what's near it: the statics in the grid cells
+/// it crosses (nearest first, stopping past the nearest hit), big statics,
+/// the bodies that were moving at the last step, slots added since, and
+/// `touched` (statics moved since). Before the first step, or with too much
+/// changed, it tests everything.
+pub fn raycast_near(
+    ents: &[Option<Entity>],
+    broad: &Broad,
+    touched: &[u32],
+    o: Vec3,
+    dir: Vec3,
+    max: f32,
+    ignore: Option<u32>,
+) -> Option<RayHit> {
+    let since = broad.len.min(ents.len());
+    if broad.len == 0 || touched.len() > 256 || ents.len() - since > 256 {
+        return raycast(ents, o, dir, max, ignore);
+    }
+    let mut best = None;
+    for &i in broad.big.iter().chain(&broad.movers) {
+        ray_test(ents, i, o, dir, max, ignore, &mut best);
+    }
+    for i in since..ents.len() {
+        ray_test(ents, i, o, dir, max, ignore, &mut best);
+    }
+    for &i in touched {
+        ray_test(ents, i as usize, o, dir, max, ignore, &mut best);
+    }
+    // Walk the cells under the ray in x, z (a 2D DDA).
+    let c = Broad::CELL;
+    let (mut cx, mut cz) = ((o.x / c).floor() as i32, (o.z / c).floor() as i32);
+    let (sx, sz) = (if dir.x > 0.0 { 1 } else { -1 }, if dir.z > 0.0 { 1 } else { -1 });
+    let first = |p: f32, d: f32, cell: i32| {
+        if d.abs() < 1e-9 { f32::INFINITY } else { ((cell + (d > 0.0) as i32) as f32 * c - p) / d }
+    };
+    let every = |d: f32| if d.abs() < 1e-9 { f32::INFINITY } else { c / d.abs() };
+    let (mut tx, mut tz, dtx, dtz) = (first(o.x, dir.x, cx), first(o.z, dir.z, cz), every(dir.x), every(dir.z));
+    loop {
+        if let Some(v) = broad.cells.get(&(cx, cz)) {
+            for &i in v {
+                ray_test(ents, i, o, dir, max, ignore, &mut best);
+            }
         }
-        // Bounding-sphere reject before the exact test; rejects nearly everything.
-        let oc = e.pos - o;
-        let (r, t) = (b.half.len(), oc.dot(dir));
-        let reach = best.as_ref().map_or(max, |h| h.dist);
-        if t + r < 0.0 || t - r > reach || oc.dot(oc) - t * t > r * r {
-            continue;
+        // A static hit is in a cell it covers: nothing in a cell entered
+        // after the nearest hit can be nearer.
+        let reach = best.as_ref().map_or(max, |h: &RayHit| h.dist);
+        let t_next = tx.min(tz);
+        if !t_next.is_finite() || t_next > reach {
+            break;
         }
-        let inv = e.rot.conj();
-        let (lo, ld) = (inv.rotate(o - e.pos), inv.rotate(dir));
-        let (mut t0, mut t1, mut axis_hit) = (0.0f32, max, usize::MAX);
-        let mut ok = true;
-        for ax in 0..3 {
-            let (od, dd, hh) = (lo.get(ax), ld.get(ax), b.half.get(ax));
-            if dd.abs() < 1e-8 {
-                if od.abs() > hh {
-                    ok = false;
-                    break;
-                }
-                continue;
-            }
-            let (mut ta, mut tb) = ((-hh - od) / dd, (hh - od) / dd);
-            if ta > tb {
-                std::mem::swap(&mut ta, &mut tb);
-            }
-            if ta > t0 {
-                t0 = ta;
-                axis_hit = ax;
-            }
-            t1 = t1.min(tb);
-            if t0 > t1 {
+        if tx < tz {
+            tx += dtx;
+            cx += sx;
+        } else {
+            tz += dtz;
+            cz += sz;
+        }
+    }
+    best
+}
+
+fn ray_test(ents: &[Option<Entity>], i: usize, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>, best: &mut Option<RayHit>) {
+    let Some(Some(e)) = ents.get(i) else { return };
+    let Some(b) = &e.body else { return };
+    if b.sensor || Some(i as u32) == ignore {
+        return;
+    }
+    // Bounding-sphere reject before the exact test; rejects nearly everything.
+    let oc = e.pos - o;
+    let (r, t) = (b.half.len(), oc.dot(dir));
+    let reach = best.as_ref().map_or(max, |h| h.dist);
+    if t + r < 0.0 || t - r > reach || oc.dot(oc) - t * t > r * r {
+        return;
+    }
+    let inv = e.rot.conj();
+    let (lo, ld) = (inv.rotate(o - e.pos), inv.rotate(dir));
+    let (mut t0, mut t1, mut axis_hit) = (0.0f32, max, usize::MAX);
+    let mut ok = true;
+    for ax in 0..3 {
+        let (od, dd, hh) = (lo.get(ax), ld.get(ax), b.half.get(ax));
+        if dd.abs() < 1e-8 {
+            if od.abs() > hh {
                 ok = false;
                 break;
             }
+            continue;
         }
-        if !ok || axis_hit == usize::MAX || best.as_ref().is_some_and(|h| h.dist <= t0) {
-            continue; // miss, or ray starts inside the box
+        let (mut ta, mut tb) = ((-hh - od) / dd, (hh - od) / dd);
+        if ta > tb {
+            std::mem::swap(&mut ta, &mut tb);
         }
-        let mut n = Vec3::ZERO;
-        n.set(axis_hit, -ld.get(axis_hit).signum());
-        best = Some(RayHit { id: i as u32, dist: t0, point: o + dir * t0, normal: e.rot.rotate(n) });
+        if ta > t0 {
+            t0 = ta;
+            axis_hit = ax;
+        }
+        t1 = t1.min(tb);
+        if t0 > t1 {
+            ok = false;
+            break;
+        }
     }
-    best
+    if !ok || axis_hit == usize::MAX || best.as_ref().is_some_and(|h| h.dist <= t0) {
+        return; // miss, or ray starts inside the box
+    }
+    let mut n = Vec3::ZERO;
+    n.set(axis_hit, -ld.get(axis_hit).signum());
+    *best = Some(RayHit { id: i as u32, dist: t0, point: o + dir * t0, normal: e.rot.rotate(n) });
 }
 
 #[cfg(test)]
@@ -587,6 +657,43 @@ mod tests {
 
     fn get(w: &[Option<Entity>], i: usize) -> &Entity {
         w[i].as_ref().unwrap()
+    }
+
+    #[test]
+    fn ray_through_the_grid_matches_testing_everything() {
+        // Statics scattered over a few hundred meters, a moving box, and one
+        // static spawned and one moved after the step: the grid walk finds
+        // the same nearest hit as the brute-force test for rays every way.
+        let mut w = vec![ground()];
+        let mut seed = 7u32;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        for _ in 0..400 {
+            let p = v3(rnd() * 300. - 150., rnd() * 6., rnd() * 300. - 150.);
+            let half = v3(0.5 + rnd() * 8., 0.5 + rnd() * 4., 0.5 + rnd() * 8.);
+            let mut e = ent(p, Kind::Static, half);
+            e.as_mut().unwrap().rot = Quat::axis_angle(Vec3::UP, rnd() * 6.);
+            w.push(e);
+        }
+        w.push(ent(v3(3., 1., 3.), Kind::Dynamic, v3(1., 1., 1.)));
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad);
+        w.push(ent(v3(-20., 1., 0.), Kind::Static, v3(1., 3., 1.)));
+        w[5].as_mut().unwrap().pos = v3(0., 1., -30.);
+        let touched = [5u32];
+        let mut checked = 0;
+        for k in 0..300 {
+            let a = k as f32 * 0.37;
+            let o = v3(rnd() * 200. - 100., 0.5 + rnd() * 5., rnd() * 200. - 100.);
+            let dir = v3(a.cos(), (rnd() - 0.6) * 0.3, a.sin()).norm();
+            let all = raycast(&w, o, dir, 250., None);
+            let near = raycast_near(&w, &broad, &touched, o, dir, 250., None);
+            assert_eq!(all.as_ref().map(|h| h.id), near.as_ref().map(|h| h.id), "ray {k}");
+            checked += all.is_some() as usize;
+        }
+        assert!(checked > 200, "only {checked} rays hit anything");
     }
 
     #[test]
