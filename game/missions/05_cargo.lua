@@ -32,12 +32,13 @@ return {
 
     local dx, dz = city.place("cargo_drop")
     local drop = m:marker(dx, dz)
+    local where = m:on_street(dx, dz)
     m:timer(110)
     m:wait(function()
       if G.vehicle ~= m.car then m:fail("YOU LEFT THE CARGO") end
       local hp = H.get(m.car) or 0
       if hp < MIN then m:fail("THE CARGO IS RUINED") end
-      m:say(string.format("Deliver it and stop. Cargo: %d%%", math.floor((hp - MIN) / (H.VEHICLE_HP - MIN) * 100 + 0.5)))
+      m:say(string.format("Deliver it%s and stop. Cargo: %d%%", where, math.floor((hp - MIN) / (H.VEHICLE_HP - MIN) * 100 + 0.5)))
       return m:near(drop, 6) and math.abs(vehicle.speed(m.car)) < 1
     end)
   end,

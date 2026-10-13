@@ -18,7 +18,7 @@ return {
     for i, n in ipairs(route) do
       local pkg = m:spawn{mesh = "crate", pos = {n[1], 0.6, n[2]}, size = 0.9, color = {0.75, 0.55, 0.3}}
       local marker = m:marker(n[1], n[2], {1, 0.5, 0.1})
-      m:say(string.format("Pick up package %d of %d.", i, #route))
+      m:say(string.format("Pick up package %d of %d%s.", i, #route, m:on_street(n[1], n[2])))
       m:wait(function() return m:near(marker, 5) end)
       m:remove(marker)
       m:remove(pkg)
@@ -29,9 +29,10 @@ return {
 
     local dx, dz = city.place("smuggle_drop")
     local drop = m:marker(dx, dz, {0.2, 1, 0.4})
+    local where = m:on_street(dx, dz)
     m:wait(function()
       local hot = wanted.stars() > 0
-      m:say(hot and "Lose the cops, then make the drop." or "Make the drop.")
+      m:say(hot and "Lose the cops, then make the drop." or ("Make the drop" .. where .. "."))
       return not hot and m:near(drop, 6)
     end)
   end,

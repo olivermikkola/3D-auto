@@ -221,6 +221,61 @@ local function minimap(sw, sh)
   end
 end
 
+-- Where you are, on maps drawn as roads: the street and the part of town,
+-- shown for a few seconds whenever either changes. A new street has to
+-- hold for a moment first, so crossing a junction doesn't flash its name.
+local HOLD, SHOW = 0.75, 5
+local here = {next = 0}
+local function whereabouts(h)
+  local L = G.city
+  if not (L and L.network) then return end
+  local now = engine.time()
+  if now >= here.next then
+    here.next = now + 0.25
+    local x, _, z = U.player_pos()
+    if x then
+      local street, area = require("lib.roadnet").where(x, z)
+      -- Stepping off the road in the same part of town isn't news.
+      if not street and area == here.area then street = here.street end
+      local key = (street or "") .. "|" .. (area or "")
+      if key ~= here.candidate then here.candidate, here.since = key, now end
+      if key ~= here.key and now - here.since >= HOLD then
+        here.key, here.street, here.area, here.at = key, street, area, now
+      end
+    end
+  end
+  if not here.at then return end
+  local a = math.min(1, (here.at + SHOW - now) / 1)
+  if a <= 0 then return end
+  local y = h - (G.vehicle and 150 or 130)
+  if here.street then
+    engine.text(here.street, 22, y + 2, 22, 0, 0, 0, 0.6 * a)
+    engine.text(here.street, 20, y, 22, 1, 1, 1, a)
+  end
+  if here.area then
+    engine.text(here.area, 22, y + 28, 14, 0, 0, 0, 0.6 * a)
+    engine.text(here.area, 20, y + 26, 14, 0.95, 0.85, 0.5, a)
+  end
+end
+M.whereabouts = function() return here.street, here.area end
+
+-- Police radio when the wanted level goes up: where you were seen, by name.
+local radio
+engine.on("wanted_changed", function(level, old)
+  local L = G.city
+  if not (L and L.network) or level <= old then return end
+  local x, _, z = U.player_pos()
+  if not x then return end
+  local street, area = require("lib.roadnet").where(x, z)
+  local at = street and area and (street .. ", " .. area) or street or area
+  if not at then return end
+  local text = old == 0 and ("DISPATCH: All units, suspect seen on " .. at .. ".")
+    or level >= 4 and ("DISPATCH: Every unit to " .. at .. "!")
+    or ("DISPATCH: Suspect now on " .. at .. ". Backup on the way.")
+  if not street then text = text:gsub(" on ", " in ", 1) end
+  radio = {text = text, till = engine.time() + 5}
+end)
+
 engine.on("key", function(k, down) if k == "f1" and down then settings.set("help", not settings.get("help")) end end)
 
 engine.on("frame", function(dt)
@@ -281,6 +336,8 @@ engine.on("frame", function(dt)
     end
   end
 
+  if radio and radio.till > engine.time() then centered(radio.text, 170, 14, 0.6, 0.8, 1) end
+
   -- Big messages, newest last.
   local now, y, keep = engine.time(), h * 0.35, {}
   for _, msg in ipairs(G.messages) do
@@ -293,6 +350,7 @@ engine.on("frame", function(dt)
   G.messages = keep
 
   minimap(w, h)
+  whereabouts(h)
 
   if settings.get("help") then
     local lines = require("lib.input").connected() and

@@ -84,7 +84,7 @@ function R.load(map)
         table.insert(n.links[a], b)
         table.insert(n.links[b], a)
         n.roads[#n.roads + 1] = {a, b}
-        n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, bridge = road.bridge}
+        n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge}
         start = i
       end
     end
@@ -149,6 +149,24 @@ function R.nearest_edge(x, z, walkable)
     if best <= r * CELL then break end
   end
   return be, bi, bx, bz, best
+end
+
+-- Where (x, z) is, for the HUD: the street it's on (nil off the road or on
+-- one without a name; a numbered road is "Road 40") and the part of town,
+-- the nearest of the map's named `areas` (nil if it has none).
+function R.where(x, z)
+  local street
+  local e, _, _, _, d = R.nearest_edge(x, z)
+  if e and d < NET.edges[e].width / 2 + SIDEWALK + 2 then
+    street = NET.edges[e].street
+    if street and street:match("^%d+$") then street = "Road " .. street end
+  end
+  local area, best = nil, math.huge
+  for _, a in ipairs(NET.map.areas or {}) do
+    local d2 = (a[2] - x) ^ 2 + (a[3] - z) ^ 2
+    if d2 < best then area, best = a[1], d2 end
+  end
+  return street, area
 end
 
 -- ---- checking ------------------------------------------------------------------------

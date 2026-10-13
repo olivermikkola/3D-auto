@@ -927,6 +927,11 @@ function C.has(...)
   return true
 end
 
+-- The name of the street at (x, z), on maps drawn as roads; nil elsewhere.
+function C.street(x, z)
+  if NET then return (roadnet.where(x, z)) end
+end
+
 -- Where a named place is, as x, z: an intersection, a block's center, or a
 -- point by one side of a block (see maps/manhattan.lua). Specials are
 -- places too, at their block's center.

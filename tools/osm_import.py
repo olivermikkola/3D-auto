@@ -16,10 +16,11 @@ is flat. Data (c) OpenStreetMap contributors, ODbL: the output carries that.
 import argparse
 import json
 import math
-from pathlib import Path
+import os
 import sys
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,11 +32,15 @@ AREAS = {
     },
 }
 
-OVERPASS = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+OVERPASS = os.environ.get("OVERPASS_URL", "https://maps.mail.ru/osm/tools/overpass/api/interpreter")
 QUERY = """[out:json][timeout:300][bbox:{s},{w},{n},{e}];
 (way["highway"];way["building"];relation["building"];way["natural"];relation["natural"];
  way["waterway"];way["landuse"];relation["landuse"];way["leisure"];way["amenity"];way["railway"];);
 out geom tags;"""
+# Named parts of town, fetched on their own (small) into <area>_places.json.
+PLACES_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
+node["place"~"^(town|suburb|neighbourhood)$"];
+out;"""
 
 # Drivable classes: the game's kind, and width (two-way, one-way).
 ROADS = {
@@ -327,6 +332,13 @@ def main():
                                      headers={"User-Agent": "3D-auto osm_import"})
         print(f"fetching {args.area} from Overpass...", file=sys.stderr)
         cache.write_bytes(urllib.request.urlopen(req, timeout=600).read())
+    places_cache = cache.with_name(cache.stem + "_places.json")
+    if args.fetch or not places_cache.exists():
+        q = PLACES_QUERY.format(s=s - 0.01, w=w - 0.02, n=n + 0.01, e=e + 0.02)
+        req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
+                                     headers={"User-Agent": "3D-auto osm_import"})
+        print(f"fetching {args.area}'s place names from Overpass...", file=sys.stderr)
+        places_cache.write_bytes(urllib.request.urlopen(req, timeout=120).read())
     data = json.loads(cache.read_text())
     stamp = data.get("osm3s", {}).get("timestamp_osm_base", "?")
     els = data["elements"]
@@ -596,6 +608,15 @@ def main():
                     width = 2.5
                 piers.append((width, pts))
 
+    # ---- named areas ----
+    areas = []
+    for el in json.loads(places_cache.read_text())["elements"]:
+        t = el.get("tags", {})
+        if t.get("name"):
+            x, z = P(el["lat"], el["lon"])
+            areas.append((t["name"], x, z, t["place"]))
+    areas.sort(key=lambda d: (d[3], d[0]))
+
     # ---- write ----
     def f(v): return f"{v:.1f}".rstrip("0").rstrip(".")
     def q(s): return json.dumps(s, ensure_ascii=False)
@@ -650,6 +671,11 @@ def main():
     for wd, pts in piers:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
+    L.append("  -- named parts of town: {name, x, z, \"town\", \"suburb\" or \"neighbourhood\"}")
+    L.append("  areas = {")
+    for name, x, z, kind in areas:
+        L.append(f"    {{{q(name)}, {f(x)}, {f(z)}, {q(kind)}}},")
+    L.append("  },")
     L.append("  -- {x0, z0, x1, z1} strips")
     L.append("  cover = {")
     for cls, out in strips.items():
@@ -662,7 +688,7 @@ def main():
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({dropped} too close to a road), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
           + f", {len(pitches)} pitches, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
-          f" {len(piers)} piers; {dest.stat().st_size // 1024} KB")
+          f" {len(piers)} piers, {len(areas)} areas; {dest.stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":
