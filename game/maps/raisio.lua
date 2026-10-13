@@ -27,16 +27,32 @@ return {
     for _, v in ipairs(osm.towers) do t[#t + 1] = v end
     return t
   end)(),
-  -- The parts of town the HUD names: the map data's suburbs (Turku's too,
-  -- past the bay), the center, and Mylly.
+  -- The parts of town the HUD names: the map data's suburbs and
+  -- neighbourhoods (Turku's too, past the bay; the names Google Maps shows),
+  -- the center, and Mylly.
   areas = (function()
-    local t = {{"Mylly", 2700, -2200}}
+    local t, seen = {{"Mylly", 2700, -2200}}, {}
     for _, a in ipairs(osm.areas) do
-      if a[4] == "suburb" then t[#t + 1] = a
-      elseif a[4] == "town" then t[#t + 1] = {"Keskusta", a[2], a[3]} end
+      if a[4] == "town" then t[#t + 1] = {"Raision keskusta", a[2], a[3]}
+      elseif not seen[a[1]] then t[#t + 1], seen[a[1]] = a, true end
     end
     return t
   end)(),
+  -- Roads the map data knows only by number.
+  street_names = {["185"] = "Naantalin pikatie"},
+  -- Buildings that look like themselves: footprints within r of {x, z, r}
+  -- get the look (a wall color, brick or glass, floors; or an air dome h
+  -- meters high).
+  looks = {
+    {772, -1125, 50, {color = {0.42, 0.52, 0.64}, floors = 3}},                  -- Raision kirjasto: blue-grey panels
+    {625, -806, 50, {style = "glass", color = {0.85, 0.92, 0.97}, floors = 3}},  -- Uintikeskus Ulpukka
+    {826, -968, 40, {dome = 18}},                                                -- LähiTapiola Areena, the air dome
+    {945, -990, 60, {color = {0.6, 0.53, 0.47}, floors = 3}},                    -- Tiedonpuiston koulu, grey-brown brick
+    {790, -880, 70, {color = {0.66, 0.34, 0.26}, floors = 2}},                   -- Raseko, Eeronkuja 3: red brick
+    {665, -953, 30, {color = {0.86, 0.77, 0.6}, floors = 3}},                    -- Raseko, Eeronkuja 4: the new tan block
+    {537, -960, 40, {color = {0.66, 0.34, 0.26}, floors = 3}},                   -- Raseko, Purokatu 1
+    {1110, -1160, 60, {color = {0.86, 0.85, 0.8}, floors = 2}},                  -- Raision lukio
+  },
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {170, 700}, -- see across the bay to the shipyard
@@ -64,6 +80,7 @@ return {
     {x = 850, z = -1700, letter = "R", name = "Raisiontori"},
     {x = -2760, z = 1820, letter = "S", name = "the harbor"},
     {x = 1260, z = -1805, letter = "P", name = "Raision poliisiasema"},
+    {x = 1077, z = -1144, letter = "L", name = "Raision lukio"},
   },
 
   places = {

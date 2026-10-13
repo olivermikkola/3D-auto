@@ -287,11 +287,16 @@ lining its roads by district. The bay and the river stop you like a wall, except
 Traffic and police follow the bends, pedestrians walk the pavements from junction to junction,
 and on a town this big the minimap is a radar that follows you. Every test runs on it.
 
-You always know where you are: the street you're on and the part of town (Keskusta, Kerttula,
-Mylly, Vaisaari...) come up in the corner whenever either changes, and when the cops are called
-the dispatcher names them too ("All units, suspect seen on Nesteentie, Kerttula"). The parts of
-town are OpenStreetMap's suburbs, which the importer writes as `areas`, plus a few added by hand;
-`roadnet.where(x, z)` gives the street and area for any spot.
+You always know where you are: the street you're on and the part of town (Raision keskusta,
+Kerttula, Mylly, Nuorikkala...) come up in the corner whenever either changes, and when the cops
+are called the dispatcher names them too ("All units, suspect seen on Nesteentie, Kerttula"). The
+parts of town are OpenStreetMap's suburbs and neighbourhoods, which the importer writes as
+`areas`, plus a few added by hand; `roadnet.where(x, z)` gives the street and area for any spot.
+
+The map data says where a building is, not what it looks like, so the places locals know get a
+hand-picked `looks` entry in `maps/raisio.lua` (a wall color, brick or glass, floors, or an air
+dome): the library, Ulpukka, Raseko, Tiedonpuiston koulu, Raision lukio, and the white dome of
+the LähiTapiola Areena next to them.
 
 ![Raisio's center at street level: apartment blocks along Raisiontie, E18 beyond](docs/raisio-center.png)
 

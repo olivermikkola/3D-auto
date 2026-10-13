@@ -492,7 +492,7 @@ def main():
             if A < 15: continue
             kind = building_kind(t, A)
             h = height_of(t, kind, A)
-            name = t.get("name")
+            name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
             # A church is one nave under one roof, not strips.
             parts = boxes_of(poly)
             if kind == "church":

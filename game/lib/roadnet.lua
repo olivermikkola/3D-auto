@@ -152,14 +152,17 @@ function R.nearest_edge(x, z, walkable)
 end
 
 -- Where (x, z) is, for the HUD: the street it's on (nil off the road or on
--- one without a name; a numbered road is "Road 40") and the part of town,
+-- one without a name; a numbered road is the map's `street_names` for it,
+-- or "Road 40") and the part of town,
 -- the nearest of the map's named `areas` (nil if it has none).
 function R.where(x, z)
   local street
   local e, _, _, _, d = R.nearest_edge(x, z)
   if e and d < NET.edges[e].width / 2 + SIDEWALK + 2 then
     street = NET.edges[e].street
-    if street and street:match("^%d+$") then street = "Road " .. street end
+    if street and street:match("^%d+$") then
+      street = (NET.map.street_names or {})[street] or ("Road " .. street)
+    end
   end
   local area, best = nil, math.huge
   for _, a in ipairs(NET.map.areas or {}) do
@@ -402,6 +405,22 @@ local function church_mesh(h)
     parts[#parts + 1] = {mesh = "cube", pos = {k * 0.17, hw * 0.6, 0}, size = {0.025, hw * 0.25, 1.01}, color = {0.15, 0.15, 0.18},
                          emissive = 1}
   end
+  engine.mesh(name, parts)
+  churches[name] = true
+  return name
+end
+-- An air dome over a pitch: white fabric, a round-ended vault h meters
+-- high over a w x d floor (w the long side), stacked in bands.
+local function dome_mesh(w, d, h)
+  local name = string.format("dome_%g_%g_%g", w, d, h)
+  if churches[name] then return name end
+  local parts, n = {}, 9
+  for j = 0, n - 1 do
+    local c = math.sqrt(1 - ((j + 0.5) / n) ^ 2)
+    parts[#parts + 1] = {mesh = "cube", pos = {0, (j + 0.5) * h / n, 0}, size = {w - d * (1 - c), h / n, d * c},
+                         color = {0.95, 0.95, 0.93}}
+  end
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 0.4, 0}, size = {w - 0.2, 0.8, d + 0.3}, color = {0.4, 0.42, 0.45}}
   engine.mesh(name, parts)
   churches[name] = true
   return name
@@ -863,7 +882,13 @@ function R.build(map, kit)
     add_circle(H, gx, gz - 6, 10)
   end
 
-  -- Surveyed buildings, each a box (or a few), clear of what's placed.
+  -- Surveyed buildings, each a box (or a few), clear of what's placed. The
+  -- map's `looks` restyle the ones near a spot as the real building.
+  local function look_of(x, z)
+    for _, l in ipairs(map.looks or {}) do
+      if (x - l[1]) ^ 2 + (z - l[2]) ^ 2 < l[3] ^ 2 then return l[4] end
+    end
+  end
   local count, yards = 0, {}
   for i, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
@@ -876,7 +901,21 @@ function R.build(map, kit)
       end)
     end
     local rp = (kind == "shop" or kind == "works") and roof_parked(x, z)
-    if ok and rp then
+    local look = ok and look_of(x, z)
+    if look and look.dome then
+      if d > w then w, d, yaw = d, w, yaw + math.pi / 2 end
+      engine.spawn{mesh = dome_mesh(w, d, look.dome), pos = {x, 0, z}, yaw = yaw}
+      kit.static{pos = {x, look.dome * 0.35, z}, yaw = yaw, size = {w - d * 0.3, look.dome * 0.7, d * 0.8}, visible = false,
+                 tag = "building"}
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif look then
+      local style, floors = look.style or "brick", look.floors or math.max(1, math.floor(h / kit.FLOOR + 0.5))
+      kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
+                 size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = look.color, tag = "building"}
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif ok and rp then
       -- A flat roof at the deck's height, asphalt on top with bays marked.
       local h2 = rp.height
       kit.static{mesh = "cube", pos = {x, h2 / 2, z}, yaw = yaw, size = {w, h2, d}, color = {0.78, 0.74, 0.66}, tag = "building"}
