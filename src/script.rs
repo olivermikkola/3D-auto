@@ -8,7 +8,7 @@ use crate::audio::{self, Synth, Wave};
 use crate::engine::{Engine, Entity};
 use crate::math::{Quat, Vec3, v3};
 use crate::mesh::{self, Mesh};
-use crate::physics::{self, Body, Kind};
+use crate::physics::{Body, Kind};
 use crate::save;
 use mlua::{Function, IntoLuaMulti, Lua, LuaOptions, MultiValue, Result, StdLib, Table, Value};
 use std::cell::RefCell;
@@ -320,7 +320,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("exists", |e, _lua, id: u32| Ok(e.get(id).is_some()));
     f!("pos", |e, lua, id: u32| multi(lua, e.get(id).map(|x| (x.pos.x, x.pos.y, x.pos.z))));
     f!("set_pos", |e, _lua, (id, x, y, z): (u32, f32, f32, f32)| {
-        if let Some(en) = e.get_mut(id) {
+        if let Some(en) = e.pose_mut(id) {
             en.pos = v3(x, y, z);
             en.prev = None; // a teleport: don't draw it sliding there
         }
@@ -329,20 +329,20 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("yaw", |e, _lua, id: u32| Ok(e.get(id).map(|x| x.rot.yaw())));
     // Turns about the world up axis, keeping any pitch and roll.
     f!("set_yaw", |e, _lua, (id, y): (u32, f32)| {
-        if let Some(en) = e.get_mut(id) {
+        if let Some(en) = e.pose_mut(id) {
             en.rot = (Quat::axis_angle(Vec3::UP, y - en.rot.yaw()) * en.rot).norm();
         }
         Ok(())
     });
     f!("orient", |e, _lua, (id, yaw, pitch, roll): (u32, f32, Option<f32>, Option<f32>)| {
-        if let Some(en) = e.get_mut(id) {
+        if let Some(en) = e.pose_mut(id) {
             en.rot = Quat::euler(yaw, pitch.unwrap_or(0.0), roll.unwrap_or(0.0));
         }
         Ok(())
     });
     f!("rot", |e, lua, id: u32| multi(lua, e.get(id).map(|x| (x.rot.x, x.rot.y, x.rot.z, x.rot.w))));
     f!("set_rot", |e, _lua, (id, x, y, z, w): (u32, f32, f32, f32, f32)| {
-        if let Some(en) = e.get_mut(id) {
+        if let Some(en) = e.pose_mut(id) {
             en.rot = Quat { x, y, z, w }.norm();
         }
         Ok(())
@@ -426,9 +426,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let m = e.get(id).and_then(|x| x.mesh);
         Ok(m.and_then(|m| e.mesh_ids.iter().find(|(_, i)| **i == m).map(|(n, _)| n.clone())))
     });
-    f!("find", |e, _lua, tag: String| {
-        Ok(e.ents.iter().enumerate().filter(|(_, x)| x.as_ref().is_some_and(|x| x.tag == tag)).map(|(i, _)| i as u32).collect::<Vec<_>>())
-    });
+    f!("find", |e, _lua, tag: String| Ok(e.find(&tag)));
     f!("nearest", |e, lua, (x, y, z, r, tag, ignore): (f32, f32, f32, f32, Option<String>, Option<u32>)| {
         let p = v3(x, y, z);
         let best = e
@@ -444,7 +442,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     f!("raycast", |e, lua, (ox, oy, oz, dx, dy, dz, max, ignore): (f32, f32, f32, f32, f32, f32, Option<f32>, Option<u32>)| {
         let dir = v3(dx, dy, dz).norm();
-        match physics::raycast(&e.ents, v3(ox, oy, oz), dir, max.unwrap_or(1000.0), ignore) {
+        match e.raycast(v3(ox, oy, oz), dir, max.unwrap_or(1000.0), ignore) {
             Some(h) => (h.id, h.dist, h.point.x, h.point.y, h.point.z, h.normal.x, h.normal.y, h.normal.z).into_lua_multi(lua),
             None => Ok(MultiValue::new()),
         }

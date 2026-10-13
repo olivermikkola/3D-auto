@@ -759,10 +759,20 @@ function R.build(map, kit)
     end
   end
 
-  -- Towers and masts: steel lattice, or a sign pylon (Mylly's).
+  -- Towers and masts: steel lattice, a sign pylon (Mylly's), or a brick
+  -- chimney narrowing as it climbs.
   for _, t in ipairs(map.towers or {}) do
     local tx, tz, th, kind = t[1], t[2], t[3], t[4]
-    if kind == "pylon" then
+    if kind == "chimney" then
+      local y, base = 0, math.max(4, th / 12)
+      for _, s in ipairs{{1, 0.4}, {0.85, 0.35}, {0.72, 0.25}} do
+        local sh = th * s[2]
+        engine.spawn{mesh = "cylinder", pos = {tx, y + sh / 2, tz}, size = {base * s[1], sh, base * s[1]}, color = {0.5, 0.24, 0.17}}
+        y = y + sh
+      end
+      engine.spawn{mesh = "cylinder", pos = {tx, th - 1, tz}, size = {base * 0.76, 2, base * 0.76}, color = {0.2, 0.18, 0.17}}
+      kit.static{pos = {tx, th / 2, tz}, size = {base * 0.8, th, base * 0.8}, visible = false, tag = "landmark"}
+    elseif kind == "pylon" then
       kit.static{mesh = "cube", pos = {tx, th / 2, tz}, size = {4, th, 4}, color = {0.13, 0.13, 0.14}, tag = "landmark"}
       engine.spawn{mesh = "cube", pos = {tx, th - 6, tz}, size = {4.2, 10, 4.2}, color = {0.86, 0.3, 0.2}}
       engine.spawn{mesh = "cube", pos = {tx, th - 16, tz}, size = {4.3, 5, 4.3}, color = {0.95, 0.95, 0.95}, glow = 0.6}
@@ -780,6 +790,45 @@ function R.build(map, kit)
       kit.static{pos = {tx, th / 2, tz}, size = {base, th, base}, visible = false, tag = "landmark"}
       engine.spawn{mesh = "cube", pos = {tx, th + 1.5, tz}, size = {0.6, 3, 0.6}, color = {0.85, 0.85, 0.85}}
     end
+  end
+
+  -- Strings of lanterns across a street: poles down both sides, wires
+  -- zigzagging between them. {x0, z0, x1, z1, half width}; one mesh each.
+  for k, sl in ipairs(map.string_lights or {}) do
+    local x0, z0, x1, z1, hw = sl[1], sl[2], sl[3], sl[4], sl[5]
+    local len = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
+    local ux, uz = (x1 - x0) / len, (z1 - z0) / len
+    local mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+    local parts, POLE, WIRE = {}, {0.22, 0.22, 0.26}, 9
+    local function at(t, side) return ux * t - uz * side * hw, uz * t + ux * side * hw end
+    local function wire(ax, az, bx, bz)
+      local l = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      parts[#parts + 1] = {mesh = "cube", pos = {(ax + bx) / 2, WIRE, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
+                           size = {0.04, 0.04, l}, color = POLE}
+      for s = 3, l - 3, 4.5 do
+        local f = s / l
+        parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * f, WIRE - 0.5, az + (bz - az) * f}, size = {0.24, 0.55, 0.24},
+                             color = {0.32, 0.26, 0.5}, emissive = 0.4}
+      end
+    end
+    local GAP = 24
+    for t = -len / 2, len / 2 + 0.1, GAP do
+      for _, side in ipairs{-1, 1} do
+        local px, pz = at(t, side)
+        parts[#parts + 1] = {mesh = "cube", pos = {px, WIRE / 2 + 0.5, pz}, size = {0.3, WIRE + 1, 0.3}, color = POLE}
+      end
+      local ax, az = at(t, -1)
+      local bx, bz = at(t, 1)
+      wire(ax, az, bx, bz)
+      if t + GAP <= len / 2 + 0.1 then -- and an X to the next pair
+        local cx, cz = at(t + GAP, 1)
+        local dx, dz = at(t + GAP, -1)
+        wire(ax, az, cx, cz)
+        wire(bx, bz, dx, dz)
+      end
+    end
+    engine.mesh("string_lights_" .. k, parts)
+    engine.spawn{mesh = "string_lights_" .. k, pos = {mx, 0, mz}}
   end
 
   -- Gantry cranes over a shipyard's dock, and a cruise ship building under them.
@@ -902,7 +951,14 @@ function R.build(map, kit)
     end
     local rp = (kind == "shop" or kind == "works") and roof_parked(x, z)
     local look = ok and look_of(x, z)
-    if look and look.dome then
+    if ok and kind == "round" then -- a silo or a tank: a drum with a darker cap
+      local rh, color = look and look.height or h, look and look.color or {0.8, 0.8, 0.78}
+      kit.static{mesh = "cylinder", pos = {x, rh / 2, z}, size = {w, rh, w}, color = color, tag = "building"}
+      engine.spawn{mesh = "cylinder", pos = {x, rh + 0.3, z}, size = {w * 0.9, 0.6, w * 0.9},
+                   color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}}
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif look and look.dome then
       if d > w then w, d, yaw = d, w, yaw + math.pi / 2 end
       engine.spawn{mesh = dome_mesh(w, d, look.dome), pos = {x, 0, z}, yaw = yaw}
       kit.static{pos = {x, look.dome * 0.35, z}, yaw = yaw, size = {w - d * 0.3, look.dome * 0.7, d * 0.8}, visible = false,

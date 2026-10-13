@@ -296,7 +296,10 @@ parts of town are OpenStreetMap's suburbs and neighbourhoods, which the importer
 The map data says where a building is, not what it looks like, so the places locals know get a
 hand-picked `looks` entry in `maps/raisio.lua` (a wall color, brick or glass, floors, or an air
 dome): the library, Ulpukka, Raseko, Tiedonpuiston koulu, Raision lukio, and the white dome of
-the LähiTapiola Areena next to them.
+the LähiTapiola Areena next to them. Round buildings in the map data become drums (silos, the harbor's
+oil tanks), so Raisio's factory stands up as its silo block and smaller silos, with a hand-placed
+brick chimney (a `chimney` in `towers`). `string_lights` hangs the lanterns across Raisiontie
+through the center.
 
 ![Raisio's center at street level: apartment blocks along Raisiontie, E18 beyond](docs/raisio-center.png)
 
@@ -342,7 +345,14 @@ A bigger city meant more static boxes, and the physics compared every moving bod
 box. It now keeps static bodies in a grid that is only rebuilt when one moves, and still visits
 pairs in the same order, so every test's simulation is bit-for-bit identical. A soak tick is about
 1.1 ms. The Manhattan island (three times the area, a few more cars) costs about a quarter more
-per tick than the old 8 × 8 grid did; most of that is raycasts, which still scan every entity.
+per tick than the old 8 × 8 grid did.
+
+Raycasts walk the same grid now, cell by cell along the ray, and stop past the nearest hit; they
+also test big statics, whatever was moving at the last step, anything spawned since, and statics
+moved since (`set_pos` and friends note them), so they find exactly what testing every entity
+would. On Raisio's 30,000 entities a 5-star chase spent 13–15 ms of each 16.7 ms tick on police
+line-of-sight rays; it's now about 0.2 ms. `engine.find` reads a per-tag index instead of
+scanning.
 
 ## Wanted level and police
 
