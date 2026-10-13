@@ -10,6 +10,7 @@ local SIDEWALK = 3          -- meters of pavement each side of a non-highway roa
 local WIDTH = {highway = 18, main = 13, street = 10}
 local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
+local PATH = {0.36, 0.36, 0.37} -- foot and cycle paths: asphalt, a little paler than the road
 
 local NET -- the loaded network
 -- On a map with terrain, the height of the ground (or water) at x, z; nil on
@@ -94,7 +95,8 @@ function R.load(map)
         n.roads[#n.roads + 1] = {a, b}
         n.edge_of[a .. ">" .. b], n.edge_of[b .. ">" .. a] = #n.edges + 1, #n.edges + 1
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over}
+                                 deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
+                                 sidewalk = road.sidewalk}
         start = i
       end
     end
@@ -605,10 +607,250 @@ local KINDS = {
   industrial = {w = {28, 48}, d = {24, 36}, back = {6, 10}, floors = {0, 0}, gap = {8, 14}, empty = 0.25},
 }
 
+-- ---- what's beside the roads -----------------------------------------------------------
+
+-- Beside a road's asphalt, piece by piece and side by side, one of:
+--   walk    a pavement SIDEWALK wide, a kerb up;
+--   median  between the two halves of a divided road, a kerb up: paving
+--           where it's narrow, grass where it's wide (`w`: its half);
+--   verge   grass behind a kerb, then a foot and cycle path of its own
+--           (the map's paths, drawn as they are);
+--   none    the asphalt's edge, as on most suburban streets.
+-- Side 1 is toward (dz, -dx) going along the road, its left on the map
+-- (x east, z south); side 2 its right. A street has pavements where the
+-- map data says (`sidewalk`: "left", "right", "no"; both by default).
+local KERB = 0.12 -- how far a pavement or median stands above the road
+local PIECE = 6
+local PATH_CELL = 32
+
+local function near_edges(x, z, r, fn)
+  for ci = math.floor((x - r) / CELL), math.floor((x + r) / CELL) do
+    for cj = math.floor((z - r) / CELL), math.floor((z + r) / CELL) do
+      for _, it in ipairs(NET.grid[cell_key(ci, cj)] or {}) do fn(it[1], it[2]) end
+    end
+  end
+end
+
+-- The closest point of segment ab to (x, z): along u = (ux, uz) from it,
+-- across (on r = (uz, -ux)), and how parallel ab runs to u.
+local function beside(x, z, ux, uz, ax, az, bx, bz)
+  local _, cx, cz = dist_seg(x, z, ax, az, bx, bz)
+  local l = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+  if l < 1e-6 then return math.huge, 0, 0 end
+  local along = (cx - x) * ux + (cz - z) * uz
+  local across = (cx - x) * uz - (cz - z) * ux
+  return along, across, math.abs(((bx - ax) * ux + (bz - az) * uz) / l)
+end
+
+local function classify(map)
+  -- The map's foot and cycle paths by PATH_CELL square.
+  local paths = {}
+  for _, p in ipairs(map.paved or {}) do
+    if p.path then
+      for i = 4, #p do
+        local a, b = p[i - 1], p[i]
+        for ci = math.floor(math.min(a[1], b[1]) / PATH_CELL), math.floor(math.max(a[1], b[1]) / PATH_CELL) do
+          for cj = math.floor(math.min(a[2], b[2]) / PATH_CELL), math.floor(math.max(a[2], b[2]) / PATH_CELL) do
+            local k = cell_key(ci, cj)
+            paths[k] = paths[k] or {}
+            table.insert(paths[k], {a[1], a[2], b[1], b[2], p.sidewalk})
+          end
+        end
+      end
+    end
+  end
+  for ei, e in ipairs(NET.edges) do
+    local tagged = e.kind == "highway" and "no" or (e.sidewalk or "both")
+    local default = {(tagged == "both" or tagged == "left") and "walk" or "none",
+                     (tagged == "both" or tagged == "right") and "walk" or "none"}
+    local half = e.width / 2
+    e.pieces = {}
+    for i = 2, #e.pts do
+      local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+      local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      local ux, uz = (bx - ax) / math.max(len, 1e-6), (bz - az) / math.max(len, 1e-6)
+      local n = math.max(1, math.ceil(len / PIECE))
+      for k = 0, n - 1 do
+        local t0, t1 = k / n, (k + 1) / n
+        local mx, mz = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
+        local side = {{kind = default[1]}, {kind = default[2]}}
+        if k % 2 == 1 then -- every other piece goes with the one before (half the looking)
+          side = e.pieces[#e.pieces].side
+        elseif not (e.deck or e.over) then
+          -- A path alongside: a pavement if the map says that's what it is
+          -- and it's about where one would be, else a verge before it.
+          local best = {math.huge, math.huge}
+          local r = half + 16
+          for ci = math.floor((mx - r) / PATH_CELL), math.floor((mx + r) / PATH_CELL) do
+            for cj = math.floor((mz - r) / PATH_CELL), math.floor((mz + r) / PATH_CELL) do
+              for _, sg in ipairs(paths[cell_key(ci, cj)] or {}) do
+                local along, across, par = math.huge, 0, 0
+                if math.min(sg[1], sg[3]) <= mx + r and math.max(sg[1], sg[3]) >= mx - r and math.min(sg[2], sg[4]) <= mz + r
+                   and math.max(sg[2], sg[4]) >= mz - r then
+                  along, across, par = beside(mx, mz, ux, uz, sg[1], sg[2], sg[3], sg[4])
+                end
+                local d = math.abs(across)
+                if math.abs(along) < 3 and par > 0.8 and d > half - 1 and d < half + 15 then
+                  local s = across > 0 and 1 or 2
+                  if d < best[s] then
+                    best[s] = d
+                    side[s] = {kind = (sg[5] and d < half + SIDEWALK + 1.5 and e.kind ~= "highway") and "walk" or "verge"}
+                  end
+                end
+              end
+            end
+          end
+          -- The other half of a divided road (or another road close
+          -- alongside): a median between.
+          best = {math.huge, math.huge}
+          local r2 = half + 24
+          near_edges(mx, mz, r2, function(oj, q)
+            local o = NET.edges[oj]
+            if oj == ei or o.deck or o.over or o.tunnel ~= e.tunnel then return end
+            local a, b = o.pts[q - 1], o.pts[q]
+            if math.min(a[1], b[1]) > mx + r2 or math.max(a[1], b[1]) < mx - r2 or math.min(a[2], b[2]) > mz + r2
+               or math.max(a[2], b[2]) < mz - r2 then
+              return
+            end
+            local along, across, par = beside(mx, mz, ux, uz, a[1], a[2], b[1], b[2])
+            local gap = math.abs(across) - half - o.width / 2
+            if math.abs(along) < 3 and par > 0.9 and gap > -1 and (gap < 3 or (gap < 14 and o.street and o.street == e.street)) then
+              local s = across > 0 and 1 or 2
+              if gap < best[s] then
+                best[s] = gap
+                side[s] = gap > 0.6 and {kind = "median", w = gap / 2} or {kind = "none"}
+              end
+            end
+          end)
+        end
+        e.pieces[#e.pieces + 1] = {ax + (bx - ax) * t0, az + (bz - az) * t0, ax + (bx - ax) * t1, az + (bz - az) * t1, seg = i,
+                                   side = side}
+      end
+    end
+    -- A short run (two pieces or less) between two of another kind goes
+    -- with them.
+    for s = 1, 2 do
+      local k = 2
+      while k < #e.pieces do
+        local before, j = e.pieces[k - 1].side[s], k
+        while j <= #e.pieces and e.pieces[j].side[s].kind == e.pieces[k].side[s].kind do j = j + 1 end
+        if j <= #e.pieces and j - k <= 2 and e.pieces[j].side[s].kind == before.kind and before.kind ~= e.pieces[k].side[s].kind then
+          for m = k, j - 1 do e.pieces[m].side[s] = before end
+        end
+        k = j
+      end
+    end
+  end
+end
+
+-- How far past the asphalt a side reaches, and whether it's a kerb up.
+local function reach(sd)
+  if sd.kind == "walk" then return SIDEWALK, true end
+  if sd.kind == "median" then return math.min(sd.w, SIDEWALK), true end
+  if sd.kind == "verge" then return 1.5, false end
+  return 1, false
+end
+
+-- Where along a piece of edge ei (from a, along u, `len` long) the strip
+-- `o0` to `o1` meters out on side (rx, rz) is off every other road's
+-- asphalt: runs {from, to} of meters along it. Pavements stop where a
+-- side street crosses them.
+local function clear_runs(ei, ax, az, ux, uz, len, rx, rz, o0, o1)
+  local mx, mz = ax + ux * len / 2 + rx * (o0 + o1) / 2, az + uz * len / 2 + rz * (o0 + o1) / 2
+  local e, near = NET.edges[ei], {}
+  local reach = len / 2 + (o1 - o0) / 2 + 1
+  near_edges(mx, mz, reach + 10, function(oj, q)
+    local o = NET.edges[oj]
+    if oj == ei or o.deck or o.over or o.tunnel ~= e.tunnel or e.deck or e.over then return end
+    local a, b, r = o.pts[q - 1], o.pts[q], o.width / 2 + reach
+    if math.min(a[1], b[1]) <= mx + r and math.max(a[1], b[1]) >= mx - r and math.min(a[2], b[2]) <= mz + r
+       and math.max(a[2], b[2]) >= mz - r and dist_seg(mx, mz, a[1], a[2], b[1], b[2]) < r then near[#near + 1] = {a[1], a[2], b[1], b[2], o.width / 2 + 0.2} end
+  end)
+  if #near == 0 then return {{0, len}} end
+  local runs, from = {}, nil
+  local n = math.max(1, math.ceil(len / 0.5))
+  for k = 0, n do
+    local t = len * k / n
+    local clear = true
+    for _, o in ipairs{o0 + 0.3, (o0 + o1) / 2, o1} do
+      local x, z = ax + ux * t + rx * o, az + uz * t + rz * o
+      for _, sg in ipairs(near) do
+        if dist_seg(x, z, sg[1], sg[2], sg[3], sg[4]) < sg[5] then clear = false break end
+      end
+      if not clear then break end
+    end
+    if clear and not from then from = t end
+    if not clear and from then
+      if t - from > 0.4 then runs[#runs + 1] = {from, t - len / n} end
+      from = nil
+    end
+  end
+  if from and len - from > 0.4 then runs[#runs + 1] = {from, len} end
+  return runs
+end
+
+local WALK, KERBSTONE, BRICK, GRASS = {0.44, 0.44, 0.43}, {0.68, 0.67, 0.64}, {0.52, 0.34, 0.29}, {0.32, 0.46, 0.24}
+
+-- Each side of an edge as classify found it: pavements and medians a kerb
+-- up, a kerbstone along the asphalt's edge, verges a kerbstone alone.
+local function kerbs(parts, ei, e)
+  local half = e.width / 2
+  for _, pc in ipairs(e.pieces) do
+    local ax, az, bx, bz = pc[1], pc[2], pc[3], pc[4]
+    local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+    if len > 1e-3 then
+      local ux, uz = (bx - ax) / len, (bz - az) / len
+      for s = 1, 2 do
+        local sd = pc.side[s]
+        if sd.kind ~= "none" then
+          local sign = s == 1 and 1 or -1
+          local rx, rz = sign * uz, -sign * ux
+          local w = sd.kind == "walk" and SIDEWALK or sd.kind == "median" and sd.w or 0
+          local function at(t, o) return {ax + ux * t + rx * o, az + uz * t + rz * o} end
+          for _, run in ipairs(clear_runs(ei, ax, az, ux, uz, len, rx, rz, half, half + math.max(w, 0.3))) do
+            -- One height each end for the slab and its kerbstone: on a
+            -- pavement the ground's (a kerb up already), on a verge the
+            -- road's edge plus a kerb.
+            local o = w > 0 and half + w / 2 or half + 0.1
+            local p0, p1 = at(run[1], o), at(run[2], o)
+            local o2 = w > 0 and half + math.min(w, SIDEWALK) / 2 or o -- within the raised part
+            local g0, g1 = at(run[1], o2), at(run[2], o2)
+            local h0, h1 = GROUND and GROUND(g0[1], g0[2]) or 0, GROUND and GROUND(g1[1], g1[2]) or 0
+            if w == 0 or not GROUND then h0, h1 = h0 + KERB, h1 + KERB end
+            local l, pitch = run[2] - run[1], -math.atan(h1 - h0, run[2] - run[1])
+            local yaw = math.atan(ux, uz)
+            if w > 0 then
+              local color = sd.kind == "walk" and WALK or (w <= 2.5 and BRICK or GRASS)
+              parts[#parts + 1] = {mesh = "cube", pos = {(p0[1] + p1[1]) / 2, (h0 + h1) / 2 + 0.08 - 0.15, (p0[2] + p1[2]) / 2}, yaw = yaw,
+                                   pitch = pitch, size = {w, 0.3, l + 0.1}, color = color, abs = true}
+            end
+            local k0, k1 = at(run[1], half + 0.1), at(run[2], half + 0.1)
+            parts[#parts + 1] = {mesh = "cube", pos = {(k0[1] + k1[1]) / 2, (h0 + h1) / 2 + 0.095 - 0.15, (k0[2] + k1[2]) / 2}, yaw = yaw,
+                                 pitch = pitch, size = {0.2, 0.3, l + 0.1}, color = KERBSTONE, abs = true}
+          end
+        end
+      end
+    end
+  end
+end
+
+-- The side (1 or 2) of edge e at fraction t along its bend i.
+local function side_at(e, i, t, s)
+  local first, n
+  for k, pc in ipairs(e.pieces) do
+    if pc.seg == i then
+      first = first or k
+      n = k - first + 1
+    end
+  end
+  if not first then return {kind = "none"} end
+  return e.pieces[first + math.min(n - 1, math.floor(t * n))].side[s]
+end
+
 -- The roads as the engine's driving surface over the terrain: their graded
--- profiles in pieces of 10 m or less, {ax, az, ay, bx, bz, by, half width,
--- edge},
--- level across out past their pavements. Bridge decks are solid already.
+-- profiles in pieces of PIECE m or less, {ax, az, ay, bx, bz, by, half width,
+-- edge, asphalt half width, side 1 a kerb up?, side 2?}, level across out
+-- past their pavements. Bridge decks are solid already.
 local function road_surface()
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
@@ -619,17 +861,14 @@ local function road_surface()
         local k = math.min(math.floor(u), #hs - 2)
         return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
       end
-      local half = e.width / 2 + (e.kind ~= "highway" and SIDEWALK or 1)
       local s = e.s0
-      for i = 2, #e.pts do
-        local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
-        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
-        local n = math.max(1, math.ceil(len / 10))
-        for k = 0, n - 1 do
-          local t0, t1 = k / n, (k + 1) / n
-          local seg = {ax + (bx - ax) * t0, az + (bz - az) * t0, h(s + len * t0), ax + (bx - ax) * t1, az + (bz - az) * t1, h(s + len * t1), half, ei}
-          table.move(seg, 1, 8, #out + 1, out)
-        end
+      for _, pc in ipairs(e.pieces) do
+        local len = math.sqrt((pc[3] - pc[1]) ^ 2 + (pc[4] - pc[2]) ^ 2)
+        local r1, up1 = reach(pc.side[1])
+        local r2, up2 = reach(pc.side[2])
+        local seg = {pc[1], pc[2], h(s), pc[3], pc[4], h(s + len), e.width / 2 + math.max(r1, r2), ei, e.width / 2,
+                     up1 and 1 or 0, up2 and 1 or 0}
+        table.move(seg, 1, 11, #out + 1, out)
         s = s + len
       end
     end
@@ -645,13 +884,17 @@ local build
 function R.build(map, kit)
   GROUND, BASE = nil, nil
   local t = map.terrain
-  if not t then return build(map, kit) end
+  if not t then
+    classify(map)
+    return build(map, kit)
+  end
   local palette = {LAND}
   for _, name in ipairs(t.classes) do
     for _, c in ipairs(COVER) do if c[1] == name then palette[#palette + 1] = c[2] end end
   end
+  classify(map)
   engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
-                 roads = road_surface()}
+                 roads = road_surface(), kerb = KERB}
   GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
   local spawn = engine.spawn
   engine.spawn = function(e)
@@ -735,7 +978,11 @@ build = function(map, kit)
     local walk = e.kind ~= "highway"
     local hf = GROUND and (e.deck or e.over) and deck_height(e) or nil
     e.height = hf
-    if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true, hf) end
+    if hf then
+      if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true, hf) end
+    else
+      kerbs(parts, ei, e)
+    end
     strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
     dashes(parts, e.pts, 0.09, hf)
     if hf then
@@ -796,8 +1043,9 @@ build = function(map, kit)
                  tag = "wall", abs = true}
     end
   end
-  -- Street lamps along the pavement, alternating sides, once every road is
-  -- known: none on another road's asphalt.
+  -- Street lamps along the pavement (or the verge, or the median),
+  -- alternating sides, once every road is known: none on another road's
+  -- asphalt.
   for ei, e in ipairs(NET.edges) do
     local walk = e.kind ~= "highway"
     if walk then
@@ -808,12 +1056,17 @@ build = function(map, kit)
         local yaw = math.atan(bx - ax, bz - az)
         local rx, rz = math.cos(yaw), -math.sin(yaw)
         for s = 14, len - 14, map.lamp_every or 38 do
-          local t, o = s / len, (e.width / 2 + SIDEWALK - 0.6) * side
+          local t = s / len
+          local sd = e.height and {kind = "walk"} or side_at(e, i, t, side > 0 and 1 or 2)
+          -- (On a verge or a bare edge, by the kerb: pedestrians walk a
+          -- little further out.)
+          local o = e.width / 2 + (sd.kind == "walk" and SIDEWALK - 0.6 or sd.kind == "median" and sd.w or 0.6)
+          o = o * side
           local lx, lz = ax + (bx - ax) * t + rx * o, az + (bz - az) * t + rz * o
           local on_road = H.near(lx, lz, 40, function(it)
             return it.edge and it.edge ~= ei and dist_seg(lx, lz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 1.5
           end)
-          if not on_road and not under_roof(lx, lz) then
+          if not on_road and not under_roof(lx, lz) and (sd.kind ~= "median" or sd.w > 0.5) then
             kit.static{mesh = "lamp", pos = {lx, 0.05 + (e.height and e.height(lx, lz) or (GROUND and GROUND(lx, lz) or 0)), lz},
                        yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true}
           end
@@ -848,12 +1101,70 @@ build = function(map, kit)
   -- Service roads and paved paths: drawn, not driven by the AI.
   if map.paved then
     local ch = chunked()
+    -- A path is left out where it runs under a road's asphalt (the roads
+    -- are a little wider than the real ones, and a path mapped along one's
+    -- edge would show through it).
+    local E = NET.edges
+    -- The stretches of road whose asphalt could reach segment ab of a path
+    -- w wide.
+    local function roads_near(a, b, w)
+      local out, r = {}, 10 + w / 2
+      local mx, mz, l = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+      for ci = math.floor((math.min(a[1], b[1]) - r) / CELL), math.floor((math.max(a[1], b[1]) + r) / CELL) do
+        for cj = math.floor((math.min(a[2], b[2]) - r) / CELL), math.floor((math.max(a[2], b[2]) + r) / CELL) do
+          for _, it in ipairs(NET.grid[cell_key(ci, cj)] or {}) do
+            local o, q = E[it[1]], it[2]
+            if not (o.deck or o.over or o.tunnel) then
+              local c, d = o.pts[q - 1], o.pts[q]
+              if dist_seg(mx, mz, c[1], c[2], d[1], d[2]) < l / 2 + o.width / 2 + w / 2 then
+                out[#out + 1] = {c[1], c[2], d[1], d[2], o.width / 2 + w / 2 - 0.2}
+              end
+            end
+          end
+        end
+      end
+      return out
+    end
     for _, p in ipairs(map.paved) do
-      local pts = {}
-      for i = 3, #p do pts[#pts + 1] = p[i] end
-      local parts = {}
-      strip(parts, pts, p[1], p[2] and 0.047 or 0.044, p[2] and ROAD or {0.56, 0.55, 0.52}, true)
-      for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
+      local runs, cur, last = {}, nil, nil
+      if p.path then
+        for i = 4, #p do
+          local a, b = p[i - 1], p[i]
+          local near = roads_near(a, b, p[1])
+          local n = #near == 0 and 1 or math.max(1, math.ceil(math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2) / 2))
+          for k = i == 4 and 0 or 1, n do
+            local x, z = a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n
+            local under = false
+            for _, sg in ipairs(near) do
+              if dist_seg(x, z, sg[1], sg[2], sg[3], sg[4]) < sg[5] then under = true break end
+            end
+            -- Only the path's own bends and where it goes under or comes
+            -- out make points: a strip has a piece and a disc each.
+            if under then
+              if cur then
+                if last then cur[#cur + 1] = last end
+                if #cur >= 2 then runs[#runs + 1] = cur end
+              end
+              cur, last = nil, nil
+            elseif not cur then
+              cur, last = {{x, z}}, nil
+            elseif k == n then
+              cur[#cur + 1], last = {x, z}, nil
+            else
+              last = {x, z}
+            end
+          end
+        end
+        if cur and #cur >= 2 then runs[#runs + 1] = cur end
+      else
+        runs[1] = {}
+        for i = 3, #p do runs[1][#runs[1] + 1] = p[i] end
+      end
+      for _, pts in ipairs(runs) do
+        local parts = {}
+        strip(parts, pts, p[1], p[2] and 0.047 or 0.044, p[2] and ROAD or p.stone and {0.6, 0.5, 0.45} or PATH, true)
+        for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
+      end
     end
     ch.bake("paved", "cover")
   end

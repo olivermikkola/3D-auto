@@ -60,6 +60,32 @@ ROADS = {
 }
 # Drawn but not driven by the AI: service roads and paved paths.
 PAVED = {"service": 5, "footway": 2.5, "cycleway": 3, "path": 2, "pedestrian": 6}
+# Streets that have pavements unless the map data says otherwise; smaller
+# ones don't (a suburban street in Finland mostly has none, or a separate
+# foot and cycle path, which the map data has as a path of its own).
+WALKED = ("primary", "secondary", "tertiary", "primary_link", "secondary_link", "tertiary_link")
+STONE = ("paving_stones", "sett", "concrete:plates", "unhewn_cobblestone", "cobblestone", "bricks")
+
+
+def sidewalks(t):
+    """Which sides of a way have a pavement of their own, in the way's
+    direction: "both", "left", "right" or "no". A pavement mapped as a
+    separate path counts as none: the path is drawn."""
+    has = {"yes": True, "no": False, "none": False, "separate": False}
+    left = right = None
+    s = t.get("sidewalk")
+    if s in ("both", "yes"): left = right = True
+    elif s in ("no", "none", "separate"): left = right = False
+    elif s == "left": left, right = True, False
+    elif s == "right": left, right = False, True
+    both = has.get(t.get("sidewalk:both"))
+    if both is not None: left = right = both
+    left = has.get(t.get("sidewalk:left"), left)
+    right = has.get(t.get("sidewalk:right"), right)
+    if left is None and right is None:
+        left = right = t["highway"] in WALKED
+    left, right = bool(left), bool(right)
+    return "both" if left and right else "left" if left else "right" if right else "no"
 
 ROW = 4.0  # ground cover is rasterized in strips this tall
 STEP = 10.0  # terrain heights every this many meters
@@ -413,7 +439,7 @@ def main():
             if run[k][0] in is_j or k == len(run) - 1:
                 seg = run[start:k + 1]
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "deck": deck, "hw": hw})
+                              "name": name, "bridge": bridge, "deck": deck, "hw": hw, "walk": sidewalks(t)})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -497,7 +523,14 @@ def main():
         if hw == "service" and t.get("service") in ("driveway",): continue
         pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 1.0)
         pts = [p for p in pts if inside(*p)]
-        if len(pts) >= 2: paved.append((PAVED[hw], hw == "service", pts))
+        if len(pts) >= 2:
+            # How it looks: a foot or cycle path, one mapped as a street's
+            # pavement, paving stones.
+            look = []
+            if hw != "service": look.append("path = true")
+            if t.get("footway") == "sidewalk" or t.get("cycleway") == "sidewalk": look.append("sidewalk = true")
+            if t.get("surface") in STONE: look.append("stone = true")
+            paved.append((PAVED[hw], hw == "service", pts, look))
 
     # ---- buildings ----
     road_grid = Grid(50)
@@ -779,16 +812,19 @@ def main():
         bits = [q(names[ed["a"]])] + [f"{{{f(p[0])}, {f(p[1])}}}" for p in ed["pts"][1:-1]] + [q(names[ed["b"]])]
         attrs = f"kind = {q(ed['kind'])}, width = {ed['width']}"
         if ed["name"]: attrs = f"name = {q(ed['name'])}, " + attrs
+        if ed["kind"] != "highway" and ed["walk"] != "both": attrs += f", sidewalk = {q(ed['walk'])}"
         if ed["bridge"]: attrs += ", bridge = true"
         if ed.get("deck") and cfg.get("dem"): attrs += ", deck = true"
         if ed.get("heights") and not ed.get("deck"):
             attrs += ", heights = {" + ", ".join(f"{h:.2f}".rstrip("0").rstrip(".") for h in ed["heights"]) + "}"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")
     L.append("  },")
-    L.append("  -- {width, service road?, points...}")
+    L.append("  -- {width, service road?, points..., path = a foot or cycle path?, sidewalk = a street's pavement?,")
+    L.append("  -- stone = paving stones?}")
     L.append("  paved = {")
-    for wd, svc, pts in paved:
-        L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    for wd, svc, pts, look in paved:
+        L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
+                 + "".join(", " + a for a in look) + "},")
     L.append("  },")
     L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or nil}: yaw turns the box's w side off the x axis")
     L.append("  footprints = {")

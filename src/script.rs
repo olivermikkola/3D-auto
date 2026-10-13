@@ -450,7 +450,9 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
 
     // The ground as a heightfield: {x0, z0, step, w, d, heights = {w * d
     // numbers, row by row toward +z}, colors = {r, g, b per height}?, roads =
-    // {ax, az, ay, bx, bz, by, half width, road number, ...}?}; nil removes it.
+    // {ax, az, ay, bx, bz, by, half width, road number, asphalt half width,
+    // side 0 raised (0 or 1), side 1 raised, ...}?, kerb = meters?}; nil
+    // removes it.
     f!("terrain", |e, _lua, t: Option<Table>| {
         let Some(t) = t else {
             e.set_terrain(None, None);
@@ -499,19 +501,33 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 Some(v.chunks(3).map(|c| [c[0], c[1], c[2]]).collect())
             }
         };
-        // Roads over it, level across: {ax, az, ay, bx, bz, by, half width,
-        // which road, ...}.
+        // Roads over it, level across, raised past the asphalt on a side
+        // with a pavement: {ax, az, ay, bx, bz, by, half width, which road,
+        // asphalt half width, side 0 raised, side 1 raised, ...}.
         let roads = match t.get::<Option<Table>>("roads")? {
             None => Vec::new(),
             Some(r) => {
                 let v: Vec<f32> = r.sequence_values().collect::<Result<_>>()?;
-                if !v.len().is_multiple_of(8) {
-                    return Err(mlua::Error::runtime("terrain roads come in eights: ax, az, ay, bx, bz, by, half width, road"));
+                if !v.len().is_multiple_of(11) {
+                    return Err(mlua::Error::runtime(
+                        "terrain roads come in elevens: ax, az, ay, bx, bz, by, half width, road, asphalt half width, raised, raised",
+                    ));
                 }
-                v.chunks(8).map(|c| RoadSeg { a: v3(c[0], c[2], c[1]), b: v3(c[3], c[5], c[4]), half: c[6], road: c[7] as u32 }).collect()
+                v.chunks(11)
+                    .map(|c| RoadSeg {
+                        a: v3(c[0], c[2], c[1]),
+                        b: v3(c[3], c[5], c[4]),
+                        half: c[6],
+                        road: c[7] as u32,
+                        carriage: c[8],
+                        raised: [c[9] != 0.0, c[10] != 0.0],
+                    })
+                    .collect()
             }
         };
-        let terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights).with_roads(roads);
+        let mut terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights);
+        terrain.kerb = t.get::<Option<f32>>("kerb")?.unwrap_or(0.0);
+        let terrain = terrain.with_roads(roads);
         e.set_terrain(Some(terrain), colors);
         Ok(())
     });

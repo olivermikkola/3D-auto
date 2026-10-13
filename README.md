@@ -132,7 +132,8 @@ engine.volume([master]) -> master
 
 -- world
 engine.terrain{x0=, z0=, step=, w=, d=, heights={w*d, row by row toward +z}, colors={r,g,b per height},
-               roads={ax,az,ay, bx,bz,by, half width, road number, ...}}   -- roads: see "Terrain"
+               roads={ax,az,ay, bx,bz,by, half width, road number, asphalt half width,
+                      side 1 raised (0/1), side 2 raised, ...}, kerb=meters}  -- roads: see "Terrain"
 engine.terrain(nil)                            -- the ground as a heightfield; nil removes it
 engine.terrain_height(x, z) -> h, nx,ny,nz     -- nothing off the grid
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
@@ -174,6 +175,11 @@ both, and where different roads overlap, around junctions, they're averaged, nea
 counting more, so the surface leans from one to the other without a step. Collisions, rays and
 `engine.terrain_height` all see the roads. The drawn grid stays under them, except where a road runs
 below it (in a sag, or down into a tunnel): there the grid comes down to meet the road.
+
+Past `asphalt half width`, a side marked raised (a pavement or a median) stands `kerb` meters
+higher, out to `half width`. Side 1 is toward (dz, -dx), (dx, dz) being the piece's direction. A
+point on any road's asphalt is never raised, so where one road's pavement meets a side street,
+the side street wins.
 
 ## Lighting and day/night
 
@@ -331,6 +337,27 @@ running straight from one end to the other over whatever is below, with railings
 where they don't stand on another road; drive under one and you're on the ground below. Cars,
 pedestrians, police, pickups and shops spawn at the ground's height (`util.ground(x, z)`, 0 on
 the flat maps).
+
+Each road side is built the way Finnish streets are, piece by piece (`classify` in
+`lib/roadnet.lua`):
+
+- **Pavement.** Main streets get a raised pavement with a granite kerbstone. Smaller streets get
+  one only where the map data's `sidewalk` tag says so, or where a path tagged as a street's
+  pavement runs alongside. The importer passes the tag on (`sidewalk = "no"`, `"left"`,
+  `"right"`).
+- **Grass verge.** Where a separate foot and cycle path (kevyen liikenteen väylä) runs alongside
+  instead, the road gets a kerbstone and grass, and the path is drawn where it really is.
+- **Median.** Between the two halves of a divided road like Raisiontie or Nesteentie, there's a
+  raised median: red paving where it's narrow, grass where it's wide.
+
+Pavements and medians stop where a side street crosses them. Paths are asphalt, or paving stones
+where the map data says so, and are left out where they'd run under a road (the game's roads are
+a little wider than the real ones). Lamps stand on the pavement, in the verge or on the median.
+
+The kerb is real, not just drawn. Each piece of driving surface the game hands the engine says
+how wide its asphalt is and which sides are raised. The engine lifts a raised side by the
+terrain's `kerb` (12 cm), except where it lies on any road's asphalt, so a pavement never makes
+a step in a crossing. Cars bump up onto pavements, and people stand on them.
 
 **Raisio 2030** (`MAP=raisio2030`, or RAISIO 2030 under City in the pause menu) is the town as
 it will be once the E18 works under the centre are done (Väylävirasto's "E18 Raision keskustan
