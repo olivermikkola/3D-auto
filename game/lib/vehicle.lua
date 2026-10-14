@@ -12,11 +12,12 @@ M.tags = {car = true, cop = true, pasi = true}
 -- y is the road's height there when it isn't the ground's (on a bridge,
 -- in a tunnel).
 function M.spawn(x, z, yaw, color_index, mesh, tag, y)
+  local n = color_index or math.random(8)
   local is_pasi = mesh == "pasi" or tag == "pasi"
   local size = is_pasi and {2.9, 2.5, 7.2} or {2.0, 1.4, 4.4}
   local mass = is_pasi and 13500 or 1200
   local step = is_pasi and 0.65 or 0.35
-  local id_mesh = mesh or (is_pasi and "pasi" or ("car" .. (color_index or math.random(8))))
+  local id_mesh = mesh or (is_pasi and "pasi" or ("car" .. n))
   local id = engine.spawn{mesh = id_mesh, pos = {x, (is_pasi and 1.25 or 0.75) + (y or U.ground(x, z)), z},
                           yaw = yaw or 0, size = size, body = "dynamic", mass = mass, friction = 0,
                           step = step, tag = tag or (is_pasi and "pasi" or "car")}
