@@ -227,10 +227,17 @@ function R.check(map)
       end
     end
   end
-  -- Everything reachable from the first junction.
+  -- Everything reachable from the first junction (connected road network).
   local seen, queue = {[1] = true}, {1}
+  local adj = {}
+  for _, r in ipairs(NET.roads) do
+    adj[r[1]] = adj[r[1]] or {}
+    adj[r[2]] = adj[r[2]] or {}
+    adj[r[1]][r[2]] = true
+    adj[r[2]][r[1]] = true
+  end
   for _, q in ipairs(queue) do
-    for _, nb in ipairs(NET.links[q]) do
+    for nb in pairs(adj[q] or {}) do
       if not seen[nb] then seen[nb] = true; queue[#queue + 1] = nb end
     end
   end
