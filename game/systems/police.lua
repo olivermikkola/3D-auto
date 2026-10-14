@@ -146,9 +146,14 @@ end
 local function spawn_cop()
   local px, _, pz = U.player_pos()
   local x, z, yaw, launch, y
-  -- Backup (never the first unit, which comes from close by) may come
-  -- from a police station in reach.
-  if px and P.count() >= 1 then
+  local stars = wanted.stars()
+  local is_military_pasi = (stars >= 5 and math.random() < 0.6)
+
+  -- 5-star military response: deploy from Pansio naval garrison gate
+  if is_military_pasi then
+    x, z, yaw = -348.4, 2583.1, 1.85
+    launch = 45
+  elseif px and P.count() >= 1 then
     local sx, sz, syaw = station_exit(px, pz)
     if sx and math.random() < 0.5 then -- rolled for only with a station in reach
       x, z, yaw = sx, sz, syaw
@@ -157,9 +162,10 @@ local function spawn_cop()
   end
   if not x then x, z, yaw, y, launch = spawn_point() end
   if not x then return end
-  local id = vehicle.spawn(x, z, yaw, nil, "cop", "cop", y)
+  local mesh = is_military_pasi and "pasi" or "cop"
+  local id = vehicle.spawn(x, z, yaw, nil, mesh, "cop", y)
   vehicle.headlights(id)
-  local c = {id = id, stuck = 0, reverse = 0, launch = launch}
+  local c = {id = id, stuck = 0, reverse = 0, launch = launch, is_pasi = is_military_pasi}
   c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
   c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}
   c.siren = engine.play("siren", {loop = true, follow = id})

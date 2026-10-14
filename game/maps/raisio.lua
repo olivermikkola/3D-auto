@@ -163,6 +163,9 @@ return {
     smuggle = {route = {"Kytökuja / Sarkamaantie", "Krookilantie / Mäntykankareenkatu", "Hahdenniementie / Nesteentie",
                         "Liponkuja / Ounelantie"}},
     smuggle_drop = {junction = "Raisiontie / Teräskatu"},
+    heist_start = {at = {-320, 2560}},
+    heist_pasi = {at = {-880, 2820}},
+    heist_drop = {junction = "Kuloistentie / Sarkamaantie"},
   },
 
   pickups = {
