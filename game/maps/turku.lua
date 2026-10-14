@@ -66,7 +66,10 @@ return {
     target_start = {node = {2, 5}},
     smuggle = {route = {{1, 6}, {6, 6}, {6, 1}, {1, 1}}},
     smuggle_drop = {node = {5, 2}},
-    stunt = {at = {-600, 150}},
+    stunt = {node = {1, 6}},
+    castle = {node = {0, 7}},
+    speedboat_dock = {node = {0, 6}},
+    archipelago_drop = {node = {0, 1}},
   },
 
   pickups = {

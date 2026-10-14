@@ -190,6 +190,39 @@ function P.build()
     {mesh = "cube", pos = {0, 0.5, 11.2}, size = {3.6, 1.2, 3.2}, color = boat_hull},
   }
   engine.mesh("riverboat", riverboat_parts)
+
+  -- Buster XXL Aluminum Speedboat: Finnish offshore planing motorboat
+  local hull_grey, interior, windshield = {0.68, 0.7, 0.72}, {0.25, 0.28, 0.3}, {0.15, 0.22, 0.3}
+  local boat_parts = {
+    -- V-shaped marine aluminum hull
+    {mesh = "cube", pos = {0, 0.1, 0}, size = {2.4, 0.8, 6.2}, color = hull_grey},
+    -- Pointed bow wedge
+    {mesh = "cube", pos = {0, 0.3, 2.7}, size = {2.1, 0.7, 1.2}, color = hull_grey},
+    -- Cockpit tub / deck
+    {mesh = "cube", pos = {0, 0.45, -0.4}, size = {2.1, 0.5, 4.4}, color = interior},
+    -- Wrap-around curved windscreen
+    {mesh = "cube", pos = {0, 0.85, 0.8}, size = {2.15, 0.45, 0.25}, color = windshield},
+    -- Outboard motor on stern (Yamaha 150hp style)
+    {mesh = "cube", pos = {0, 0.5, -3.2}, size = {0.55, 0.9, 0.7}, color = {0.12, 0.12, 0.15}},
+    {mesh = "cylinder", pos = {0, -0.05, -3.4}, size = {0.2, 0.5, 0.2}, color = {0.2, 0.2, 0.2}}, -- skeg / propeller shaft
+  }
+  engine.mesh("speedboat", boat_parts)
+
+  -- Turun linna (Turku Castle) keep tower
+  local castle_stone, roof_copper = {0.72, 0.7, 0.68}, {0.22, 0.48, 0.38}
+  local castle_parts = {
+    -- Main keep rectangular stone block
+    {mesh = "cube", pos = {0, 8.0, 0}, size = {28.0, 16.0, 42.0}, color = castle_stone},
+    -- West gatehouse tower
+    {mesh = "cube", pos = {-12.0, 11.0, 18.0}, size = {10.0, 22.0, 10.0}, color = castle_stone},
+    -- East keep tower
+    {mesh = "cube", pos = {12.0, 11.0, -18.0}, size = {10.0, 22.0, 10.0}, color = castle_stone},
+    -- Weathered green copper hipped roofs
+    {mesh = "cube", pos = {0, 17.5, 0}, size = {26.0, 3.0, 40.0}, color = roof_copper},
+    {mesh = "cube", pos = {-12.0, 23.0, 18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
+    {mesh = "cube", pos = {12.0, 23.0, -18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
+  }
+  engine.mesh("turun_linna", castle_parts)
 end
 
 return P

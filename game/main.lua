@@ -123,6 +123,7 @@ if os.getenv("FOLI_TEST") then require "test.foli_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
 if os.getenv("AURAJOKI_TEST") then require "test.aurajoki_probe" end
+if os.getenv("HEIST_TEST") then require "test.heist_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

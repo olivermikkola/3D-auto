@@ -17,7 +17,7 @@ class TurkuCorridorTests(unittest.TestCase):
         res = subprocess.run([str(BINARY), "game", "--headless", "20"], cwd=ROOT, env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("map=turku", res.stdout)
-        self.assertIn("loaded 9 missions", res.stdout)
+        self.assertIn("loaded 10 missions", res.stdout)
 
     def test_cross_city_transfer_probe(self):
         env = os.environ.copy()
