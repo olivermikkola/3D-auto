@@ -43,6 +43,25 @@ AREAS = {
         # Maanmittauslaitos 10 m elevation sheets covering it (see tools/dem.py).
         "dem": ["L3322", "L3324", "L3411", "L3413"],
     },
+    "turku": {
+        # First regional slice: harbor/downtown through the public
+        # Ylioppilaskyla and Kupittaa comparison districts. This rectangle
+        # is not a claim to contain the entire Turku municipality.
+        "bbox": (60.425, 22.21, 60.480, 22.325),
+        "origin": (60.45150, 22.27000),
+        "first": "Aninkaistenkatu / Eerikinkatu",
+        "coverage_kind": "regional_first_slice",
+        "terrain_source": {
+            "dataset": "MML Elevation model 2 m",
+            "resolution_m": 2,
+            "crs": "EPSG:3067",
+            "vertical_datum": "N2000",
+            "license": "CC BY 4.0",
+        },
+        # A real terrain input is required before this area can be generated.
+        # No flat-terrain fallback or borrowed Raisio sheet list.
+        "require_terrain": True,
+    },
 }
 
 # Overpass servers, tried in turn (OVERPASS_URL first, if set).
@@ -391,8 +410,35 @@ def main():
     ap.add_argument("--fetch", action="store_true", help="download fresh data from Overpass first")
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--terrain", nargs="+", type=Path,
+                    help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
     cfg = AREAS[args.area]
+    if cfg.get("require_terrain") and not args.terrain:
+        ap.error(f"{args.area} requires verified 2 m terrain; no flat-map fallback is permitted")
+    elevation = None
+    if args.terrain:
+        for path in args.terrain:
+            if not path.is_file():
+                ap.error(f"terrain file not found: {path}")
+        import dem
+        try:
+            elevation = dem.Elevation.from_paths(
+                args.terrain, expected_resolution=cfg.get("terrain_source", {}).get("resolution_m", 2))
+        except (OSError, ValueError, KeyError) as error:
+            ap.error(f"invalid terrain input: {error}")
+        # Reject incomplete source coverage before fetching or writing OSM data.
+        # Sample the full planned box, not only district anchor points.
+        import dem
+        south, west, north, east = cfg["bbox"]
+        try:
+            for row in range(17):
+                lat = south + (north - south) * row / 16
+                for col in range(17):
+                    lon = west + (east - west) * col / 16
+                    elevation(*dem.tm35(lat, lon))
+        except ValueError as error:
+            ap.error(f"terrain coverage invalid: {error}")
     cache = args.cache or ROOT / "tools" / "osm_cache" / f"{args.area}.json"
     dest = args.out or ROOT / "game" / "maps" / f"{args.area}_osm.lua"
     s, w, n, e = cfg["bbox"]
@@ -771,9 +817,9 @@ def main():
 
     # ---- terrain: real heights, with the roads graded into them ----
     terrain = None
-    if cfg.get("dem"):
+    if elevation is not None or cfg.get("dem"):
         import dem
-        Z = dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
+        Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
         def ground(x, z):
             return Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
         # Each junction's height, then each road's profile: the ground along
