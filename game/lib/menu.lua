@@ -9,6 +9,7 @@
 -- menu.show(name). An item is {label, act = fn} and may have value = fn
 -- returning the text (and an optional {r,g,b}) shown on its right.
 local settings = require "lib.settings"
+local map_viewer = require "lib.map_viewer"
 
 local M = {open = false, page = "main", sel = 1}
 
@@ -18,10 +19,12 @@ local pages = {
     items = {
       {label = "RESUME", act = function() M.close() end},
       {label = "SETTINGS", act = function() M.go("settings") end},
+      {label = "MAP", act = function() M.go("map") end},
       {label = "CITY", act = function() M.go("city") end, value = function() return string.upper(require("lib.city").map().name) end},
       {label = "QUIT GAME", act = function() engine.quit() end},
     },
   },
+  map = {title = "MAP", back = "main", items = {}},
   city = {title = "CITY", back = "main", items = {}},
   settings = {title = "SETTINGS", back = "main", items = {}},
 }
@@ -55,11 +58,13 @@ function M.add_page(name, page) pages[name] = page end
 
 function M.go(page)
   M.page, M.sel = page, 1
+  if page == "map" then map_viewer.init() end
 end
 
 function M.show(page)
   if M.open then return end
   M.open, M.page, M.sel = true, type(page) == "string" and page or "main", 1
+  if M.page == "map" then map_viewer.init() end
   engine.pause(true)
   engine.grab_mouse(false)
   click()
@@ -142,6 +147,11 @@ engine.on("frame", function()
   last_cursor = {cx, cy}
 
   local sw, sh = engine.screen()
+  if M.page == "map" then
+    map_viewer.draw(sw, sh)
+    return
+  end
+
   engine.rect(0, 0, sw, sh, 0, 0, 0, 0.45)
   local L = M.layout()
   engine.rect(L.x, L.y, L.w, L.h, 0.05, 0.06, 0.08, 0.9)
@@ -177,12 +187,35 @@ local adjust = {left = -1, a = -1, right = 1, d = 1}
 
 engine.on("key", function(k, down)
   if k == "escape" and down then M.show() end
+  if k == "m" and down then
+    if M.open and M.page == "map" then M.close()
+    else M.show("map") end
+  end
 end)
 
 engine.on("minimized", M.show)
 
 engine.on("menu_key", function(k, down)
   if not down or not M.open then return end
+  if M.page == "map" then
+    if k == "escape" or k == "m" then
+      M.back()
+      click()
+    elseif k == "mouse1" then
+      local cx, cy = engine.cursor()
+      local sw, _ = engine.screen()
+      if cx >= sw - 120 and cy <= 45 then
+        M.back()
+        click()
+      else
+        map_viewer.mouse_down(cx, cy)
+      end
+    else
+      map_viewer.key(k)
+    end
+    return
+  end
+
   if k == "escape" then
     M.back()
     if M.open then click() end
