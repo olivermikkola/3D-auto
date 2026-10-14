@@ -223,6 +223,31 @@ function P.build()
     {mesh = "cube", pos = {12.0, 23.0, -18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
   }
   engine.mesh("turun_linna", castle_parts)
+
+  -- Suomen Joutsen: Historic three-masted full-rigged museum ship at Forum Marinum
+  local joutsen_hull, teak, mast_color = {0.96, 0.96, 0.96}, {0.52, 0.40, 0.28}, {0.88, 0.85, 0.75}
+  local joutsen_parts = {
+    -- Main white steel hull
+    {mesh = "cube", pos = {0, 1.2, 0}, size = {7.6, 2.8, 54.0}, color = joutsen_hull},
+    -- Raised forecastle and poop deck
+    {mesh = "cube", pos = {0, 3.0, 20.0}, size = {7.2, 1.2, 12.0}, color = joutsen_hull},
+    {mesh = "cube", pos = {0, 3.0, -20.0}, size = {7.2, 1.2, 12.0}, color = joutsen_hull},
+    -- Teak main deck
+    {mesh = "cube", pos = {0, 2.45, 0}, size = {7.0, 0.1, 48.0}, color = teak},
+    -- Fore-mast, Main-mast, Mizzen-mast
+    {mesh = "cylinder", pos = {0, 14.0, 14.0}, size = {0.45, 24.0, 0.45}, color = mast_color},
+    {mesh = "cylinder", pos = {0, 15.5, -1.0}, size = {0.45, 27.0, 0.45}, color = mast_color},
+    {mesh = "cylinder", pos = {0, 13.5, -16.0}, size = {0.42, 23.0, 0.42}, color = mast_color},
+    -- Horizontal yardarms across masts
+    {mesh = "cylinder", axis = "x", pos = {0, 12.0, 14.0}, size = {14.0, 0.2, 0.2}, color = mast_color},
+    {mesh = "cylinder", axis = "x", pos = {0, 18.0, 14.0}, size = {10.0, 0.16, 0.16}, color = mast_color},
+    {mesh = "cylinder", axis = "x", pos = {0, 13.5, -1.0}, size = {16.0, 0.2, 0.2}, color = mast_color},
+    {mesh = "cylinder", axis = "x", pos = {0, 20.0, -1.0}, size = {11.0, 0.16, 0.16}, color = mast_color},
+    {mesh = "cylinder", axis = "x", pos = {0, 11.5, -16.0}, size = {13.0, 0.2, 0.2}, color = mast_color},
+    -- Bowsprit
+    {mesh = "cylinder", pos = {0, 3.8, 32.0}, size = {0.3, 9.0, 0.3}, color = mast_color},
+  }
+  engine.mesh("suomen_joutsen", joutsen_parts)
 end
 
 return P
