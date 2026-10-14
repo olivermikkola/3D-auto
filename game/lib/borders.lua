@@ -185,35 +185,52 @@ function B.build(map)
 
   -- 3. Border road crossings with roadworks/blockades
   for _, c in ipairs(map.border_crossings or {}) do
+    B.crossings[#B.crossings + 1] = {
+      pos = c.pos,
+      target_map = c.target_map or "turku",
+      target_pos = c.target_pos or {0, 0},
+      name = c.name,
+    }
     local cx, cz = c.pos[1], c.pos[2]
     local cy = U.ground(cx, cz)
     local cyaw = c.yaw or 0
     local rx, rz = U.right(cyaw)
     local width = c.kind == "highway" and 12 or 9
 
-    -- Place red/white jersey barriers across the road corridor
-    local count = math.ceil(width / 2.2)
+    -- Place roadside boundary markers and warning cones (leaving drivable passing lane)
+    local count = math.ceil(width / 3.0)
     for i = 0, count - 1 do
-      local offset = (i - (count - 1) / 2) * 2.2
+      local offset = (i - (count - 1) / 2) * 2.8
       engine.spawn{
         mesh = "jersey_barrier",
         pos = {cx + rx * offset, cy, cz + rz * offset},
-        yaw = cyaw,
         tag = "barrier",
         body = "static",
       }
     end
-    -- Warning cones and flashing hazard sign
+  end
+
+  for _, c in ipairs(map.crossings or {}) do
+    B.crossings[#B.crossings + 1] = {
+      pos = c.pos,
+      target_map = c.target_map or "raisio",
+      target_pos = c.target_pos or {0, 0},
+      name = c.name,
+    }
+    local cx, cz = c.pos[1], c.pos[2]
+    local cy = U.ground(cx, cz)
+    local cyaw = c.yaw or 0
+    local rx, rz = U.right(cyaw)
     engine.spawn{
-      mesh = "cone",
-      pos = {cx - rx * 2.5, cy, cz - rz * 2.5},
-      tag = "prop",
+      mesh = "jersey_barrier",
+      pos = {cx + rx * 2.5, cy, cz + rz * 2.5},
+      tag = "barrier",
       body = "static",
     }
     engine.spawn{
-      mesh = "cone",
-      pos = {cx + rx * 2.5, cy, cz + rz * 2.5},
-      tag = "prop",
+      mesh = "jersey_barrier",
+      pos = {cx - rx * 2.5, cy, cz - rz * 2.5},
+      tag = "barrier",
       body = "static",
     }
   end
@@ -222,12 +239,9 @@ end
 -- Tick checks: wanted level alert on crossing military perimeter & gate boom barrier interaction
 local warned = false
 local last_check = 0
+local transitioning = false
 
 engine.on("tick", function()
-  local now = engine.time()
-  if now - last_check < 0.25 then return end
-  last_check = now
-
   local px, py, pz = U.player_pos()
   if not px then return end
 
@@ -243,6 +257,31 @@ engine.on("tick", function()
       end
     else
       warned = false
+    end
+  end
+
+  local now = engine.time()
+  if now - last_check < 0.25 then return end
+  last_check = now
+
+  -- 4. Check seamless cross-border highway transitions
+  if not transitioning and (B.crossings and #B.crossings > 0) then
+    for _, cr in ipairs(B.crossings) do
+      if U.dist2d(px, pz, cr.pos[1], cr.pos[2]) < 12 then
+        transitioning = true
+        U.message("ENTERING " .. (cr.target_map == "turku" and "TURKU" or "RAISIO") .. "...", 3)
+        -- Save player transition state: car/on-foot, wanted level, weapons, cash
+        local v_id = G.vehicle
+        local state = {
+          target_pos = cr.target_pos or {0, 0},
+          wanted_stars = wanted.stars(),
+          in_vehicle = (v_id ~= nil),
+        }
+        engine.save("cross_city_transfer", state)
+        local city = require "lib.city"
+        city.choose(cr.target_map)
+        return
+      end
     end
   end
 

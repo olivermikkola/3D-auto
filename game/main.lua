@@ -52,7 +52,24 @@ engine.on("init", function()
   local lx, lz = city.place("lot")
   for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0) end
   G.spawn = {lx - 6, 1.2 + U.ground(lx - 6, lz - 15), lz - 15}
-  player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
+
+  local transfer = engine.load("cross_city_transfer")
+  if transfer then
+    engine.save("cross_city_transfer", nil)
+    local tx, tz = transfer.target_pos[1], transfer.target_pos[2]
+    G.spawn = {tx, 1.2 + U.ground(tx, tz), tz}
+    player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
+    if transfer.in_vehicle then
+      local v_id = vehicle.spawn(tx, tz, 0)
+      G.vehicle = v_id
+      engine.set_parent(G.player, v_id)
+    end
+    if transfer.wanted_stars and transfer.wanted_stars > 0 then
+      wanted.set(transfer.wanted_stars)
+    end
+  else
+    player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
+  end
   G.cam_yaw = 0.3
 
   traffic.start(20)
@@ -103,6 +120,7 @@ if os.getenv("ARCH_TEST") then require "test.arch_probe" end
 if os.getenv("PASI_TEST") then require "test.pasi_probe" end
 if os.getenv("FOLI_TEST") then require "test.foli_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
+if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
