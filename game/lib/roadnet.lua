@@ -1974,7 +1974,7 @@ build = function(map, kit)
       for _ = 1, n do
         if trees >= budget then break end
         local x, z = st[1] + r() * (st[3] - st[1]), st[2] + r() * (st[4] - st[2])
-        if free(H, x, z, 3) then
+        if free(H, x, z, 3) and not R.wet(x, z) then
           kit.static{mesh = r() < 0.75 and "pine" or "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 0.8 + r() * 0.7, tag = "tree"}
           add_circle(H, x, z, 2)
           trees = trees + 1
@@ -1985,7 +1985,7 @@ build = function(map, kit)
   for _ = 1, map.cover and 0 or budget do
     local x, z = (r() - 0.5) * (sx - 20), (r() - 0.5) * (sz - 20)
     local a = district(map, x, z)
-    if a ~= "open" and free(H, x, z, 3) then
+    if a ~= "open" and free(H, x, z, 3) and not R.wet(x, z) then
       kit.static{mesh = r() < 0.7 and "pine" or "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 0.8 + r() * 0.7, tag = "tree"}
       add_circle(H, x, z, 2)
       trees = trees + 1

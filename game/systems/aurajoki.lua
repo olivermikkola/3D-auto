@@ -18,11 +18,11 @@ local BRIDGES = {
   {name = "Martinsilta", pos = {-520, 340}, yaw = -0.65, width = 16, len = 54, height = 3.6, arches = 3},
 }
 
--- Föri terminal endpoints across the Aurajoki
+-- Föri terminal endpoints across the Aurajoki (exact OSM quays)
 local FORI_ROUTE = {
-  bank_east = {-765, 495},  -- Tervatori (Itäinen Rantakatu)
-  bank_west = {-835, 545},  -- Wechterinkuja (Läntinen Rantakatu)
-  yaw = 0.62,
+  bank_east = {-1166.2, 1174.0},  -- Tervatori (Itäinen Rantakatu)
+  bank_west = {-1258.2, 1117.2},  -- Wechterinkuja (Läntinen Rantakatu)
+  yaw = -2.13,
 }
 
 function A.build(map)
@@ -122,6 +122,8 @@ function A.build(map)
   local boat_moorings = {
     {pos = {70, -25}, yaw = -0.72, name = "Donna"},
     {pos = {-150, 95}, yaw = -0.70, name = "Papa Joe"},
+    {pos = {-230, 140}, yaw = -0.68, name = "Aussie Bar"},
+    {pos = {-330, 205}, yaw = -0.67, name = "Cindy"},
     {pos = {-410, 255}, yaw = -0.66, name = "Svarte Rudolf"},
   }
   for _, m in ipairs(boat_moorings) do
@@ -135,11 +137,14 @@ function A.build(map)
     A.riverboats[#A.riverboats + 1] = bid
   end
 
-  -- 4. Spawn The Föri (City Cable Ferry)
-  local f_start = FORI_ROUTE.bank_east
+  -- 4. Spawn The Föri (City Cable Ferry) in mid-river crossing
+  local p0, p1 = FORI_ROUTE.bank_east, FORI_ROUTE.bank_west
+  local init_progress = 0.45
+  local fx = p0[1] + (p1[1] - p0[1]) * init_progress
+  local fz = p0[2] + (p1[2] - p0[2]) * init_progress
   local fori_id = engine.spawn{
     mesh = "fori",
-    pos = {f_start[1], 0.25, f_start[2]},
+    pos = {fx, 0.45, fz},
     yaw = FORI_ROUTE.yaw,
     size = {10.5, 1.2, 9.2},
     tag = "ferry",
@@ -148,9 +153,13 @@ function A.build(map)
   A.fori = {
     id = fori_id,
     target = 1, -- 0 for bank_east, 1 for bank_west
-    progress = 0.0,
-    pause = 5.0, -- pause at wharf for boarding
+    progress = init_progress,
+    pause = 0.0,
   }
+
+  -- 5. Spawn drivable Buster XXL speedboat at Auransilta boat dock
+  local boat_id = vehicle.spawn(-45, 320, -1.8, nil, "speedboat", "boat")
+  A.speedboat = boat_id
 end
 
 -- Update Föri ferry position across Aurajoki
