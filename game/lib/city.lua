@@ -40,6 +40,10 @@ end
 function C.use(map)
   if type(map) == "string" then
     local ok, m = pcall(require, "maps." .. map)
+    if not ok then
+      -- Fallback to maps/archive for archived historical/variant maps
+      ok, m = pcall(require, "maps.archive." .. map)
+    end
     if not ok then error("no map named '" .. map .. "' in maps/: " .. tostring(m), 2) end
     m.id = map
     map = m
@@ -95,7 +99,7 @@ function C.map() return MAP end
 
 -- The cities the pause menu offers, and the one picked there last (kept in
 -- the "city" save; MAP=<name> overrides it for a run).
-C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}, {"raisio2030", "RAISIO 2030"}, {"raisio1980", "RAISIO 1980"}}
+C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}}
 function C.chosen()
   local v = engine.load("city")
   for _, m in ipairs(C.MAPS) do if m[1] == v then return v end end

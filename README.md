@@ -365,7 +365,7 @@ how wide its asphalt is and which sides are raised. The engine lifts a raised si
 terrain's `kerb` (12 cm), except where it lies on any road's asphalt, so a pavement never makes
 a step in a crossing. Cars bump up onto pavements, and people stand on them.
 
-**Raisio 2030** (`MAP=raisio2030`, or RAISIO 2030 under City in the pause menu) is the town as
+**Raisio 2030** (`MAP=raisio2030`, archived under `game/maps/archive/`) is the town as
 it will be once the E18 works under the centre are done (Väylävirasto's "E18 Raision keskustan
 kohta", built 2026-2029). The E18, Nesteentie, drops into a concrete tunnel of about 450 m
 from the new Elauksenkatu up past Raisiontie, with a park on its roof where the Raisio
@@ -382,7 +382,7 @@ street don't head for the tunnel under it, and cars spawn on a road's own level,
 a tunnel's, not just on the ground. The interchange's ramps and roundabouts west of the tunnel,
 Soliniuksenkatu, and the later three-level interchange with valtatie 8 aren't built yet.
 
-**Raisio 1980** (`MAP=raisio1980`, RAISIO 1980 under City) goes the other way: the centre the
+**Raisio 1980** (`MAP=raisio1980`, archived under `game/maps/archive/`) goes the other way: the centre the
 1970s built on two levels, with cars on the ground and people up on the concrete:
 - **The market square** north of Raisiontie, where Torikuja is now, with its stalls and grill
   kiosk.

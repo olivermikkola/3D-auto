@@ -77,7 +77,7 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 - **Test like CI before every push.** Run the full suite:
   `python3 tools/headless_tests.py --output <dir> --jobs 3 --soak` (all maps, all seeds), plus
-  `--maps starter`, `--maps raisio2030` and `--maps raisio1980` with `--seeds 1337`, plus
+  `--maps starter`, `--maps raisio` and `--maps turku` with `--seeds 1337`, plus
   `cargo fmt --check`, `cargo clippy --release -- -D warnings`, `cargo test --release`, and
   `python3 -m unittest discover -s tools -p "test_*.py"`.
 - **Maintain PRNG determinism:** keep `math.random` calls consistent across vehicle spawns so
