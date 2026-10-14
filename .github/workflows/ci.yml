@@ -1,5 +1,12 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # Build, lint and play the game headlessly on every platform we ship.
@@ -17,6 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
         run: cargo fmt --check
       - run: cargo clippy --release -- -D warnings
@@ -35,12 +43,6 @@ jobs:
       - name: Headless tests (the starter map people copy for their own city)
         if: runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/starter --maps starter --seeds 1337
-      - name: Headless tests (Raisio 2030, the E18 in its tunnel)
-        if: runner.os == 'Linux'
-        run: python tools/headless_tests.py --output headless-results/raisio2030 --maps raisio2030 --seeds 1337
-      - name: Headless tests (Raisio 1980, the two-level centre)
-        if: runner.os == 'Linux'
-        run: python tools/headless_tests.py --output headless-results/raisio1980 --maps raisio1980 --seeds 1337
       - name: Headless tests (default seed, both maps)
         if: runner.os == 'macOS'
         run: python tools/headless_tests.py --output headless-results --seeds 1337
