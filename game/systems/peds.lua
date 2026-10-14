@@ -131,9 +131,13 @@ function net.next_leg(p)
     for _, ei in ipairs(at_junction(j)) do if ei ~= p.e then opts[#opts + 1] = ei end end
     local ne = opts[math.random(math.max(1, #opts))] or p.e
     local hand = p.hand
-    if math.random() < 0.25 then p.hand = -p.hand end
-    p.e = ne
+    -- Only cross over at junctions if both sides of the new road have walkable pavements
     local ed = edges()[ne]
+    local both_sides_walkable = roadnet.pavement(ne, 1) and roadnet.pavement(ne, -1)
+    if both_sides_walkable and math.random() < 0.25 then
+      p.hand = -p.hand
+    end
+    p.e = ne
     if ed.a == j then p.dir, p.wp = 1, 1 else p.dir, p.wp = -1, #ed.pts end
     clear_side(p)
     p.crossing = p.hand ~= hand

@@ -101,8 +101,27 @@ local function spawn_point()
     if #cands > 0 then
       local j = cands[math.random(#cands)]
       local x, z = city.pos(j)
+      -- Align police squad car along outgoing road lane rather than direct line-of-sight pointing
+      local links = city.links(j)
+      local yaw = math.atan(px - x, pz - z)
+      if links and #links > 0 then
+        local best_dot, best_yaw = -2, yaw
+        for _, nxt in ipairs(links) do
+          local path = city.path(j, nxt)
+          if path and #path >= 2 then
+            local lx, lz = path[2][1] - x, path[2][2] - z
+            local lyaw = math.atan(lx, lz)
+            local fx, fz = U.forward(lyaw)
+            local dx, dz = px - x, pz - z
+            local dl = math.sqrt(dx * dx + dz * dz) + 1e-5
+            local dot = (fx * dx + fz * dz) / dl
+            if dot > best_dot then best_dot, best_yaw = dot, lyaw end
+          end
+        end
+        yaw = best_yaw
+      end
       -- From further off, time to get here before it may be recycled.
-      return x, z, math.atan(px - x, pz - z), city.level(j), U.dist2d(x, z, px, pz) > 150 and 25 or nil
+      return x, z, yaw, city.level(j), U.dist2d(x, z, px, pz) > 150 and 25 or nil
     end
   end
   for _ = 1, 10 do
@@ -124,8 +143,11 @@ local function spawn_point()
     local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
     local d = U.dist2d(x, z, px, pz)
     local y = city.height_on(r[1], r[2], x, z)
+    local yaw = math.atan(b[1] - a[1], b[2] - a[2])
+    local rx, rz = U.right(yaw)
+    x, z = x + rx * 3.2, z + rz * 3.2
     if d >= 60 and d <= 200 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) then
-      return x, z, math.atan(px - x, pz - z), y
+      return x, z, yaw, y
     end
   end
 end
