@@ -1951,6 +1951,17 @@ function R.wet(x, z)
           if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
         end
       end
+      for _, b in ipairs(NET.map.footbridges or {}) do -- out on a footbridge is dry
+        for i = 3, #b do
+          if dist_seg(x, z, b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) < (b[1] or 3) / 2 + 0.5 then return false end
+        end
+      end
+      for _, b in ipairs(NET.map.wooden_footbridges or {}) do -- wooden footbridge is dry
+        local pts = b.points or {}
+        for i = 2, #pts do
+          if dist_seg(x, z, pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) < (b.width or 3) / 2 + 0.5 then return false end
+        end
+      end
       local e, _, _, _, d = R.nearest_edge(x, z)
       return not (e and d < NET.edges[e].width / 2 + 1)
     end
