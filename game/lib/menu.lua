@@ -18,8 +18,8 @@ local pages = {
     title = "PAUSED",
     items = {
       {label = "RESUME", act = function() M.close() end},
-      {label = "MAP", act = function() M.go("map") end},
       {label = "SETTINGS", act = function() M.go("settings") end},
+      {label = "MAP", act = function() M.go("map") end},
       {label = "CITY", act = function() M.go("city") end, value = function() return string.upper(require("lib.city").map().name) end},
       {label = "QUIT GAME", act = function() engine.quit() end},
     },
