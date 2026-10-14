@@ -178,6 +178,8 @@ function M.register(def)
   if M.ready then M.show_start_markers() end
 end
 
+function M.all() return M.defs end
+
 -- Every .lua file in the directory is a mission. Drop one in, press F5.
 function M.load_all(dir)
   -- A unit cylinder that glows at night.

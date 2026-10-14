@@ -91,6 +91,34 @@ function P.build()
     {mesh = "cylinder", pos = {0, 0.45, 0}, size = {0.22, 0.9, 0.22}, color = {0.45, 0.32, 0.18}},
     {mesh = "sphere", pos = {0, 0.9, 0}, size = 0.24, color = {0.4, 0.28, 0.15}},
   })
+
+  -- Sisu XA-180 "Pasi" 6x6 APC: Finnish military troop transport
+  local camo_green, camo_dark, steel = {0.22, 0.28, 0.18}, {0.12, 0.16, 0.11}, {0.18, 0.18, 0.2}
+  local tire = {0.08, 0.08, 0.08}
+  local pasi_parts = {
+    -- Lower sloped boat hull (amphibious V-hull)
+    {mesh = "cube", pos = {0, 0.1, 0}, size = {2.6, 0.8, 6.8}, color = camo_dark},
+    -- Main armored hull: forward sloped glacis plate and angular cabin
+    {mesh = "cube", pos = {0, 0.85, -0.2}, size = {2.7, 0.9, 6.2}, color = camo_green},
+    -- Sloped front nose
+    {mesh = "cube", pos = {0, 0.6, 3.0}, size = {2.5, 0.6, 0.9}, color = camo_green},
+    -- Commander cupola / armored roof turret
+    {mesh = "cylinder", pos = {0, 1.5, 1.2}, size = {0.9, 0.5, 0.9}, color = steel},
+    {mesh = "cube", pos = {0, 1.6, 1.8}, size = {0.14, 0.14, 0.9}, color = steel}, -- 12.7mm machine gun barrel
+    -- Rear crew doors and vision blocks
+    {mesh = "cube", pos = {0, 0.85, -3.32}, size = {2.1, 0.7, 0.05}, color = camo_dark},
+    -- Heavy front steel ram bumper
+    {mesh = "cube", pos = {0, 0.2, 3.42}, size = {2.7, 0.4, 0.25}, color = steel},
+  }
+  -- 6 heavy off-road tires (3 on each side)
+  for _, z_pos in ipairs{-1.9, 0.0, 1.9} do
+    for _, side in ipairs{-1.42, 1.42} do
+      pasi_parts[#pasi_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side, -0.05, z_pos}, size = {0.48, 1.15, 1.15}, color = tire}
+      pasi_parts[#pasi_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side * 1.03, -0.05, z_pos}, size = {0.45, 0.55, 0.55}, color = camo_dark}
+    end
+  end
+  engine.mesh("pasi", pasi_parts)
+  P.person("soldier", {0.24, 0.32, 0.19}, {0.16, 0.22, 0.14}, {0.8, 0.62, 0.48}, {0.08, 0.08, 0.08})
 end
 
 return P
