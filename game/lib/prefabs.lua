@@ -119,6 +119,36 @@ function P.build()
   end
   engine.mesh("pasi", pasi_parts)
   P.person("soldier", {0.24, 0.32, 0.19}, {0.16, 0.22, 0.14}, {0.8, 0.62, 0.48}, {0.08, 0.08, 0.08})
+
+  -- Föli Municipal Bus: Turku/Raisio regional transit bus (yellow & white livery)
+  local foli_yellow, foli_white, foli_glass, bumper = {0.95, 0.82, 0.08}, {0.94, 0.94, 0.96}, {0.15, 0.22, 0.3}, {0.18, 0.18, 0.2}
+  local bus_parts = {
+    -- Lower chassis & yellow skirt
+    {mesh = "cube", pos = {0, 0.2, 0}, size = {2.6, 0.7, 11.8}, color = foli_yellow},
+    -- Main body cabin (white)
+    {mesh = "cube", pos = {0, 1.3, 0}, size = {2.56, 1.5, 11.6}, color = foli_white},
+    -- Tinted passenger side windows (continuous band on left and right)
+    {mesh = "cube", pos = {0, 1.45, -0.4}, size = {2.62, 0.85, 9.6}, color = foli_glass},
+    -- Front windshield (sloped large glass)
+    {mesh = "cube", pos = {0, 1.45, 5.2}, size = {2.45, 1.1, 1.3}, color = foli_glass},
+    -- Rear window
+    {mesh = "cube", pos = {0, 1.45, -5.75}, size = {2.2, 0.75, 0.12}, color = foli_glass},
+    -- Front digital route display sign (orange LED destination board)
+    {mesh = "cube", pos = {0, 2.1, 5.5}, size = {1.6, 0.25, 0.1}, color = {1.0, 0.6, 0.05}, emissive = 1},
+    -- Front and rear bumpers
+    {mesh = "cube", pos = {0, -0.05, 5.92}, size = {2.62, 0.35, 0.15}, color = bumper},
+    {mesh = "cube", pos = {0, -0.05, -5.92}, size = {2.62, 0.35, 0.15}, color = bumper},
+    -- Roof AC and vent pods
+    {mesh = "cube", pos = {0, 2.2, -1.8}, size = {1.6, 0.35, 2.8}, color = foli_white},
+  }
+  -- Dual axle front/rear wheels
+  for _, z_pos in ipairs{3.8, -3.8} do
+    for _, side in ipairs{-1.34, 1.34} do
+      bus_parts[#bus_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side, -0.05, z_pos}, size = {0.38, 0.95, 0.95}, color = tire}
+      bus_parts[#bus_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side * 1.02, -0.05, z_pos}, size = {0.36, 0.45, 0.45}, color = bumper}
+    end
+  end
+  engine.mesh("bus", bus_parts)
 end
 
 return P

@@ -79,7 +79,12 @@ local function add_car(min_dist)
   local c = {}
   local x, z, yaw, y = place(c, min_dist)
   if not x then return end
-  c.id = vehicle.spawn(x, z, yaw, nil, nil, nil, y)
+  -- 1 in 8 ambient vehicles is a Föli municipal bus
+  local is_bus = math.random(8) == 1
+  local mesh = is_bus and "bus" or nil
+  local tag = is_bus and "bus" or "car"
+  c.id = vehicle.spawn(x, z, yaw, nil, mesh, tag, y)
+  c.is_bus = is_bus
   vehicle.headlights(c.id)
   T.cars[c.id] = c
 end

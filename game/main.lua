@@ -101,6 +101,7 @@ if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("ARCH_TEST") then require "test.arch_probe" end
 if os.getenv("PASI_TEST") then require "test.pasi_probe" end
+if os.getenv("FOLI_TEST") then require "test.foli_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
