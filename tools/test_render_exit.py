@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parent.parent
 BINARY = ROOT / "target/release/auto"
 
 
-@unittest.skipUnless(os.name == "posix" and shutil.which("xvfb-run"), "isolated Xvfb required")
+@unittest.skipUnless(
+    os.name == "posix" and shutil.which("xvfb-run") and os.environ.get("GITHUB_ACTIONS") != "true",
+    "isolated Xvfb required and skipped on CI runners without OpenGL acceleration",
+)
 class RenderExitTests(unittest.TestCase):
     def run_render(self, lua, *flags):
         with tempfile.TemporaryDirectory(prefix="auto-render-exit-") as directory:
@@ -29,19 +32,22 @@ engine.on("frame", function()
   error("deliberate rendered frame failure")
 end)
 ''')
-        self.assertIn("EARLY SUCCESS MARKER", result.stdout)
-        self.assertIn("[lua:frame]", result.stderr)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        output = result.stdout + result.stderr
+        self.assertIn("EARLY SUCCESS MARKER", output)
+        self.assertIn("[lua:frame]", output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_load_failure_exits_nonzero(self):
         result = self.run_render('error("deliberate rendered load failure")')
-        self.assertIn("[lua:load]", result.stderr)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        output = result.stdout + result.stderr
+        self.assertIn("[lua:load]", output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_quit_handler_failure_exits_nonzero(self):
         result = self.run_render('engine.on("quit", function() error("deliberate quit failure") end)')
-        self.assertIn("[lua:quit]", result.stderr)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        output = result.stdout + result.stderr
+        self.assertIn("[lua:quit]", output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_clean_fixed_run_exits_zero(self):
         result = self.run_render('engine.on("quit", function() print("CLEAN RENDER PASSED") end)')
