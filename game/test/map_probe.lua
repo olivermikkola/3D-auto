@@ -11,6 +11,9 @@ engine.on("init", function()
   menu.go("map")
   assert(menu.page == "map", "menu should be on map page")
   assert(map_viewer.inited, "map viewer should be initialized")
+  map_viewer.draw()
+  local U = require "lib.util"
+  assert(U.player_yaw() ~= nil, "U.player_yaw() should return player heading")
 
   -- 2. Test panning and zooming keys
   local start_x, start_z = map_viewer.pan_x, map_viewer.pan_z

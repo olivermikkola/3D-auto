@@ -87,6 +87,7 @@ function V.frame()
 end
 
 function V.draw(sw, sh)
+  sw, sh = sw or 960, sh or 540
   V.frame()
   local cur_map = city.map()
   local L = G.city
