@@ -1810,8 +1810,14 @@ build = function(map, kit)
                    scale = {w, 1, d}, tag = "building"}
       else
         local floors = math.max(1, math.floor(h / kit.FLOOR + 0.5))
-        local style = kind == "shop" and i % 3 == 0 and "glass" or "brick"
-        local color = kind == "church" and {0.94, 0.93, 0.9} or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
+        local style = "brick"
+        if kind == "flats" and floors >= 3 and i % 2 == 0 then
+          style = "balconies"
+        elseif kind == "shop" then
+          style = "glass"
+        end
+        local FINNISH_FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}}
+        local color = kind == "church" and {0.94, 0.93, 0.9} or (style == "balconies" and FINNISH_FLATS[1 + i % #FINNISH_FLATS]) or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
       end
