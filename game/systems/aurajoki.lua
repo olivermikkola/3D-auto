@@ -137,6 +137,15 @@ function A.build(map)
     A.riverboats[#A.riverboats + 1] = bid
   end
 
+  -- Suomen Joutsen moored at Forum Marinum
+  engine.spawn{
+    mesh = "suomen_joutsen",
+    pos = {-1820, 0.2, 1490},
+    yaw = -0.63,
+    tag = "ship",
+    body = "static",
+  }
+
   -- 4. Spawn The Föri (City Cable Ferry) in mid-river crossing
   local p0, p1 = FORI_ROUTE.bank_east, FORI_ROUTE.bank_west
   local init_progress = 0.45
