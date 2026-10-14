@@ -46,11 +46,11 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     shots = []
-    # 1. Tuomiokirkkosilta and Auransilta vista
-    shots.append(render_shot("aurajoki_cathedral_bridge", out, (310, 16, -210), (280, 5, -180)))
+    # 1. Tuomiokirkkosilta across the Aurajoki
+    shots.append(render_shot("aurajoki_cathedral_bridge", out, (320, 14, -130), (265, 4, -85)))
 
     # 2. The Föri cable ferry crossing Aurajoki
-    shots.append(render_shot("fori_cable_ferry", out, (-780, 12, 470), (-800, 2, 520)))
+    shots.append(render_shot("fori_cable_ferry", out, (-1160, 6, 1205), (-1205, 0.45, 1145)))
 
     results_file = out / "aurajoki_render_results.json"
     results_file.write_text(json.dumps({"shots": shots, "passed": True}, indent=2) + "\n")
