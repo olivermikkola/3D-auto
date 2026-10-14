@@ -388,7 +388,10 @@ end
 
 -- Parts grouped by which CHUNK x CHUNK square they're in, baked one mesh a
 -- square, so what's out of sight is culled a square at a time.
+local U = require "lib.util"
 local CHUNK = 300
+local baked_chunks = {} -- chunk_key -> {entity_ids...}
+
 local function chunked()
   local c = {}
   function c.add(x, z, part)
@@ -400,10 +403,49 @@ local function chunked()
     local keys = {}
     for k, v in pairs(c) do if type(v) == "table" then keys[#keys + 1] = k end end
     table.sort(keys)
-    for _, k in ipairs(keys) do bake(prefix .. k, c[k], 0, tag) end
+    for _, k in ipairs(keys) do
+      local name = prefix .. k
+      bake(name, c[k], 0, tag)
+      local last_id = #engine.find(tag or "road") > 0 and engine.find(tag or "road")[#engine.find(tag or "road")] or nil
+      if last_id then
+        baked_chunks[k] = baked_chunks[k] or {}
+        table.insert(baked_chunks[k], last_id)
+      end
+    end
   end
   return c
 end
+
+-- Streaming update: show chunks within ring radius, hide far ones
+local function update_chunk_streaming()
+  local px, _, pz = U.player_pos()
+  if not px then return end
+  local p_ci, p_cj = math.floor(px / CHUNK), math.floor(pz / CHUNK)
+  local STREAM_RADIUS = 4 -- active 9x9 tile ring around the player (2.4 km view radius)
+
+  for k, ids in pairs(baked_chunks) do
+    local ci, cj = k:match("([^,]+),([^,]+)")
+    ci, cj = tonumber(ci), tonumber(cj)
+    if ci and cj then
+      local dist = math.max(math.abs(ci - p_ci), math.abs(cj - p_cj))
+      local visible = dist <= STREAM_RADIUS
+      for _, id in ipairs(ids) do
+        if engine.exists(id) then
+          engine.set_visible(id, visible)
+        end
+      end
+    end
+  end
+end
+
+local last_stream_check = 0
+engine.on("tick", function()
+  local now = engine.time()
+  if now - last_stream_check >= 0.5 then
+    last_stream_check = now
+    update_chunk_streaming()
+  end
+end)
 
 -- Ground cover drawn under everything, in this order, each a little above
 -- the last; the color and a tree every so many square meters (nil: none).
