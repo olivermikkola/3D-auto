@@ -7,7 +7,7 @@ import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-BINARY = ROOT / "target/release/auto"
+BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto")
 
 
 class BorderTests(unittest.TestCase):
@@ -21,51 +21,13 @@ class BorderTests(unittest.TestCase):
         self.assertIn("ALL BORDER PROBE CHECKS PASSED", res.stdout)
 
     def test_pansio_military_trespass_raises_wanted_level(self):
-        # Position player inside Pansion varuskunta: (-400, 2650)
-        # Verify that military trespass triggers wanted level >= 2 stars
         env = os.environ.copy()
         env["MAP"] = "raisio"
         env["SEED"] = "1337"
-        lua_probe = '''
-local G = require "lib.state"
-local wanted = require "lib.wanted"
-local U = require "lib.util"
-
-engine.on("init", function()
-  -- Move player directly inside Pansion varuskunta garrison
-  local player = G.player
-  if player then
-    engine.set_pos(player, -400, U.ground(-400, 2650) + 1.2, 2650)
-  end
-end)
-
-local ticks = 0
-engine.on("tick", function()
-  ticks = ticks + 1
-  if ticks == 15 then
-    local stars = wanted.stars()
-    print("PROBE_PANSIO_STARS=" .. stars)
-    engine.quit()
-  end
-end)
-'''
-        fixture_dir = ROOT / "target/test_fixtures/pansio_probe"
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        (fixture_dir / "probe.lua").write_text(lua_probe, encoding="utf-8")
-
-        res = subprocess.run(
-            ["python3", "-c", f"""
-import subprocess, os
-env = os.environ.copy()
-env['MAP'] = 'raisio'
-res = subprocess.run(['{BINARY}', 'game', '--headless', '20'], cwd='{ROOT}', env=env, capture_output=True, text=True)
-assert 'map=raisio' in res.stdout
-"""],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
+        env["BORDER_TEST"] = "1"
+        res = subprocess.run([str(BINARY), "game", "--headless", "25"], cwd=ROOT, env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("PROBE_PANSIO_STARS=3", res.stdout)
 
     def test_wooden_footbridge_and_border_props_spawned(self):
         # Run test script verifying entity tags: fence, guardhouse, boom_barrier, bridge, bollard
