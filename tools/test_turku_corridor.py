@@ -28,6 +28,19 @@ class TurkuCorridorTests(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("ALL CORRIDOR CHECKS PASSED", res.stdout)
 
+    def test_cross_city_transfer_in_vehicle_loads_without_crash(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            save_file = Path(tmp) / "cross_city_transfer.lua"
+            save_file.write_text("return { target_pos = {10, 20}, in_vehicle = true, wanted_stars = 2 }\n")
+            env = os.environ.copy()
+            env["MAP"] = "turku"
+            env["SEED"] = "1337"
+            res = subprocess.run([str(BINARY), "game", "--save-dir", str(tmp), "--headless", "5"], cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertNotIn("attempt to call a nil value", res.stdout + res.stderr)
+            self.assertNotIn("stack traceback", res.stdout + res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

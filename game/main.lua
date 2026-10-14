@@ -17,6 +17,7 @@ local police = require "systems.police"
 local peds = require "systems.peds"
 local daynight = require "lib.daynight"
 local pickups = require "lib.pickups"
+local wanted = require "lib.wanted"
 require "lib.health"
 require "systems.carnage"
 require "systems.shore"
@@ -63,7 +64,10 @@ engine.on("init", function()
     if transfer.in_vehicle then
       local v_id = vehicle.spawn(tx, tz, 0)
       G.vehicle = v_id
-      engine.set_parent(G.player, v_id)
+      if G.player then
+        engine.despawn(G.player)
+        G.player = nil
+      end
     end
     if transfer.wanted_stars and transfer.wanted_stars > 0 then
       wanted.set(transfer.wanted_stars)
