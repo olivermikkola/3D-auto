@@ -84,19 +84,24 @@ function R.load(map)
         local seg = {}
         for k = start, i do seg[#seg + 1] = {pts[k][1], pts[k][2]} end
         n.paths[a] = n.paths[a] or {}
-        n.paths[b] = n.paths[b] or {}
         if n.paths[a][b] then error(string.format("map '%s': two roads join the same pair of junctions (%s)", map.name or "?", label), 0) end
         n.paths[a][b] = seg
-        local back = {}
-        for k = #seg, 1, -1 do back[#back + 1] = seg[k] end
-        n.paths[b][a] = back
         table.insert(n.links[a], b)
-        table.insert(n.links[b], a)
-        n.roads[#n.roads + 1] = {a, b}
-        n.edge_of[a .. ">" .. b], n.edge_of[b .. ">" .. a] = #n.edges + 1, #n.edges + 1
+        if not road.oneway then
+          n.paths[b] = n.paths[b] or {}
+          local back = {}
+          for k = #seg, 1, -1 do back[#back + 1] = seg[k] end
+          n.paths[b][a] = back
+          table.insert(n.links[b], a)
+        end
+        n.roads[#n.roads + 1] = {a, b, oneway = road.oneway}
+        n.edge_of[a .. ">" .. b] = #n.edges + 1
+        if not road.oneway then
+          n.edge_of[b .. ">" .. a] = #n.edges + 1
+        end
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
                                  deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
-                                 sidewalk = road.sidewalk, lit = road.lit}
+                                 sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway}
         start = i
       end
     end

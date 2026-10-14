@@ -46,7 +46,11 @@ local function place(c, min_dist)
   for _ = 1, 40 do
     local r = roads[math.random(#roads)]
     c.from, c.to = r[1], r[2]
-    if math.random() < 0.5 then c.from, c.to = c.to, c.from end
+    local is_oneway = r.oneway or false
+    local roll = math.random()
+    if not is_oneway and roll < 0.5 then
+      c.from, c.to = c.to, c.from
+    end
     route(c)
     local t = 0.3 + math.random() * 0.4
     -- Somewhere in the middle of the road: on a bendy one, the bend
