@@ -61,12 +61,16 @@ function M.reset()
   for _, s in ipairs(M.list) do M.set(s.key, s.default) end
 end
 
+local startup_fullscreen = engine.fullscreen()
 local saved, err = engine.load("settings")
 if err then print("settings: " .. err) end
 for _, s in ipairs(M.list) do
   local v
   if type(saved) == "table" then v = fit(s, saved[s.key]) end
   if v == nil then v = s.default end
+  -- A fullscreen launch overrides saved windowed mode for this session only.
+  -- Keep values in sync so the menu can still switch back to windowed mode.
+  if s.key == "fullscreen" and startup_fullscreen then v = true end
   values[s.key] = v
   apply(s.key, v)
 end

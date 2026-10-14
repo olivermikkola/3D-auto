@@ -646,8 +646,14 @@ Takedown and Smuggler's Run open one by one after Getaway, and passing one annou
 ## Command line
 
 ```
-auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR]
+auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR] [--fps N] [--fullscreen]
 ```
+
+Interactive play is capped at **60 FPS** by default, including while paused. `--fps N`
+sets a different render-rate limit; `--fps 0` disables it. Physics still runs at a fixed
+60 Hz. Headless, screenshot and `--frames` runs are not slowed by the render-rate cap.
+`--fullscreen` starts this session fullscreen even if the saved setting is windowed;
+launching does not rewrite the saved setting, and the pause menu can still turn it off.
 
 `AUTO_TEST=1 auto game --headless 9000` plays the demo by itself (drives, finishes a mission,
 launches off the stunt ramp, gets busted by the police, then escapes them). `SEED=<integer>`
