@@ -1,82 +1,90 @@
--- Turku: Finland's oldest city and cultural capital on the Aurajoki river.
--- Co-exists seamlessly alongside Raisio with cross-border highway, arterial road,
--- and river footbridge transitions.
-local osm = require "maps.raisio_osm" -- shared roadnet primitives and textures
+-- Turku, Finland, at real size: Kauppatori, Aurajoki, Tuomiokirkko, Turun linna,
+-- Kupittaa, Port of Turku, and Yliopistonmäki.
+-- The roads, buildings, water, parks and forests come from OpenStreetMap
+-- (maps/turku_osm.lua, made by tools/osm_import.py; ODbL).
+-- The terrain comes from Maanmittauslaitos 2m LiDAR GeoTIFFs (N2000 heightfield).
+local osm = require "maps.turku_osm"
 
 return {
   name = "Turku",
   id = "turku",
-
-  -- 8 x 8 blocks centered on Kauppatori / Aurakatu / Eerikinkatu
-  grid = {nx = 8, nz = 8, bx = 80, bz = 55, avenue = 16, street = 13},
-
-  districts = {
-    {"residential", j = {0, 2}, brownstones = 0.6}, -- Portsa wooden district vibe
-    {"downtown", j = {3, 5}},                       -- Kauppatori & commercial center
-  },
-
-  skyline = {
-    peaks = {
-      {k = 4, l = 4, rx = 160, rz = 140, weight = 1.0}, -- Kauppatori core
-      {k = 6, l = 2, rx = 120, rz = 100, weight = 0.8}, -- Tuomiokirkko hill
-    },
-    supertall = {24, 38},
-  },
-
-  specials = {
-    lot = {2, 2},
-    plaza = {4, 4},       -- Kauppatori
-    stunt = {1, 6},
-    carpark = {3, 3},     -- Louhi underground parking entrance
-    tower = {6, 2},       -- Tuomiokirkko cathedral spire
-    park = {{5, 4}, {5, 3}}, -- Samppalinnanpuisto / Vartiovuori
-  },
-
-  billboards = {{3, 4}, {4, 3}},
+  size = {osm.bounds[3] - osm.bounds[1], osm.bounds[4] - osm.bounds[2]},
+  center = {(osm.bounds[1] + osm.bounds[3]) / 2, (osm.bounds[2] + osm.bounds[4]) / 2},
+  junctions = osm.junctions,
+  junction_order = {osm.first},
+  roads = osm.roads,
+  paved = osm.paved,
+  footprints = osm.footprints,
+  cover = osm.cover,
+  terrain = osm.terrain, -- real 2m LiDAR heights (MML), roads graded in
+  pitches = osm.pitches,
+  footbridges = osm.footbridges,
+  cranes = osm.cranes,
+  piers = osm.piers,
+  fog = {180, 800},
+  trees = 8000,
+  lamp_every = 50,
 
   -- Named landmarks on the radar minimap
   labels = {
     {x = 0, z = 0, letter = "K", name = "Turun Kauppatori"},
     {x = 320, z = -180, letter = "T", name = "Turun Tuomiokirkko"},
-    {x = -1400, z = 850, letter = "C", name = "Turun linna (Castle)"},
-    {x = -600, z = 150, letter = "P", name = "Port Arthur (Portsa)"},
-    {x = 950, z = -450, letter = "U", name = "Kupittaanpuisto"},
+    {x = -2600, z = 1750, letter = "C", name = "Turun linna (Castle)"},
+    {x = -1400, z = 200, letter = "P", name = "Port Arthur (Portsa)"},
+    {x = 1200, z = 500, letter = "U", name = "Kupittaanpuisto"},
+    {x = -2900, z = 1900, letter = "S", name = "Turun Satama (Port)"},
+    {x = 850, z = -450, letter = "Y", name = "Yliopistonmäki"},
   },
 
-  -- Cross-border transit points connecting Turku directly back into Raisio
+  -- Cross-border transit points connecting Turku directly into Raisio
   crossings = {
-    {pos = {-2200, -800}, yaw = -1.25, target_map = "raisio", name = "Naantalin pikatie (185) -> Raisio", target_pos = {2200, 720}},
+    {pos = {-3150, -900}, yaw = -1.25, target_map = "raisio", name = "Naantalin pikatie (185) -> Raisio", target_pos = {2200, 720}},
     {pos = {-2800, 600}, yaw = 1.99, target_map = "raisio", name = "Raisiontie -> Raisio", target_pos = {2850, -600}},
     {pos = {-2600, 50}, yaw = -1.60, target_map = "raisio", name = "Satakunnantie -> Raisio", target_pos = {2650, -50}},
     {pos = {-920, -820}, yaw = -0.85, target_map = "raisio", name = "Pansiontie -> Raisio / Pansio", target_pos = {920, 810}},
   },
 
+  specials = {
+    lot = {-300, -20},     -- starting lot in Puolalanpuisto park clear of roads
+    plaza = {1000, 640},   -- Kupittaanpuisto open plaza
+    stunt = {1200, 500},   -- Kupittaanpuisto sports grounds
+  },
+
   places = {
-    hospital = {node = {3, 5}},       -- TYKS (Turun yliopistollinen keskussairaala)
-    taxi_rank = {node = {4, 4}},      -- Kauppatori taxi rank
-    police_station = {node = {5, 5}}, -- Eerikinkatu police station
-    joyride_garage = {node = {6, 1}},
-    race_start = {node = {2, 4}},
-    race = {route = {{2, 4}, {2, 1}, {5, 1}, {5, 6}, {2, 6}}},
-    bank = {node = {4, 3}},           -- Aurakatu banking quarter
-    getaway_start = {node = {3, 3}},
-    cargo_pickup = {node = {1, 2}},
-    cargo_drop = {node = {6, 5}},
-    takedown_start = {node = {4, 2}},
-    target_start = {node = {2, 5}},
-    smuggle = {route = {{1, 6}, {6, 6}, {6, 1}, {1, 1}}},
-    smuggle_drop = {node = {5, 2}},
-    stunt = {node = {1, 6}},
-    castle = {node = {0, 7}},
-    speedboat_dock = {node = {0, 6}},
-    archipelago_drop = {node = {0, 1}},
+    hospital = {at = {880, 240}},                                   -- TYKS (Kiinamyllynkatu)
+    taxi_rank = {at = {10, -10}},                                   -- Kauppatori taxi rank
+    police_station = {at = {-220, 110}},                            -- Turun pääpoliisiasema (Eerikinkatu)
+    joyride_garage = {junction = "Linnankatu / Sairashuoneenkatu"},
+    race_start = {junction = "Aurakatu / Eerikinkatu"},
+    race = {route = {
+      "Aurakatu / Eerikinkatu", "Aninkaistenkatu / Eerikinkatu",
+      "Aninkaistenkatu / Linnankatu", "Aurakatu / Linnankatu",
+      "Aurakatu / Eerikinkatu",
+    }},
+    bank = {junction = "Aurakatu / Linnankatu"},                    -- Aurakatu banking quarter
+    getaway_start = {junction = "Aurakatu / Eerikinkatu"},
+    cargo_pickup = {junction = "Linnankatu / Satamakatu"},          -- Turku harbor dock
+    cargo_drop = {junction = "Aninkaistenkatu / Linnankatu"},
+    takedown_start = {junction = "Aninkaistenkatu / Eerikinkatu"},
+    target_start = {junction = "Aurakatu / Linnankatu"},
+    smuggle = {route = {
+      "Linnankatu / Satamakatu", "Linnankatu / Sairashuoneenkatu",
+      "Aurakatu / Linnankatu", "Aninkaistenkatu / Linnankatu",
+    }},
+    smuggle_drop = {junction = "Aninkaistenkatu / Eerikinkatu"},
+    stunt = {junction = "Aninkaistenkatu / Eerikinkatu"},
+    castle = {junction = "Linnankatu / Satamakatu"},
+    speedboat_dock = {junction = "Aurakatu / Auransilta"},
+    archipelago_drop = {junction = "Linnankatu / Satamakatu"},
   },
 
   pickups = {
-    {"health", 4, 4, -1, -1},
-    {"ammo", 4, 4, 1, -1},
-    {"smg", 6, 2, 1, 1}, -- pickup near cathedral
+    {"health", 50, -30},
+    {"ammo", -40, 20},
+    {"smg", 310, -170}, -- near cathedral
+    {"health", -2550, 1720}, -- near castle
+    {"ammo", 1200, 480}, -- Kupittaa
   },
 
-  gunshop = {{4, 5}, {2, 3}},
+  gunshop = {120, -80},
 }

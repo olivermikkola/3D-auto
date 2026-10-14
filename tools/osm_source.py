@@ -7,46 +7,46 @@ import xml.etree.ElementTree as ET
 def load_xml(paths):
     paths = [Path(p) for p in paths]
     nodes = {}
-    ways_raw = []
+    ways_raw = {}
     relations_raw = []
     inputs = []
 
     for path in paths:
-        data = path.read_bytes()
         inputs.append({
             "name": path.name,
             "path": str(path.resolve()),
-            "bytes": len(data),
-            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": path.stat().st_size,
         })
-        root = ET.fromstring(data)
-        if root.tag != "osm":
-            raise ValueError(f"expected OSM XML root in {path}")
-        for n in root.findall("node"):
-            nid = int(n.attrib["id"])
-            lat = float(n.attrib["lat"])
-            lon = float(n.attrib["lon"])
-            tags = {t.attrib["k"]: t.attrib["v"] for t in n.findall("tag")}
-            nodes[nid] = (lat, lon, tags)
-        for w in root.findall("way"):
-            wid = int(w.attrib["id"])
-            nds = [int(nd.attrib["ref"]) for nd in w.findall("nd")]
-            tags = {t.attrib["k"]: t.attrib["v"] for t in w.findall("tag")}
-            ways_raw.append((wid, nds, tags))
-        for r in root.findall("relation"):
-            rid = int(r.attrib["id"])
-            tags = {t.attrib["k"]: t.attrib["v"] for t in r.findall("tag")}
-            members = [{
-                "type": m.attrib.get("type"),
-                "ref": int(m.attrib.get("ref", 0)),
-                "role": m.attrib.get("role", ""),
-            } for m in r.findall("member")]
-            relations_raw.append((rid, members, tags))
+        for event, elem in ET.iterparse(path, events=("end",)):
+            tag_name = elem.tag
+            if tag_name == "node":
+                nid = int(elem.attrib["id"])
+                lat = float(elem.attrib["lat"])
+                lon = float(elem.attrib["lon"])
+                tags = {t.attrib["k"]: t.attrib["v"] for t in elem.findall("tag")}
+                nodes[nid] = (lat, lon, tags)
+                elem.clear()
+            elif tag_name == "way":
+                wid = int(elem.attrib["id"])
+                nds = [int(nd.attrib["ref"]) for nd in elem.findall("nd")]
+                tags = {t.attrib["k"]: t.attrib["v"] for t in elem.findall("tag")}
+                ways_raw[wid] = (wid, nds, tags)
+                elem.clear()
+            elif tag_name == "relation":
+                rid = int(elem.attrib["id"])
+                tags = {t.attrib["k"]: t.attrib["v"] for t in elem.findall("tag")}
+                members = [{
+                    "type": m.attrib.get("type"),
+                    "ref": int(m.attrib.get("ref", 0)),
+                    "role": m.attrib.get("role", ""),
+                } for m in elem.findall("member")]
+                relations_raw.append((rid, members, tags))
+                elem.clear()
 
     elements = []
     seen = set()
 
-    for wid, nds, tags in ways_raw:
+    for wid, (wid, nds, tags) in ways_raw.items():
         key = ("way", wid)
         if key in seen:
             continue
@@ -77,7 +77,6 @@ def load_xml(paths):
                 "tags": tags,
             })
 
-    # Multipolygons and buildings represented as relations.
     for rid, members, tags in relations_raw:
         key = ("relation", rid)
         if key in seen:
@@ -87,7 +86,7 @@ def load_xml(paths):
         for m in members:
             ref = m["ref"]
             if m["type"] == "way":
-                way_match = next((w for w in ways_raw if w[0] == ref), None)
+                way_match = ways_raw.get(ref)
                 if way_match:
                     geom = [
                         {"lat": nodes[nid][0], "lon": nodes[nid][1]}
