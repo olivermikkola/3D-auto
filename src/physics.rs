@@ -539,7 +539,10 @@ pub fn step(
                 continue;
             }
             // Step-up: a low ledge met side-on lifts the body instead of walling it.
-            if !b_dynamic && ba.step > 0.0 && n.y.abs() < 0.5 {
+            // Narrow vertical posts and poles (e.g. lamp posts, traffic signs) must not act
+            // as step ramps for vehicles; require the obstacle to have sufficient horizontal footprint.
+            let b_is_pole = hb.x < 0.25 && hb.z < 0.25 && hb.y > 1.5;
+            if !b_dynamic && !b_is_pole && ba.step > 0.0 && n.y.abs() < 0.5 {
                 let rise = (cb.y + hb.y) - (ca.y - ha.y);
                 if rise > 0.0 && rise <= ba.step && ca.y > cb.y + hb.y {
                     let e = ents[i].as_mut().unwrap();
@@ -1253,6 +1256,29 @@ mod tests {
         assert!(p.x < 3.0, "without step-up the curb blocks: x = {}", p.x);
         let p = mk(0.4);
         assert!(p.x > 4.0 && (p.y - 1.1).abs() < 0.06, "stepped up: {p:?}");
+    }
+
+    #[test]
+    fn narrow_poles_do_not_step_up_vehicles() {
+        let mut w = vec![
+            ground(),
+            // A narrow static pole (like a lamp post): center=(5.0, 5.0, 0.0), half = (0.15, 5.0, 0.15)
+            ent(v3(5., 5.0, 0.), Kind::Static, v3(0.15, 5.0, 0.15)),
+            // A heavy vehicle approaching the pole: center=(0.0, 1.6, 0.0), half = (1.3, 1.6, 6.1)
+            ent(v3(0., 1.6, 0.), Kind::Dynamic, v3(1.3, 1.6, 6.1)),
+        ];
+        let b = w[2].as_mut().unwrap().body.as_mut().unwrap();
+        b.step = 0.55;
+        b.lock_rotation = true;
+        b.set_mass(11500.0);
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        for _ in 0..90 {
+            w[2].as_mut().unwrap().body.as_mut().unwrap().vel.x = 4.0;
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
+        }
+        let p = get(&w, 2).pos;
+        assert!(p.x < 4.0, "narrow pole colliders must block horizontal travel, not act as ramps: x = {}", p.x);
+        assert!(p.y < 2.5, "narrow pole colliders must not launch vehicle vertically (y = {})", p.y);
     }
 
     #[test]
