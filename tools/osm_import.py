@@ -33,9 +33,9 @@ ROOT = Path(__file__).resolve().parent.parent
 AREAS = {
     "raisio": {
         # The center, Mylly, and Nesteentie down to the harbor; north to
-        # Raision sairaala, ABC and Haunisten allas, east to IKEA, south to
-        # the tip of Pansionnokka.
-        "bbox": (60.4385, 22.085, 60.5085, 22.2375),  # south, west, north, east
+        # Raision sairaala, ABC and Haunisten allas; expanded east through
+        # central Turku and Aurajoki, south to Turku harbor.
+        "bbox": (60.420, 22.085, 60.5085, 22.310),  # south, west, north, east
         # The game's 0, 0: kept where it was when the map was smaller, so
         # what the hand-written map places doesn't move as the area grows.
         "origin": (60.47050, 22.15000),
