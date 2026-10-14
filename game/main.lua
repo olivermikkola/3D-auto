@@ -98,6 +98,7 @@ if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
+if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
