@@ -81,7 +81,7 @@ local function add_car(min_dist)
   if not x then return end
   -- Föli municipal buses run in Raisio and future Turku transit networks
   local map_name = os.getenv("MAP") or "starter"
-  local is_bus = (map_name == "raisio" or map_name == "raisio2030" or map_name == "raisio1980") and (math.random(8) == 1)
+  local is_bus = (map_name == "raisio" or map_name == "turku") and (math.random(8) == 1)
   local mesh = is_bus and "bus" or nil
   local tag = is_bus and "bus" or "car"
   c.id = vehicle.spawn(x, z, yaw, nil, mesh, tag, y)
