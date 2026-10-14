@@ -23,6 +23,31 @@ return {
   terrain = osm.terrain, -- real heights (Maanmittauslaitos), roads graded in
   pitches = osm.pitches,
   footbridges = osm.footbridges,
+  wooden_footbridges = {
+    {
+      name = "Punttamäenpolun silta",
+      width = 2.8,
+      points = {{2472.1, 102.6}, {2443.8, 81.1}},
+    },
+  },
+  military = {
+    {
+      name = "Pansion varuskunta",
+      stars = 3,
+      polygon = require("maps.raisio_military_poly"),
+      gates = {
+        {pos = {-348.4, 2583.1}, yaw = 1.85, width = 8},
+      },
+    },
+  },
+  border_crossings = {
+    {pos = {2226.5, 744.8}, yaw = 1.25, name = "Naantalin pikatie (185)", kind = "highway"},
+    {pos = {2893.6, -614.7}, yaw = -1.99, name = "Raisiontie", kind = "main"},
+    {pos = {2680.3, -61.4}, yaw = 1.60, name = "Satakunnantie", kind = "main"},
+    {pos = {3782.8, -1830.7}, yaw = 2.03, name = "Kuninkojantie", kind = "main"},
+    {pos = {936.0, 828.3}, yaw = 0.85, name = "Pansiontie", kind = "main"},
+    {pos = {1340.4, 829.3}, yaw = 0.95, name = "Artukaistentie", kind = "street"},
+  },
   -- The map data's towers, and the police station's radio mast behind it.
   towers = (function()
     local t = {{1295, -1825, 45, "lattice"}, {-1000, -1590, 70, "chimney"}} -- and Raisio's factory chimney

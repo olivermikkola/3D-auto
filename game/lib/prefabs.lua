@@ -66,6 +66,31 @@ function P.build()
 
   -- Hand-made OBJ asset, to show external models work too.
   engine.load_obj("cone", "assets/cone.obj")
+
+  -- Military and border props
+  engine.mesh("guardhouse", {
+    {mesh = "cube", pos = {0, 0.1, 0}, size = {3.2, 0.2, 3.8}, color = {0.25, 0.25, 0.27}},
+    {mesh = "cube", pos = {0, 1.4, 0}, size = {3.0, 2.4, 3.6}, color = {0.35, 0.38, 0.32}},
+    {mesh = "cube", pos = {0, 2.7, 0}, size = {3.4, 0.25, 4.0}, color = {0.2, 0.22, 0.2}},
+    {mesh = "cube", pos = {0, 1.6, 1.81}, size = {2.2, 0.9, 0.05}, color = {0.3, 0.45, 0.55}},
+    {mesh = "cube", pos = {1.51, 1.1, 0}, size = {0.05, 2.0, 0.9}, color = {0.25, 0.25, 0.28}},
+  })
+
+  engine.mesh("barrier_post", {
+    {mesh = "cylinder", pos = {0, 0.6, 0}, size = {0.35, 1.2, 0.35}, color = {0.9, 0.75, 0.1}},
+    {mesh = "cube", pos = {0, 1.05, 0}, size = {0.4, 0.3, 0.4}, color = {0.2, 0.2, 0.2}},
+  })
+
+  engine.mesh("jersey_barrier", {
+    {mesh = "cube", pos = {0, 0.2, 0}, size = {2.4, 0.4, 0.7}, color = {0.8, 0.8, 0.82}},
+    {mesh = "cube", pos = {0, 0.55, 0}, size = {2.4, 0.5, 0.35}, color = {0.85, 0.2, 0.15}},
+    {mesh = "cube", pos = {0, 0.85, 0}, size = {2.4, 0.2, 0.25}, color = {0.8, 0.8, 0.82}},
+  })
+
+  engine.mesh("wood_bollard", {
+    {mesh = "cylinder", pos = {0, 0.45, 0}, size = {0.22, 0.9, 0.22}, color = {0.45, 0.32, 0.18}},
+    {mesh = "sphere", pos = {0, 0.9, 0}, size = 0.24, color = {0.4, 0.28, 0.15}},
+  })
 end
 
 return P

@@ -44,6 +44,7 @@ engine.on("init", function()
   pickups.build()
   peds.build()
   G.city = city.build()
+  require("lib.borders").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -96,6 +97,7 @@ if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("TERRAIN_TEST") then require "test.terrain" end
+if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
