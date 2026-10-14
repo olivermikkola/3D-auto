@@ -78,7 +78,16 @@ engine.on("contact", function(a, b, speed)
   recent[key] = now + 1.0
   for _, pair in ipairs{{a, b}, {b, a}} do
     local id, other = pair[1], pair[2]
-    if VEHICLE[engine.tag(id) or ""] and SOLID[engine.tag(other) or ""] then H.damage(id, (speed - 8) * 3, other) end
+    local tag = engine.tag(id) or ""
+    local other_tag = engine.tag(other) or ""
+    if VEHICLE[tag] and SOLID[other_tag] then
+      local is_player = (id == G.vehicle or other == G.vehicle)
+      local min_speed = is_player and 8 or 20
+      if speed >= min_speed then
+        local dmg = (speed - (is_player and 8 or 16)) * 3
+        H.damage(id, dmg, other)
+      end
+    end
   end
 end)
 

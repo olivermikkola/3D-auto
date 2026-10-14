@@ -146,7 +146,7 @@ local function spawn_point()
     local yaw = math.atan(b[1] - a[1], b[2] - a[2])
     local rx, rz = U.right(yaw)
     x, z = x + rx * 3.2, z + rz * 3.2
-    if d >= 60 and d <= 200 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) then
+    if d >= 85 and d <= 220 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) then
       return x, z, yaw, y
     end
   end
@@ -270,10 +270,17 @@ local function drive_cop(c, dt)
   local tx, tz, want
 
   if P.direct_pursuit(c.sees, dist) then
-    -- Direct pursuit, leading the target a little.
+    -- Direct pursuit, leading the target a little with smooth following cushion.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
-    want = dist < 12 and math.max(0, dist - 4) or 30
+    local target_speed = (G.vehicle and math.abs(vehicle.speed(G.vehicle))) or 6
+    if dist < 8 then
+      want = math.max(0, target_speed * 0.5)
+    elseif dist < 18 then
+      want = math.min(30, math.max(target_speed + 1.5, dist * 0.85))
+    else
+      want = 30
+    end
   else
     -- Follow the roads one junction at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
