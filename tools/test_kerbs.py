@@ -21,17 +21,6 @@ class KerbTests(unittest.TestCase):
 
     def test_pedestrian_height_at_junction_corner(self):
         # Raycast downward at a junction corner and confirm hit lands on raised sidewalk (y >= 0.1)
-        script = '''
-local G = require "lib.state"
-
-engine.on("init", function()
-  -- Nesteentie / Raisiontie corner: test raycast down
-  local hit, norm, hx, hy, hz = engine.raycast(850, 10, -1700, 0, -1, 0, 20)
-  assert(hit, "no geometry under junction corner")
-  print(string.format("CORNER_RAYCAST tag=%s y=%.2f", engine.tag(hit), hy))
-  engine.quit()
-end)
-'''
         env = os.environ.copy()
         env["MAP"] = "raisio"
         env["SEED"] = "1337"

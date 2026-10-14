@@ -35,19 +35,19 @@ end)
         output = result.stdout + result.stderr
         self.assertIn("EARLY SUCCESS MARKER", output)
         self.assertIn("[lua:frame]", output)
-        self.assertNotEqual(result.returncode, 0, output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_load_failure_exits_nonzero(self):
         result = self.run_render('error("deliberate rendered load failure")')
         output = result.stdout + result.stderr
         self.assertIn("[lua:load]", output)
-        self.assertNotEqual(result.returncode, 0, output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_quit_handler_failure_exits_nonzero(self):
         result = self.run_render('engine.on("quit", function() error("deliberate quit failure") end)')
         output = result.stdout + result.stderr
         self.assertIn("[lua:quit]", output)
-        self.assertNotEqual(result.returncode, 0, output)
+        self.assertEqual(result.returncode, 1, output)
 
     def test_clean_fixed_run_exits_zero(self):
         result = self.run_render('engine.on("quit", function() print("CLEAN RENDER PASSED") end)')

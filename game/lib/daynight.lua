@@ -55,14 +55,7 @@ function D.light_lamps()
   end
 end
 
-engine.on("tick", function(dt)
-  local prev_h = math.floor(D.hour)
-  local next_h = D.hour + dt * 24 / D.DAY_LENGTH
-  D.set_hour(next_h)
-  if prev_h ~= math.floor(D.hour) and math.floor(D.hour) == 12 then
-    engine.play("cathedral_bell", {pos = {380, 25, -90}, volume = 0.8})
-  end
-end)
+engine.on("tick", function(dt) D.set_hour(D.hour + dt * 24 / D.DAY_LENGTH) end)
 engine.on("key", function(k, down) if k == "n" and down then D.set_hour(D.hour + 3) end end)
 
 return D

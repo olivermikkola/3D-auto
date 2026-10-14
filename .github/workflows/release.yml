@@ -31,15 +31,21 @@ jobs:
       - run: cargo build --release
       - name: Smoke test
         run: AUTO_TEST=1 ./target/release/auto game --headless 9000
+      # Grand Theft Aurajoki: just Raisio and Turku. The demo cities
+      # (Manhattan, the harbor, the starter map, archived variants) and the
+      # tests stay in the repo; the menu offers only the maps shipped.
       - name: Package
         run: |
-          dir="auto-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
+          dir="grand-theft-aurajoki-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
           mkdir "$dir"
           cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md LICENSE "$dir/"
           cp -r game "$dir/game"
-          rm -rf "$dir/game/test"
+          rm -rf "$dir/game/test" "$dir/game/maps/archive"
+          rm -f "$dir/game/maps/manhattan.lua" "$dir/game/maps/harbor.lua" "$dir/game/maps/starter.lua"
+          ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} "$dir/game" --headless 300 | tee pkg.log
+          grep -q "map=raisio" pkg.log
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
-          echo "ARCHIVE=$(ls auto-*.zip auto-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
+          echo "ARCHIVE=$(ls grand-theft-aurajoki-*.zip grand-theft-aurajoki-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

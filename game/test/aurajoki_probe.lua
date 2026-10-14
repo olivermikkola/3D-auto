@@ -1,15 +1,49 @@
--- Probe checking Aurajoki bridges, riverboat moorings, and Föri cable ferry
+-- Probe checking the Aurajoki: the real bridges clear the water, and every
+-- boat, ship and the Föri floats on the surveyed river, not under a street.
 local aurajoki = require "systems.aurajoki"
+local R = require "lib.roadnet"
+
+-- Is the whole of a hull (half sizes hw x hl, turned by yaw) on the water?
+local function afloat(x, z, yaw, hw, hl)
+  local c, s = math.cos(yaw), math.sin(yaw)
+  for _, k in ipairs{{-1, -1}, {1, -1}, {-1, 1}, {1, 1}, {0, 0}} do
+    local lx, lz = k[1] * hw, k[2] * hl
+    if not R.water_level(x + lx * c + lz * s, z - lx * s + lz * c) then return false end
+  end
+  return true
+end
 
 engine.on("init", function()
-  assert(aurajoki.bridges and #aurajoki.bridges == 5, "expected 5 Aurajoki bridges")
+  local named = {}
+  for _, b in ipairs(aurajoki.bridges) do
+    named[b.name] = true
+    assert(b.deck - b.water >= 2.4, string.format("%s deck %.2f is on the water (%.2f)", b.name, b.deck, b.water))
+  end
+  for _, name in ipairs{"Tuomiokirkkosilta", "Auransilta", "Myllysilta", "Martinsilta"} do
+    assert(named[name], name .. " is not a deck over the river")
+  end
   print("AURAJOKI_OK bridges=" .. #aurajoki.bridges)
 
-  -- Check ferry exists
-  assert(aurajoki.fori and engine.exists(aurajoki.fori.id), "Föri ferry entity missing")
-  assert(#aurajoki.riverboats >= 3, "expected at least 3 moored riverboats")
+  assert(#aurajoki.riverboats == 5, "expected 5 moored riverboats")
+  for _, id in ipairs(aurajoki.riverboats) do
+    local x, _, z = engine.pos(id)
+    assert(afloat(x, z, engine.yaw(id), 2.6, 12.8), string.format("riverboat at %.0f, %.0f is on land", x, z))
+  end
+  local ship = engine.find("ship")[1]
+  assert(ship, "Suomen Joutsen missing")
+  local x, _, z = engine.pos(ship)
+  assert(afloat(x, z, engine.yaw(ship), 3.8, 27), "Suomen Joutsen is on land")
+  x, _, z = engine.pos(aurajoki.speedboat)
+  assert(R.water_level(x, z), "speedboat is on land")
+  print("BOATS_AFLOAT_OK")
 
-  print("FORI_SHUTTLE_OK id=" .. aurajoki.fori.id)
+  assert(aurajoki.fori and engine.exists(aurajoki.fori.id), "Föri ferry entity missing")
+  local f = aurajoki.fori
+  local p0, p1 = {-1166.2, 1174.0}, {-1258.2, 1117.2}
+  for _, t in ipairs{f.t0, f.t1} do
+    assert(R.water_level(p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t), "Föri runs onto land")
+  end
+  print("FORI_SHUTTLE_OK id=" .. f.id)
   print("ALL AURAJOKI CHECKS PASSED")
   engine.quit()
 end)

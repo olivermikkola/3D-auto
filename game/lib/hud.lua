@@ -364,8 +364,6 @@ engine.on("frame", function(dt)
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
   end
-  local st = engine.stats()
-  engine.text(string.format("%d ENTITIES", st.entities), 20, h - 18, 10, 1, 1, 1, 0.5)
 end)
 
 return M
