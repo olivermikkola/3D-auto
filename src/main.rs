@@ -17,11 +17,11 @@ mod script;
 use engine::{Engine, TICK_HZ};
 use miniquad::{EventHandler, KeyCode, KeyMods, MouseButton, conf, window};
 use script::{Script, Shared};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 struct Opts {
     root: PathBuf,
@@ -31,6 +31,8 @@ struct Opts {
     ticks_per_frame: u32,
     size: (i32, i32),
     save_dir: Option<PathBuf>,
+    fps: u32,
+    fullscreen: bool,
 }
 
 fn parse_args() -> Result<Opts, String> {
@@ -42,6 +44,8 @@ fn parse_args() -> Result<Opts, String> {
         ticks_per_frame: 1,
         size: (1280, 720),
         save_dir: None,
+        fps: 60,
+        fullscreen: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -52,6 +56,8 @@ fn parse_args() -> Result<Opts, String> {
             "--frames" => o.frames = Some(val("--frames")?.parse().map_err(|_| "bad frame count")?),
             "--ticks-per-frame" => o.ticks_per_frame = val("--ticks-per-frame")?.parse().map_err(|_| "bad tick count")?,
             "--save-dir" => o.save_dir = Some(PathBuf::from(val("--save-dir")?)),
+            "--fps" => o.fps = val("--fps")?.parse().map_err(|_| "bad fps")?,
+            "--fullscreen" => o.fullscreen = true,
             "--size" => {
                 let v = val("--size")?;
                 let (w, h) = v.split_once('x').ok_or("size is WxH")?;
@@ -63,7 +69,7 @@ fn parse_args() -> Result<Opts, String> {
             }
             "-h" | "--help" => {
                 println!(
-                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR]"
+                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR] [--fps N] [--fullscreen]"
                 );
                 std::process::exit(0);
             }
@@ -175,10 +181,11 @@ fn load(eng: &Shared) -> Option<Script> {
     }
 }
 
-fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
+fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool) {
     let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
     let eng: Shared = Rc::new(RefCell::new(Engine::new(root, mixer.clone())));
     eng.borrow_mut().saves = saves;
+    eng.borrow_mut().fullscreen = fullscreen;
     // Mix (and discard) audio in step with ticks so headless runs exercise it too.
     let mut sink = vec![0.0f32; 2 * (audio::RATE as f64 / TICK_HZ) as usize];
     let mut script = load(&eng);
@@ -205,13 +212,14 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store) {
         // save, then everything starts afresh, saves kept.
         if std::mem::take(&mut eng.borrow_mut().reload) {
             s.emit(&eng, "quit", ());
-            let (root, saves) = {
+            let (root, saves, fullscreen) = {
                 let mut e = eng.borrow_mut();
-                (e.root.clone(), std::mem::take(&mut e.saves))
+                (e.root.clone(), std::mem::take(&mut e.saves), e.fullscreen)
             };
             drop(script.take()); // the old Lua state goes before the new one is built
             *eng.borrow_mut() = Engine::new(root, mixer.clone());
             eng.borrow_mut().saves = saves;
+            eng.borrow_mut().fullscreen = fullscreen;
             script = load(&eng);
             println!("reloaded");
         }
@@ -243,6 +251,9 @@ struct App {
     closed: bool,
     fullscreen: bool,
     pads: pad::Pads,
+    target_frame: Option<Duration>,
+    frame_start: Instant,
+    failed: Rc<Cell<bool>>,
 }
 
 impl App {
@@ -253,6 +264,7 @@ impl App {
         {
             s.emit(&self.eng, "quit", ());
         }
+        self.failed.set(self.failed.get() || self.eng.borrow().error.is_some());
     }
 
     fn reload(&mut self) {
@@ -260,6 +272,7 @@ impl App {
         if let Some(s) = &self.script {
             s.emit(&self.eng, "quit", ());
         }
+        self.failed.set(self.failed.get() || self.eng.borrow().error.is_some());
         let (root, screen, mixer, saves, fullscreen) = {
             let mut e = self.eng.borrow_mut();
             (e.root.clone(), e.screen, e.mixer.clone(), std::mem::take(&mut e.saves), e.fullscreen)
@@ -357,6 +370,13 @@ impl EventHandler for App {
             window::order_quit();
         }
         self.gfx.commit();
+        if let Some(target) = self.target_frame {
+            let elapsed = self.frame_start.elapsed();
+            if elapsed < target {
+                std::thread::sleep(target - elapsed);
+            }
+            self.frame_start = Instant::now();
+        }
         if self.eng.borrow().quit || self.quit_after == Some(self.frame) {
             self.close();
             window::order_quit();
@@ -529,22 +549,28 @@ fn main() {
     };
     let saves = save_store(&o);
     if let Some(ticks) = o.headless {
-        return run_headless(o.root, ticks, saves);
+        return run_headless(o.root, ticks, saves, o.fullscreen);
     }
     let conf = conf::Conf {
         window_title: "auto".into(),
         window_width: o.size.0,
         window_height: o.size.1,
+        fullscreen: o.fullscreen,
         sample_count: 4,
         window_resizable: true,
         ..Default::default()
     };
-    let (root, shot, frames, ticks_per_frame) = (o.root, o.screenshot, o.frames, o.ticks_per_frame.max(1));
+    let (root, shot, frames, ticks_per_frame, fps, fullscreen) =
+        (o.root, o.screenshot, o.frames, o.ticks_per_frame.max(1), o.fps, o.fullscreen);
+    let target_frame = if shot.is_none() && frames.is_none() && fps > 0 { Some(Duration::from_secs_f64(1.0 / fps as f64)) } else { None };
+    let failed = Rc::new(Cell::new(false));
+    let result = failed.clone();
     miniquad::start(conf, move || {
         let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
         let out = audio::start(mixer.clone());
         let eng: Shared = Rc::new(RefCell::new(Engine::new(root.clone(), mixer)));
         eng.borrow_mut().saves = saves;
+        eng.borrow_mut().fullscreen = fullscreen;
         let script = load(&eng);
         let mtime = newest_mtime(&root);
         Box::new(App {
@@ -564,8 +590,14 @@ fn main() {
             shot: shot.map(|p| (p, frames.unwrap_or(120))),
             ticks_per_frame,
             closed: false,
-            fullscreen: false,
+            fullscreen,
             pads: pad::Pads::new(),
+            target_frame,
+            frame_start: Instant::now(),
+            failed,
         })
     });
+    if result.get() {
+        std::process::exit(1);
+    }
 }
