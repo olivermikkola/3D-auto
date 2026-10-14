@@ -41,12 +41,12 @@ return {
     },
   },
   border_crossings = {
-    {pos = {2226.5, 744.8}, yaw = 1.25, name = "Naantalin pikatie (185)", kind = "highway"},
-    {pos = {2893.6, -614.7}, yaw = -1.99, name = "Raisiontie", kind = "main"},
-    {pos = {2680.3, -61.4}, yaw = 1.60, name = "Satakunnantie", kind = "main"},
-    {pos = {3782.8, -1830.7}, yaw = 2.03, name = "Kuninkojantie", kind = "main"},
-    {pos = {936.0, 828.3}, yaw = 0.85, name = "Pansiontie", kind = "main"},
-    {pos = {1340.4, 829.3}, yaw = 0.95, name = "Artukaistentie", kind = "street"},
+    {pos = {2226.5, 744.8}, yaw = 1.25, name = "Naantalin pikatie (185)", kind = "highway", target_map = "turku", target_pos = {-3140, -895}},
+    {pos = {2893.6, -614.7}, yaw = -1.99, name = "Raisiontie", kind = "main", target_map = "turku", target_pos = {-2790, 590}},
+    {pos = {2680.3, -61.4}, yaw = 1.60, name = "Satakunnantie", kind = "main", target_map = "turku", target_pos = {-2590, 60}},
+    {pos = {3782.8, -1830.7}, yaw = 2.03, name = "Kuninkojantie", kind = "main", target_map = "turku", target_pos = {-200, -1800}},
+    {pos = {936.0, 828.3}, yaw = 0.85, name = "Pansiontie", kind = "main", target_map = "turku", target_pos = {-910, -810}},
+    {pos = {1340.4, 829.3}, yaw = 0.95, name = "Artukaistentie", kind = "street", target_map = "turku", target_pos = {-1400, 100}},
   },
   -- Raised traffic islands (e.g. junction splitters, pedestrian refuges)
   islands = {
