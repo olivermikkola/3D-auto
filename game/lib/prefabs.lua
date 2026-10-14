@@ -223,6 +223,25 @@ function P.build()
     {mesh = "cube", pos = {12.0, 23.0, -18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
   }
   engine.mesh("turun_linna", castle_parts)
+
+  -- Turun Tuomiokirkko (Turku Cathedral) landmark
+  local brick_red, copper_green, stone_trim = {0.62, 0.28, 0.22}, {0.22, 0.48, 0.38}, {0.75, 0.72, 0.68}
+  local cathedral_parts = {
+    -- Main cathedral nave
+    {mesh = "cube", pos = {0, 9.0, 0}, size = {24.0, 18.0, 52.0}, color = brick_red},
+    -- Steep copper roof on nave
+    {mesh = "cube", pos = {0, 20.0, 0}, size = {22.0, 4.0, 50.0}, color = copper_green},
+    -- Main bell tower
+    {mesh = "cube", pos = {0, 20.0, -28.0}, size = {14.0, 40.0, 14.0}, color = brick_red},
+    -- Tower upper belfry lantern
+    {mesh = "cube", pos = {0, 44.0, -28.0}, size = {11.0, 8.0, 11.0}, color = stone_trim},
+    -- Copper spire
+    {mesh = "cube", pos = {0, 56.0, -28.0}, size = {6.0, 16.0, 6.0}, color = copper_green},
+    {mesh = "cube", pos = {0, 68.0, -28.0}, size = {2.0, 8.0, 2.0}, color = copper_green},
+    -- Cross / spire apex
+    {mesh = "cube", pos = {0, 73.0, -28.0}, size = {0.5, 2.5, 0.5}, color = {0.9, 0.85, 0.3}, emissive = 0.5},
+  }
+  engine.mesh("tuomiokirkko", cathedral_parts)
 end
 
 return P

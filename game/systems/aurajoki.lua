@@ -7,6 +7,7 @@ local A = {
   bridges = {},
   riverboats = {},
   fori = nil,
+  landmarks = {},
 }
 
 -- Bridge specifications across the Aurajoki in Turku
@@ -122,6 +123,7 @@ function A.build(map)
   local boat_moorings = {
     {pos = {70, -25}, yaw = -0.72, name = "Donna"},
     {pos = {-150, 95}, yaw = -0.70, name = "Papa Joe"},
+    {pos = {-310, 190}, yaw = -0.68, name = "Aussie Bar"},
     {pos = {-410, 255}, yaw = -0.66, name = "Svarte Rudolf"},
   }
   for _, m in ipairs(boat_moorings) do
@@ -135,7 +137,30 @@ function A.build(map)
     A.riverboats[#A.riverboats + 1] = bid
   end
 
-  -- 4. Spawn The Föri (City Cable Ferry)
+  -- 4. Iconic Cultural Landmarks: Turun linna & Tuomiokirkko
+  -- Turun linna (Turku Castle) guarding the Aurajoki estuary
+  local castle_id = engine.spawn{
+    mesh = "turun_linna",
+    pos = {-1400, 0, 850},
+    yaw = 0.52,
+    size = {28.0, 16.0, 42.0},
+    tag = "building",
+    body = "static",
+  }
+  A.landmarks.castle = castle_id
+
+  -- Turun Tuomiokirkko (Turku Cathedral) on Tuomiokirkontori
+  local cathedral_id = engine.spawn{
+    mesh = "tuomiokirkko",
+    pos = {320, 0, -180},
+    yaw = -0.75,
+    size = {24.0, 40.0, 52.0},
+    tag = "building",
+    body = "static",
+  }
+  A.landmarks.cathedral = cathedral_id
+
+  -- 5. Spawn The Föri (City Cable Ferry)
   local f_start = FORI_ROUTE.bank_east
   local fori_id = engine.spawn{
     mesh = "fori",
@@ -151,6 +176,27 @@ function A.build(map)
     progress = 0.0,
     pause = 5.0, -- pause at wharf for boarding
   }
+
+  -- Sound synthesis: cathedral bell chime and fori bell
+  engine.synth("church_bell", {
+    wave = "sine",
+    freq = 220,
+    freq_end = 216,
+    dur = 2.4,
+    attack = 0.02,
+    decay = 0.8,
+    release = 1.4,
+    volume = 0.45,
+  })
+  engine.synth("fori_bell", {
+    wave = "square",
+    freq = 784,
+    freq_end = 784,
+    dur = 0.35,
+    attack = 0.01,
+    release = 0.2,
+    volume = 0.28,
+  })
 end
 
 -- Update Föri ferry position across Aurajoki
