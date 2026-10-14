@@ -86,5 +86,33 @@ return {
     {"ammo", 1200, 480}, -- Kupittaa
   },
 
+  -- Architectural styles and visual landmarks mapped to real OSM footprints
+  looks = {
+    -- Turun tuomiokirkko (National Cathedral): red brick nave and copper details
+    {380, -90, 60, {color = {0.65, 0.28, 0.20}, floors = 8}},
+    -- Turun linna (Turku Castle): medieval grey limestone keep
+    {-2140, 1720, 80, {color = {0.72, 0.70, 0.68}, floors = 5}},
+    -- Mikaelinkirkko (St. Michael's Church, Portsa): red brick Gothic revival
+    {-1185, 218, 50, {color = {0.70, 0.25, 0.18}, floors = 7}},
+    -- Turun taidemuseo (Puolalanmäki): granite palace
+    {-640, -150, 45, {color = {0.75, 0.73, 0.70}, floors = 4}},
+    -- Kupittaan urheiluhalli: arched white sports hall
+    {850, 490, 60, {dome = 16, color = {0.92, 0.92, 0.95}}},
+    -- Veritas Stadion & Rajupaja Areena: sports arenas
+    {1100, 600, 70, {style = "glass", color = {0.35, 0.55, 0.65}, floors = 4}},
+    -- Wiklund & Hamburger Börs (Kauppatori commercial core)
+    {-160, 70, 45, {style = "glass", color = {0.88, 0.90, 0.92}, floors = 5}},
+    {-60, 20, 45, {style = "balconies", color = {0.95, 0.92, 0.88}, floors = 6}},
+    -- Turun Kauppahalli: historic red brick market hall
+    {-80, 100, 40, {color = {0.68, 0.30, 0.22}, floors = 2}},
+    -- Kakolanmäki: historic granite fortress
+    {-1150, 750, 75, {color = {0.55, 0.54, 0.52}, floors = 5}},
+    -- Aboa Vetus Ars Nova: riverside museum mansion
+    {138, 254, 40, {color = {0.85, 0.82, 0.75}, floors = 3}},
+    -- EduCity & Medisiina D: modern Kupittaa university campus
+    {980, 420, 60, {style = "glass", color = {0.82, 0.86, 0.90}, floors = 7}},
+    {1050, 360, 50, {color = {0.70, 0.35, 0.25}, floors = 6}},
+  },
+
   gunshop = {120, -80},
 }
