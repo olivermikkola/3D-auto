@@ -41,6 +41,13 @@ function U.player_pos()
   if id then return engine.pos(id) end
 end
 
+-- Heading (yaw) of whatever the player currently is (person or car).
+function U.player_yaw()
+  local G = require "lib.state"
+  local id = G.vehicle or G.player
+  if id then return engine.yaw(id) end
+end
+
 function U.message(text, seconds)
   local G = require "lib.state"
   G.messages[#G.messages + 1] = {text = text, till = engine.time() + (seconds or 3)}
