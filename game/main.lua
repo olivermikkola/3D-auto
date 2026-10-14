@@ -45,6 +45,7 @@ engine.on("init", function()
   peds.build()
   G.city = city.build()
   require("lib.borders").build(city.map())
+  require("systems.aurajoki").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -121,6 +122,7 @@ if os.getenv("PASI_TEST") then require "test.pasi_probe" end
 if os.getenv("FOLI_TEST") then require "test.foli_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
+if os.getenv("AURAJOKI_TEST") then require "test.aurajoki_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

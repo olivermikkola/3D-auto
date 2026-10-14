@@ -149,6 +149,47 @@ function P.build()
     end
   end
   engine.mesh("bus", bus_parts)
+
+  -- The Föri: Turku's famous historic city cable ferry (bright orange hull)
+  local fori_orange, fori_deck, fori_barrier = {0.96, 0.45, 0.05}, {0.35, 0.35, 0.38}, {0.9, 0.88, 0.15}
+  local fori_parts = {
+    -- Flat broad passenger/cyclist ferry deck (drivable flat pontoon)
+    {mesh = "cube", pos = {0, -0.2, 0}, size = {10.5, 0.6, 9.2}, color = fori_orange},
+    -- Non-slip timber/steel deck surface
+    {mesh = "cube", pos = {0, 0.12, 0}, size = {9.8, 0.08, 8.6}, color = fori_deck},
+    -- Low perimeter safety bulkheads (fore and aft ramps open for boarding)
+    {mesh = "cube", pos = {-4.9, 0.6, 0}, size = {0.4, 0.9, 8.6}, color = fori_orange},
+    {mesh = "cube", pos = {4.9, 0.6, 0}, size = {0.4, 0.9, 8.6}, color = fori_orange},
+    -- Boarding gates / barrier arms across ends
+    {mesh = "cube", pos = {0, 0.6, -4.35}, size = {9.6, 0.14, 0.14}, color = fori_barrier},
+    {mesh = "cube", pos = {0, 0.6, 4.35}, size = {9.6, 0.14, 0.14}, color = fori_barrier},
+    -- Central operator control booth and diesel/cable machinery housing
+    {mesh = "cube", pos = {0, 1.4, 0}, size = {2.2, 1.8, 2.4}, color = fori_orange},
+    {mesh = "cube", pos = {0, 1.6, 0}, size = {2.25, 0.8, 2.2}, color = foli_glass},
+    {mesh = "cube", pos = {0, 2.4, 0}, size = {2.4, 0.2, 2.6}, color = {0.2, 0.2, 0.22}},
+    -- Life rings on side bulwarks
+    {mesh = "cylinder", axis = "x", pos = {-5.12, 0.6, 1.8}, size = {0.12, 0.7, 0.7}, color = {0.95, 0.2, 0.15}},
+    {mesh = "cylinder", axis = "x", pos = {5.12, 0.6, -1.8}, size = {0.12, 0.7, 0.7}, color = {0.95, 0.2, 0.15}},
+  }
+  engine.mesh("fori", fori_parts)
+
+  -- Aurajoki Riverboat restaurant / bar boat (floating vessel moored along river quays)
+  local boat_white, boat_hull, canopy = {0.92, 0.92, 0.95}, {0.15, 0.22, 0.35}, {0.85, 0.25, 0.2}
+  local riverboat_parts = {
+    -- Stepped ship hull
+    {mesh = "cube", pos = {0, 0.2, 0}, size = {5.2, 1.4, 22.0}, color = boat_hull},
+    -- Main saloon deck
+    {mesh = "cube", pos = {0, 1.2, -1.0}, size = {4.8, 1.2, 18.0}, color = boat_white},
+    -- Window strip along saloon
+    {mesh = "cube", pos = {0, 1.35, -1.0}, size = {4.9, 0.6, 17.0}, color = foli_glass},
+    -- Sun deck with striped awning canopy
+    {mesh = "cube", pos = {0, 2.1, 2.0}, size = {4.6, 0.15, 10.0}, color = canopy},
+    -- Ship funnel / smokestack
+    {mesh = "cylinder", pos = {0, 2.6, -4.0}, size = {0.8, 1.6, 0.8}, color = {0.85, 0.75, 0.15}},
+    -- Forward bow taper
+    {mesh = "cube", pos = {0, 0.5, 11.2}, size = {3.6, 1.2, 3.2}, color = boat_hull},
+  }
+  engine.mesh("riverboat", riverboat_parts)
 end
 
 return P
