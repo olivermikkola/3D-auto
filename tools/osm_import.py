@@ -615,6 +615,12 @@ def main():
             kind = building_kind(t, A)
             h = height_of(t, kind, A)
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
+            roof_col = roof_colour(t)
+            roof_sh = t.get("roof:shape")
+            # Store roof info: [r, g, b, shape] if tagged
+            roof_data = list(roof_col) if roof_col else []
+            if roof_sh:
+                roof_data = (roof_data or [0.5, 0.5, 0.5]) + [roof_sh]
             # A church is one nave under one roof, not strips; a round
             # building (a silo, a tank) is one drum.
             parts = boxes_of(poly)
