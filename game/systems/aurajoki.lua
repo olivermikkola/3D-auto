@@ -1,5 +1,6 @@
--- Aurajoki river waterways, historical bridge decks, riverside restaurant boats,
--- and the iconic autonomous Föri cable ferry.
+-- Turku's Aurajoki: the restaurant boats on its quays, Suomen Joutsen at
+-- Forum Marinum, the Föri ferry, a speedboat to take, and the cathedral's
+-- bells at noon.
 local U = require "lib.util"
 local vehicle = require "lib.vehicle"
 
@@ -9,16 +10,7 @@ local A = {
   fori = nil,
 }
 
--- Bridge specifications across the Aurajoki in Turku
-local BRIDGES = {
-  {name = "Tuomiokirkkosilta", pos = {280, -180}, yaw = -0.75, width = 16, len = 52, height = 3.6, arches = 3},
-  {name = "Auransilta", pos = {120, -70}, yaw = -0.72, width = 14, len = 48, height = 3.4, arches = 3},
-  {name = "Teatterisilta", pos = {-60, 40}, yaw = -0.70, width = 6, len = 45, height = 3.2, arches = 1, pedestrian = true},
-  {name = "Myllysilta", pos = {-280, 180}, yaw = -0.68, width = 18, len = 56, height = 3.8, arches = 3},
-  {name = "Martinsilta", pos = {-520, 340}, yaw = -0.65, width = 16, len = 54, height = 3.6, arches = 3},
-}
-
--- Föri terminal endpoints across the Aurajoki (exact OSM quays)
+-- The Föri's quays on either bank.
 local FORI_ROUTE = {
   bank_east = {-1166.2, 1174.0},  -- Tervatori (Itäinen Rantakatu)
   bank_west = {-1258.2, 1117.2},  -- Wechterinkuja (Läntinen Rantakatu)
@@ -28,103 +20,26 @@ local FORI_ROUTE = {
 function A.build(map)
   if not map or (map.id ~= "turku" and map.name ~= "Turku") then return end
 
-  -- 1. Aurajoki River Quays & Water surface segments
-  local water_color = {0.14, 0.24, 0.28}
-  local stone_quay = {0.45, 0.46, 0.48}
-  local river_pts = {
-    {450, -320}, {280, -180}, {120, -70}, {-60, 40},
-    {-280, 180}, {-520, 340}, {-800, 520}, {-1200, 780}, {-1600, 1050}
-  }
-
-  for i = 2, #river_pts do
-    local p0, p1 = river_pts[i - 1], river_pts[i]
-    local mx, mz = (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2
-    local yaw = math.atan(p1[1] - p0[1], p1[2] - p0[2])
-    local len = U.dist2d(p0[1], p0[2], p1[1], p1[2])
-
-    -- Water surface
-    engine.spawn{
-      mesh = "cube",
-      pos = {mx, -0.2, mz},
-      yaw = yaw,
-      size = {46, 0.4, len * 1.05},
-      color = water_color,
-      tag = "water",
-      body = "static",
-    }
-
-    -- Stone river quays on both banks
-    for _, side in ipairs{-1, 1} do
-      local rx, rz = U.right(yaw)
-      local qx = mx + rx * side * 23.5
-      local qz = mz + rz * side * 23.5
-      engine.spawn{
-        mesh = "cube",
-        pos = {qx, 0.4, qz},
-        yaw = yaw,
-        size = {1.8, 1.6, len * 1.02},
-        color = stone_quay,
-        tag = "sidewalk",
-        body = "static",
-      }
+  -- The river, its quays and its bridges are the map's own, from
+  -- OpenStreetMap and the LiDAR terrain (lib/roadnet); this adds what floats
+  -- on it. Every spot here is on the surveyed water (test/aurajoki_probe).
+  local R = require "lib.roadnet"
+  for _, e in ipairs(R.net().edges) do
+    if e.deck and e.height and e.street then
+      local a, b = e.pts[1], e.pts[#e.pts]
+      local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+      local w = R.water_level(mx, mz)
+      if w then A.bridges[#A.bridges + 1] = {name = e.street, pos = {mx, mz}, deck = e.height(mx, mz), water = w} end
     end
   end
 
-  -- 2. Build Physical Bridges
-  local concrete = {0.68, 0.68, 0.72}
-  local railing = {0.2, 0.22, 0.25}
-  for _, b in ipairs(BRIDGES) do
-    local bx, bz = b.pos[1], b.pos[2]
-    local by = b.height or 3.5
-    local byaw = b.yaw or 0
-    local rx, rz = U.right(byaw)
-
-    -- Solid bridge deck for vehicle & pedestrian traffic
-    engine.spawn{
-      mesh = "cube",
-      pos = {bx, by, bz},
-      yaw = byaw,
-      size = {b.width, 0.5, b.len},
-      color = concrete,
-      tag = "bridge",
-      body = "static",
-    }
-
-    -- Bridge parapet / cast-iron railings on both edges
-    for _, side in ipairs{-1, 1} do
-      engine.spawn{
-        mesh = "cube",
-        pos = {bx + rx * side * (b.width / 2 - 0.2), by + 0.6, bz + rz * side * (b.width / 2 - 0.2)},
-        yaw = byaw,
-        size = {0.2, 0.9, b.len},
-        color = railing,
-        tag = "wall",
-        body = "static",
-      }
-    end
-
-    -- Bridge piers / arches in water
-    for p_offset = -b.len / 3, b.len / 3, b.len / 3 do
-      engine.spawn{
-        mesh = "cube",
-        pos = {bx, by / 2, bz + p_offset},
-        yaw = byaw,
-        size = {b.width * 0.9, by, 3.2},
-        color = stone_quay,
-        tag = "wall",
-        body = "static",
-      }
-    end
-    A.bridges[#A.bridges + 1] = b
-  end
-
-  -- 3. Riverside Restaurant / Bar Boats moored along Aurajoki quays
+  -- Restaurant boats along the quay between Auransilta and Myllysilta, as they lie in summer.
   local boat_moorings = {
-    {pos = {70, -25}, yaw = -0.72, name = "Donna"},
-    {pos = {-150, 95}, yaw = -0.70, name = "Papa Joe"},
-    {pos = {-230, 140}, yaw = -0.68, name = "Aussie Bar"},
-    {pos = {-330, 205}, yaw = -0.67, name = "Cindy"},
-    {pos = {-410, 255}, yaw = -0.66, name = "Svarte Rudolf"},
+    {pos = {-101, 356}, yaw = -1.0, name = "Donna"},
+    {pos = {-177, 396}, yaw = -1.0, name = "Papa Joe"},
+    {pos = {-254, 436}, yaw = -1.2, name = "Aussie Bar"},
+    {pos = {-322, 472}, yaw = -1.3, name = "Cindy"},
+    {pos = {-410, 521}, yaw = -1.3, name = "Svarte Rudolf"},
   }
   for _, m in ipairs(boat_moorings) do
     local bid = engine.spawn{
@@ -140,17 +55,25 @@ function A.build(map)
   -- Suomen Joutsen moored at Forum Marinum
   engine.spawn{
     mesh = "suomen_joutsen",
-    pos = {-1820, 0.2, 1490},
-    yaw = -0.63,
+    pos = {-1708, 0.2, 1601},
+    yaw = -0.7,
     tag = "ship",
     body = "static",
   }
 
-  -- 4. Spawn The Föri (City Cable Ferry) in mid-river crossing
+  -- It runs between the quays, on the part of the line that's water, its
+  -- ramps a few meters short of either side.
   local p0, p1 = FORI_ROUTE.bank_east, FORI_ROUTE.bank_west
+  local t0, t1
+  for k = 0, 100 do
+    local t = k / 100
+    if R.water_level(p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t) then t0, t1 = t0 or t, t end
+  end
+  local pad = 5.5 / U.dist2d(p0[1], p0[2], p1[1], p1[2])
+  t0, t1 = (t0 or 0) + pad, (t1 or 1) - pad
   local init_progress = 0.45
-  local fx = p0[1] + (p1[1] - p0[1]) * init_progress
-  local fz = p0[2] + (p1[2] - p0[2]) * init_progress
+  local fx = p0[1] + (p1[1] - p0[1]) * (t0 + (t1 - t0) * init_progress)
+  local fz = p0[2] + (p1[2] - p0[2]) * (t0 + (t1 - t0) * init_progress)
   local fori_id = engine.spawn{
     mesh = "fori",
     pos = {fx, 0.45, fz},
@@ -163,10 +86,11 @@ function A.build(map)
     id = fori_id,
     target = 1, -- 0 for bank_east, 1 for bank_west
     progress = init_progress,
+    t0 = t0, t1 = t1,
     pause = 0.0,
   }
 
-  -- 5. Spawn drivable Buster XXL speedboat at Auransilta boat dock
+  -- A Buster speedboat to take, by Auransilta
   local boat_id = vehicle.spawn(-45, 320, -1.8, nil, "speedboat", "boat")
   A.speedboat = boat_id
 end
@@ -196,15 +120,25 @@ function A.tick(dt)
   end
 
   local p0, p1 = FORI_ROUTE.bank_east, FORI_ROUTE.bank_west
-  local cur_x = p0[1] + (p1[1] - p0[1]) * f.progress
-  local cur_z = p0[2] + (p1[2] - p0[2]) * f.progress
+  local t = f.t0 + (f.t1 - f.t0) * f.progress
+  local cur_x = p0[1] + (p1[1] - p0[1]) * t
+  local cur_z = p0[2] + (p1[2] - p0[2]) * t
   if engine.exists(f.id) then
     engine.set_pos(f.id, cur_x, 0.25, cur_z)
   end
 end
 
+-- The cathedral's bells ring noon over the river.
+local CATHEDRAL = {380, -90}
+local last_hour
 engine.on("tick", function(dt)
   A.tick(dt or (1/60))
+  if not A.fori then return end
+  local hour = math.floor(require("lib.daynight").hour)
+  if last_hour and hour ~= last_hour and hour == 12 then
+    engine.play("cathedral_bell", {pos = {CATHEDRAL[1], 25, CATHEDRAL[2]}, volume = 0.8})
+  end
+  last_hour = hour
 end)
 
 return A

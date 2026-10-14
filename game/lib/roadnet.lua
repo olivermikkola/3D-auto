@@ -36,6 +36,44 @@ local function crossing(ax, az, bx, bz, cx, cz, dx, dz)
   if t > 1e-3 and t < 1 - 1e-3 and u > 1e-3 and u < 1 - 1e-3 then return ax + rx * t, az + rz * t end
 end
 
+-- Does the stretch of road pts run out over the map's surveyed water?
+local function over_water(map, pts)
+  local water = (map.cover or {}).water
+  if not (map.terrain and water) then return false end
+  local rows = map._water_rows
+  if not rows then
+    rows = {}
+    for _, st in ipairs(water) do
+      for j = math.floor(st[2] / 4 + 0.5), math.floor(st[4] / 4 + 0.5) - 1 do
+        rows[j] = rows[j] or {}
+        table.insert(rows[j], st)
+      end
+    end
+    map._water_rows = rows
+  end
+  for i = 2, #pts do
+    local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
+    local n = math.max(1, math.ceil(math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2) / 3))
+    for k = 0, n do
+      local x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
+      for _, st in ipairs(rows[math.floor(z / 4)] or {}) do
+        if x >= st[1] and x <= st[3] then return true end
+      end
+    end
+  end
+  return false
+end
+
+-- Is a road the map calls a bridge a deck in the air, on a map with terrain?
+-- The importer grades every road but a deck into the ground, so a bridge
+-- with no heights is one even where the map doesn't say deck (maps imported
+-- before it said so on LiDAR terrain); one over water always is: graded to
+-- the ground there, it would run along the river bed.
+local function is_deck(map, road, pts)
+  if not (map.terrain and road.bridge) or road.tunnel then return false end
+  return not road.heights or over_water(map, pts)
+end
+
 -- ---- loading -------------------------------------------------------------------------
 
 -- Parse the map into a graph: junction ids in the order the map names them,
@@ -100,7 +138,7 @@ function R.load(map)
           n.edge_of[b .. ">" .. a] = #n.edges + 1
         end
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
+                                 deck = road.deck or is_deck(map, road, seg), inferred = not road.deck and is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
                                  sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway}
         start = i
       end
@@ -395,7 +433,7 @@ local function bake(name, parts, y, tag)
     p.pos, p.abs = {p.pos[1] - cx, p.pos[2] + g - y, p.pos[3] - cz}, nil
   end
   engine.mesh(name, parts)
-  engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = tag or "road", abs = true}
+  return engine.spawn{mesh = name, pos = {cx, y, cz}, scale = 1, tag = tag or "road", abs = true}
 end
 
 -- Parts grouped by which CHUNK x CHUNK square they're in, baked one mesh a
@@ -416,12 +454,10 @@ local function chunked()
     for k, v in pairs(c) do if type(v) == "table" then keys[#keys + 1] = k end end
     table.sort(keys)
     for _, k in ipairs(keys) do
-      local name = prefix .. k
-      bake(name, c[k], 0, tag)
-      local last_id = #engine.find(tag or "road") > 0 and engine.find(tag or "road")[#engine.find(tag or "road")] or nil
-      if last_id then
+      local id = bake(prefix .. k, c[k], 0, tag)
+      if id then
         baked_chunks[k] = baked_chunks[k] or {}
-        table.insert(baked_chunks[k], last_id)
+        table.insert(baked_chunks[k], id)
       end
     end
   end
@@ -569,6 +605,7 @@ end
 -- A bridge deck's height along its edge: straight from one end's ground to
 -- the other's, whatever is below; a street over a tunnel keeps its own
 -- surveyed heights.
+local CLEARANCE = 2.5
 local function deck_height(e)
   local cum = {0}
   for i = 2, #e.pts do
@@ -577,6 +614,23 @@ local function deck_height(e)
   local total = math.max(cum[#cum], 1e-3)
   local ha, hb = GROUND(e.pts[1][1], e.pts[1][2]), GROUND(e.pts[#e.pts][1], e.pts[#e.pts][2])
   local own = e.over and e.prof
+  -- Over water the deck clears it by CLEARANCE in its middle half, rising
+  -- in a gentle arch from its ends (the terrain's 10 m grid rounds the quays
+  -- off almost to the water, so straight end to end it would lie on it).
+  local lift = 0
+  if not own then
+    for i = 2, #e.pts do
+      local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+      local n = math.max(1, math.ceil((cum[i] - cum[i - 1]) / 3))
+      for k = 0, n do
+        local s = cum[i - 1] + (cum[i] - cum[i - 1]) * k / n
+        local t = s / total
+        local w = t >= 0.25 and t <= 0.75 and R.water_level(ax + (bx - ax) * k / n, az + (bz - az) * k / n)
+        if w then lift = math.max(lift, (w + CLEARANCE - (ha + (hb - ha) * t)) / (4 * t * (1 - t))) end
+      end
+    end
+    lift = math.min(lift, 6)
+  end
   return function(x, z)
     local best, bs = math.huge, 0
     for i = 2, #e.pts do
@@ -588,7 +642,8 @@ local function deck_height(e)
       local k = math.min(math.floor(u), #hs - 2)
       return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
     end
-    return ha + (hb - ha) * bs / total
+    local t = bs / total
+    return ha + (hb - ha) * t + lift * 4 * t * (1 - t)
   end
 end
 
@@ -1003,6 +1058,7 @@ end
 function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
 
 build = function(map, kit)
+  baked_chunks = {} -- the last city's are gone
   local sx, sz = map.size[1], map.size[2]
   local midx, midz = (map.center or {0, 0})[1], (map.center or {0, 0})[2] -- the map's middle
   local r = kit.rng(7, 11)
@@ -1114,8 +1170,12 @@ build = function(map, kit)
   -- the deck is well above the ground.
   for _, r in ipairs(rails) do
     local x, z, ei = r[1], r[3], r[7]
+    -- Where a deck the map didn't mark (is_deck) is still down at the
+    -- ground, a road forking off beside it is driven over its edge: no
+    -- railing across that.
+    local reach = NET.edges[ei].inferred and r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
     local on_road = H.near(x, z, 40, function(it)
-      return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 0.5
+      return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
                  and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
     end)
     if not on_road then
@@ -1890,7 +1950,10 @@ build = function(map, kit)
       local reach = math.max(y[3], y[4]) / 2 + 3 + r() * 5
       local tx, tz = y[1] + math.cos(a) * reach, y[2] + math.sin(a) * reach
       if free(H, tx, tz, 2) then
-        kit.static{mesh = r() < 0.6 and "pine" or "tree", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.7 + r() * 0.6, tag = "tree"}
+        local mesh, scale = r() < 0.6 and "pine" or "tree", 0.7 + r() * 0.6
+        if not R.wet(tx, tz) then -- not out in the river (the draw stays, so the rest of the city does too)
+          kit.static{mesh = mesh, pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = scale, tag = "tree"}
+        end
         add_circle(H, tx, tz, 1.5)
         planted = planted + 1
       end
@@ -1934,7 +1997,10 @@ build = function(map, kit)
                   if r() < 0.5 then -- a tree in the yard
                     pine_mesh()
                     local tx, tz = cx - nx * (d / 2 + 2.5) + fx * (w / 2 + 1), cz - nz * (d / 2 + 2.5) + fz * (w / 2 + 1)
-                    if free(H, tx, tz, 1) then kit.static{mesh = "pine", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.8 + r() * 0.5, tag = "tree"} end
+                    if free(H, tx, tz, 1) then
+                      local scale = 0.8 + r() * 0.5
+                      if not R.wet(tx, tz) then kit.static{mesh = "pine", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = scale, tag = "tree"} end
+                    end
                   end
                 elseif kind == "industrial" then
                   local h = 6 + r(0, 3) * 2

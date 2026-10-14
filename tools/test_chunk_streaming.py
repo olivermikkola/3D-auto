@@ -11,19 +11,6 @@ BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto
 
 class ChunkStreamingTests(unittest.TestCase):
     def test_chunk_streaming_active_around_player(self):
-        script = '''
-local G = require "lib.state"
-local city = require "lib.city"
-local U = require "lib.util"
-
-engine.on("init", function()
-  local roads = engine.find("road")
-  assert(#roads >= 10, "baked road chunk entities missing")
-  print("CHUNK_ENTITIES_COUNT=" .. #roads)
-  print("ALL CHUNK STREAMING CHECKS PASSED")
-  engine.quit()
-end)
-'''
         env = os.environ.copy()
         env["MAP"] = "raisio"
         env["SEED"] = "1337"

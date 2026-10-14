@@ -27,10 +27,8 @@ function S.build()
   engine.synth("pickup", {wave = "triangle", notes = {880, 1320}, note_len = 0.07, volume = 0.35})
   engine.synth("hurt", {wave = "noise", freq = 400, freq_end = 200, dur = 0.15, release = 0.1, volume = 0.5, lowpass = 0.2})
   engine.synth("stunt", {wave = "triangle", notes = {659, 784, 988, 1319}, note_len = 0.07, volume = 0.4})
-  -- Turku Cathedral & harbor audio atmosphere
+  -- Turku Cathedral's noon bells (systems/aurajoki).
   engine.synth("cathedral_bell", {wave = "sine", notes = {262, 330, 392, 523}, note_len = 0.45, attack = 0.01, release = 1.8, volume = 0.6})
-  engine.synth("foghorn", {wave = "saw", freq = 88, freq_end = 82, dur = 2.2, attack = 0.15, release = 0.9, volume = 0.4, lowpass = 0.25})
-  engine.synth("boat_engine", {wave = "triangle", freq = 95, dur = 0.35, loop = true, volume = 0.3, lowpass = 0.4})
 end
 
 -- One looping engine voice per running car within earshot: yours, traffic,

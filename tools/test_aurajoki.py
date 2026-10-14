@@ -17,7 +17,8 @@ class AurajokiTests(unittest.TestCase):
         env["AURAJOKI_TEST"] = "1"
         res = subprocess.run([str(BINARY), "game", "--headless", "30"], cwd=ROOT, env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn("AURAJOKI_OK bridges=5", res.stdout)
+        self.assertRegex(res.stdout, r"AURAJOKI_OK bridges=\d+")
+        self.assertIn("BOATS_AFLOAT_OK", res.stdout)
         self.assertIn("FORI_SHUTTLE_OK", res.stdout)
         self.assertIn("ALL AURAJOKI CHECKS PASSED", res.stdout)
 

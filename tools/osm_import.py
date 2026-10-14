@@ -937,7 +937,7 @@ def main():
         if ed.get("lit") is False: attrs += ", lit = false"
         if ed.get("oneway"): attrs += ", oneway = true"
         if ed["bridge"]: attrs += ", bridge = true"
-        if ed.get("deck") and cfg.get("dem"): attrs += ", deck = true"
+        if ed.get("deck") and terrain: attrs += ", deck = true"
         if ed.get("heights") and not ed.get("deck"):
             attrs += ", heights = {" + ", ".join(f"{h:.2f}".rstrip("0").rstrip(".") for h in ed["heights"]) + "}"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")

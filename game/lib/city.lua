@@ -97,9 +97,17 @@ end
 
 function C.map() return MAP end
 
--- The cities the pause menu offers, and the one picked there last (kept in
--- the "city" save; MAP=<name> overrides it for a run).
-C.MAPS = {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}}
+-- The cities the pause menu offers (those of these in maps/: a release may
+-- leave some out), and the one picked there last (kept in the "city" save;
+-- MAP=<name> overrides it for a run).
+C.MAPS = {}
+do
+  local have = {}
+  for _, f in ipairs(engine.files("maps")) do have[f] = true end
+  for _, m in ipairs{{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}} do
+    if have[m[1] .. ".lua"] then C.MAPS[#C.MAPS + 1] = m end
+  end
+end
 function C.chosen()
   local v = engine.load("city")
   for _, m in ipairs(C.MAPS) do if m[1] == v then return v end end
@@ -115,11 +123,11 @@ end
 
 -- The city to start in: one just picked in the pause menu, else MAP=<name>
 -- (which a picked one beats: the game may well have been started with it),
--- else the one picked last, else Manhattan.
+-- else the one picked last, else the first on offer.
 function C.start()
   local picked = engine.load("city_picked")
   if picked then engine.save("city_picked", nil) end
-  return (not picked and os.getenv("MAP")) or C.chosen() or "manhattan"
+  return (not picked and os.getenv("MAP")) or C.chosen() or (C.MAPS[1] or {"manhattan"})[1]
 end
 
 -- ---- shape of the land -------------------------------------------------------
