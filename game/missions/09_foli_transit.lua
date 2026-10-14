@@ -1,25 +1,49 @@
--- Drive Föli Line 7 municipal bus: pick up passengers at Raisiontori,
--- make scheduled stops along Raisiontie and Tiedonpuisto, and arrive at Kauppakeskus Mylly.
+-- Drive Föli municipal bus: pick up passengers at the central transit hub,
+-- make scheduled stops along regional corridors, and deliver passengers to the destination terminal.
 local city = require "lib.city"
 local U = require "lib.util"
 local vehicle = require "lib.vehicle"
 
-local start_pos = {870, -1700} -- Raisiontori transit stop
-local stops = {
-  {name = "Tasalanaukio", pos = {750, -1650}},
-  {name = "Raision lukio & kirjasto", pos = {1077, -1144}},
-  {name = "Kuloisten koulu", pos = {1850, -1750}},
-  {name = "Kauppakeskus Mylly Terminal", pos = {2700, -2200}},
-}
+local function get_route()
+  if city.map().id == "turku" then
+    return {
+      line = "Line 1: Kauppatori - Satama",
+      start_pos = {0, 0}, -- Kauppatori
+      stops = {
+        {name = "Turun Tuomiokirkko (Cathedral)", pos = {320, -180}},
+        {name = "TYKS / University Hospital", pos = {450, 200}},
+        {name = "Kupittaanpuisto / Campus", pos = {950, -450}},
+        {name = "Turun linna (Castle) Terminal", pos = {-1350, 800}},
+      },
+    }
+  else
+    return {
+      line = "Line 7: Raisio - Mylly",
+      start_pos = {870, -1700}, -- Raisiontori
+      stops = {
+        {name = "Tasalanaukio", pos = {750, -1650}},
+        {name = "Raision lukio & kirjasto", pos = {1077, -1144}},
+        {name = "Kuloisten koulu", pos = {1850, -1750}},
+        {name = "Kauppakeskus Mylly Terminal", pos = {2700, -2200}},
+      },
+    }
+  end
+end
+
+local route = get_route()
 
 return {
-  title = "Föli Transit: Line 7",
+  title = "Föli Transit Run",
   after = "01_joyride",
-  start = start_pos,
-  reward = 1500,
+  start = route.start_pos,
+  reward = 1800,
   run = function(m)
-    m:timer(260)
-    m:say("Take the wheel of the Föli municipal bus at Raisiontori.")
+    local cur_route = get_route()
+    local start_pos = cur_route.start_pos
+    local stops = cur_route.stops
+
+    m:timer(280)
+    m:say("Take the wheel of the Föli municipal bus at the transit rank.")
 
     -- Spawn assigned Föli bus at the bus rank
     local bus_id = m:spawn(vehicle.spawn(start_pos[1], start_pos[2], 0, nil, "bus", "bus"))
@@ -27,7 +51,7 @@ return {
     m:wait(function()
       return m:in_vehicle(bus_id)
     end)
-    U.message("LINE 7: RAISIO - MYLLY SERVICE ACTIVE", 3)
+    U.message(string.format("%s SERVICE ACTIVE", string.upper(route.line)), 3)
     engine.play("star")
 
     for i, stop in ipairs(stops) do
@@ -38,8 +62,8 @@ return {
       -- Wait until bus halts inside the stop zone
       m:wait(function()
         local in_bus = m:in_vehicle(bus_id)
-        local near = m:near(marker, 8)
-        local stopped = math.abs(vehicle.speed(bus_id)) < 1.5
+        local near = m:near(marker, 10)
+        local stopped = math.abs(vehicle.speed(bus_id)) < 2.0
         if not in_bus then
           m:say("Get back in your Föli bus!")
         end
@@ -52,6 +76,6 @@ return {
       m:sleep(2.0) -- passenger boarding/alighting pause
     end
 
-    U.message("LINE 7 COMPLETE: ALL PASSENGERS DELIVERED!", 4)
+    U.message("TRANSIT RUN COMPLETE: ALL PASSENGERS DELIVERED!", 4)
   end,
 }
