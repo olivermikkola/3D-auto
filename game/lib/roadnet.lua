@@ -96,7 +96,7 @@ function R.load(map)
         n.edge_of[a .. ">" .. b], n.edge_of[b .. ">" .. a] = #n.edges + 1, #n.edges + 1
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
                                  deck = road.deck, prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
-                                 sidewalk = road.sidewalk}
+                                 sidewalk = road.sidewalk, lit = road.lit}
         start = i
       end
     end
@@ -1085,7 +1085,7 @@ build = function(map, kit)
   -- asphalt.
   for ei, e in ipairs(NET.edges) do
     local walk = e.kind ~= "highway"
-    if walk then
+    if walk and e.lit ~= false then
       local side = 1
       for i = 2, #e.pts do
         local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
@@ -1114,11 +1114,127 @@ build = function(map, kit)
   end
   for id, p in ipairs(NET.pos) do
     local ring = (NET.map.roundabouts or {})[NET.name[id] or ""]
-    if ring then -- a planted island in the middle
-      engine.spawn{mesh = "cylinder", pos = {p[1], 0.1, p[2]}, size = {ring, 0.04, ring}, color = {0.35, 0.55, 0.28}, tag = "island"}
-      engine.spawn{mesh = "cylinder", pos = {p[1], 0.11, p[2]}, size = {ring + 1, 0.03, ring + 1}, color = PAVE}
+    if ring then -- a raised planted island in the middle
+      local h = GROUND and GROUND(p[1], p[2]) or 0
+      kit.static{mesh = "cylinder", pos = {p[1], h + 0.08, p[2]}, size = {ring, 0.16, ring}, color = {0.35, 0.55, 0.28}, tag = "sidewalk", abs = true}
+      kit.static{mesh = "cylinder", pos = {p[1], h + 0.085, p[2]}, size = {ring + 0.5, 0.17, ring + 0.5}, color = KERBSTONE, tag = "sidewalk", abs = true}
+      if ring >= 6 then
+        kit.static{mesh = "tree", pos = {p[1], h, p[2]}, size = {0.5, 6, 0.5}, scale = 1.0, tag = "scenery", abs = true}
+      end
     end
   end
+  -- Traffic islands: physical raised structures with kerbstones
+  for _, isl in ipairs(map.islands or {}) do
+    local ix, iz, ir = isl[1], isl[2], isl[3] or 2.5
+    local ih = GROUND and GROUND(ix, iz) or 0
+    kit.static{mesh = "cylinder", pos = {ix, ih + 0.08, iz}, size = {ir, 0.16, ir}, color = BRICK, tag = "sidewalk", abs = true}
+    kit.static{mesh = "cylinder", pos = {ix, ih + 0.085, iz}, size = {ir + 0.4, 0.17, ir + 0.4}, color = KERBSTONE, tag = "sidewalk", abs = true}
+  end
+
+  -- Rounded kerb corners at junctions: connect pavements with smooth arc fillets
+  local corner_parts = chunked()
+  for j = 1, #NET.pos do
+    local jpos = NET.pos[j]
+    local links = NET.links[j] or {}
+    if #links >= 2 and #links <= 6 then
+      local branches = {}
+      for _, nb in ipairs(links) do
+        local seg = NET.paths[j][nb]
+        if seg and #seg >= 2 then
+          local dx = seg[2][1] - seg[1][1]
+          local dz = seg[2][2] - seg[1][2]
+          local len = math.sqrt(dx * dx + dz * dz)
+          if len > 0.5 then
+            local ux, uz = dx / len, dz / len
+            local ei = NET.edge_of[j .. ">" .. nb]
+            local e = NET.edges[ei]
+            if e and not (e.deck or e.over or e.tunnel) then
+              branches[#branches + 1] = {
+                nb = nb,
+                ux = ux, uz = uz,
+                half_w = e.width / 2,
+                ang = math.atan(dz, dx),
+                walk = e.kind ~= "highway",
+                ei = ei,
+              }
+            end
+          end
+        end
+      end
+      if #branches >= 2 then
+        table.sort(branches, function(a, b) return a.ang < b.ang end)
+        for i = 1, #branches do
+          local b1 = branches[i]
+          local b2 = branches[(i % #branches) + 1]
+          local d_ang = (b2.ang - b1.ang) % (2 * math.pi)
+          if d_ang >= 0.55 and d_ang <= 2.65 and (b1.walk or b2.walk) then
+            -- b1 right normal: (b1.uz, -b1.ux)
+            local rx1, rz1 = b1.uz, -b1.ux
+            -- b2 left normal: (-b2.uz, b2.ux)
+            local rx2, rz2 = -b2.uz, b2.ux
+
+            local p1x = jpos[1] + rx1 * b1.half_w
+            local p1z = jpos[2] + rz1 * b1.half_w
+            local p2x = jpos[1] + rx2 * b2.half_w
+            local p2z = jpos[2] + rz2 * b2.half_w
+
+            local det = -b1.ux * b2.uz + b1.uz * b2.ux
+            if math.abs(det) > 1e-4 then
+              local t = (-b2.uz * (p2x - p1x) + b2.ux * (p2z - p1z)) / det
+              local apex_x = p1x + b1.ux * t
+              local apex_z = p1z + b1.uz * t
+              local apex_dist = math.sqrt((apex_x - jpos[1])^2 + (apex_z - jpos[2])^2)
+
+              if apex_dist < 45 then
+                local r_fillet = 3.2
+                local pt1_x = apex_x + b1.ux * r_fillet
+                local pt1_z = apex_z + b1.uz * r_fillet
+                local pt2_x = apex_x + b2.ux * r_fillet
+                local pt2_z = apex_z + b2.uz * r_fillet
+
+                local n_steps = 4
+                local prev_x, prev_z = pt1_x, pt1_z
+                for step = 1, n_steps do
+                  local u = step / n_steps
+                  local cur_x = (1 - u)^2 * pt1_x + 2 * (1 - u) * u * apex_x + u^2 * pt2_x
+                  local cur_z = (1 - u)^2 * pt1_z + 2 * (1 - u) * u * apex_z + u^2 * pt2_z
+                  local slen = math.sqrt((cur_x - prev_x)^2 + (cur_z - prev_z)^2)
+                  if slen > 0.05 then
+                    local syaw = math.atan(cur_x - prev_x, cur_z - prev_z)
+                    local mx = (prev_x + cur_x) / 2
+                    local mz = (prev_z + cur_z) / 2
+                    local my = (GROUND and GROUND(mx, mz) or 0) + KERB
+                    -- Kerbstone along the corner arc
+                    corner_parts.add(mx, mz, {
+                      mesh = "cube",
+                      pos = {mx, my + 0.095 - 0.15, mz},
+                      yaw = syaw,
+                      size = {0.22, 0.3, slen + 0.06},
+                      color = KERBSTONE,
+                      abs = true,
+                    })
+                    -- Raised sidewalk wedge behind kerbstone
+                    local srx, srz = math.cos(syaw), -math.sin(syaw)
+                    corner_parts.add(mx, mz, {
+                      mesh = "cube",
+                      pos = {mx + srx * (SIDEWALK / 2), my + 0.08 - 0.15, mz + srz * (SIDEWALK / 2)},
+                      yaw = syaw,
+                      size = {SIDEWALK, 0.3, slen + 0.06},
+                      color = WALK,
+                      abs = true,
+                      tag = "sidewalk",
+                    })
+                  end
+                  prev_x, prev_z = cur_x, cur_z
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  corner_parts.bake("corner_kerbs_", "sidewalk")
 
   -- Ground cover from the map's survey: fields, forest, water... as strips.
   -- On terrain the ground is colored by them already; only water is drawn,

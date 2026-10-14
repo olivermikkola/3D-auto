@@ -48,6 +48,14 @@ return {
     {pos = {936.0, 828.3}, yaw = 0.85, name = "Pansiontie", kind = "main"},
     {pos = {1340.4, 829.3}, yaw = 0.95, name = "Artukaistentie", kind = "street"},
   },
+  -- Raised traffic islands (e.g. junction splitters, pedestrian refuges)
+  islands = {
+    {855, -1725, 2.8}, -- Raisiontori square / Raisiontie splitter
+    {940, -1720, 2.5},
+    {1250, -1780, 2.6}, -- near police station
+    {2750, -2180, 3.2}, -- Mylly entrance island
+    {2680, -2250, 3.0},
+  },
   -- The map data's towers, and the police station's radio mast behind it.
   towers = (function()
     local t = {{1295, -1825, 45, "lattice"}, {-1000, -1590, 70, "chimney"}} -- and Raisio's factory chimney

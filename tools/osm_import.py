@@ -487,8 +487,14 @@ def main():
     for t, run in ways:
         hw = t["highway"]
         kind, w2, w1 = ROADS[hw]
-        oneway = t.get("oneway") in ("yes", "1", "-1") or hw in ("motorway", "motorway_link")
-        width = w1 if oneway else w2
+        lanes = t.get("lanes")
+        if lanes and lanes.isdigit() and int(lanes) >= 1:
+            n_lanes = int(lanes)
+            lane_w = 3.25
+            width = max(6.0, round(n_lanes * lane_w + (1.5 if hw == "motorway" else 0.8), 1))
+        else:
+            oneway = t.get("oneway") in ("yes", "1", "-1") or hw in ("motorway", "motorway_link")
+            width = w1 if oneway else w2
         name = t.get("name") or t.get("ref")
         bridge = t.get("bridge") not in (None, "no") or t.get("tunnel") not in (None, "no") or t.get("layer", "0") not in ("0",)
         # Up on a bridge, not on the ground. A layer alone isn't one: Nesteentie
@@ -498,8 +504,9 @@ def main():
         for k in range(1, len(run)):
             if run[k][0] in is_j or k == len(run) - 1:
                 seg = run[start:k + 1]
+                lit = (t.get("lit") not in ("no", "none")) if "lit" in t else None
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "deck": deck, "hw": hw, "walk": sidewalks(t)})
+                              "name": name, "bridge": bridge, "deck": deck, "hw": hw, "walk": sidewalks(t), "lit": lit})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -875,6 +882,7 @@ def main():
         attrs = f"kind = {q(ed['kind'])}, width = {ed['width']}"
         if ed["name"]: attrs = f"name = {q(ed['name'])}, " + attrs
         if ed["kind"] != "highway" and ed["walk"] != "both": attrs += f", sidewalk = {q(ed['walk'])}"
+        if ed.get("lit") is False: attrs += ", lit = false"
         if ed["bridge"]: attrs += ", bridge = true"
         if ed.get("deck") and cfg.get("dem"): attrs += ", deck = true"
         if ed.get("heights") and not ed.get("deck"):
