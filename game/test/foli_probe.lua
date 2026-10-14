@@ -10,11 +10,11 @@ engine.on("init", function()
   assert(vehicle.tags[engine.tag(bus_id)], "bus tag is not drivable")
   print("FOLI_BUS_SPAWN_OK id=" .. bus_id)
 
-  -- Verify Line 7 transit mission loaded
+  -- Verify Föli transit mission loaded
   local all = mission.all()
   local found_foli = false
   for _, m in ipairs(all) do
-    if m.title == "Föli Transit: Line 7" then
+    if m.title == "Föli Transit Run" or m.title == "Föli Transit: Line 7" then
       found_foli = true
       break
     end
