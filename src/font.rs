@@ -65,8 +65,16 @@ const GLYPHS: [[u8; 5]; 59] = [
 
 /// Calls `pixel(col, row)` for every lit pixel of `ch`.
 pub fn glyph(ch: char, mut pixel: impl FnMut(u32, u32)) {
-    let c = ch.to_ascii_uppercase() as u32;
-    let g = if (32..=90).contains(&c) { &GLYPHS[(c - 32) as usize] } else { &GLYPHS['?' as usize - 32] };
+    // Map Finnish / Scandinavian accented vowels to uppercase bitmap representations
+    let g: &[u8; 5] = match ch {
+        'ä' | 'Ä' => &[0x7D, 0x12, 0x11, 0x12, 0x7D],
+        'ö' | 'Ö' => &[0x3D, 0x42, 0x41, 0x42, 0x3D],
+        'å' | 'Å' => &[0x7D, 0x16, 0x11, 0x16, 0x7D],
+        _ => {
+            let c = ch.to_ascii_uppercase() as u32;
+            if (32..=90).contains(&c) { &GLYPHS[(c - 32) as usize] } else { &GLYPHS['?' as usize - 32] }
+        }
+    };
     for (x, col) in g.iter().enumerate() {
         for y in 0..7 {
             if col >> y & 1 == 1 {
@@ -78,3 +86,17 @@ pub fn glyph(ch: char, mut pixel: impl FnMut(u32, u32)) {
 
 /// Glyph advance in font pixels (5 wide + 1 gap).
 pub const ADVANCE: f32 = 6.0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_finnish_vowels_render_pixels() {
+        for ch in ['ä', 'Ä', 'ö', 'Ö', 'å', 'Å'] {
+            let mut count = 0;
+            glyph(ch, |_x, _y| count += 1);
+            assert!(count > 10, "glyph {ch} should have substantial lit pixels");
+        }
+    }
+}
