@@ -3,6 +3,7 @@
 local G = require "lib.state"
 local U = require "lib.util"
 local wanted = require "lib.wanted"
+local city = require "lib.city"
 
 local B = {
   fences = {},
@@ -233,6 +234,47 @@ function B.build(map)
       tag = "barrier",
       body = "static",
     }
+  end
+
+  -- 4. Raisionjoki River natural boundary pine belt along the western municipal border
+  if map.id == "turku" or map.id == "raisio" then
+    local border_line = {
+      {-2200, -800}, {-2400, -200}, {-2600, 50}, {-2700, 350}, {-2800, 600}, {-2000, 750}, {-920, -820}
+    }
+    for i = 2, #border_line do
+      local p0, p1 = border_line[i - 1], border_line[i]
+      local dist = U.dist2d(p0[1], p0[2], p1[1], p1[2])
+      local steps = math.floor(dist / 25)
+      for k = 1, steps - 1 do
+        local bx = p0[1] + (p1[1] - p0[1]) * k / steps
+        local bz = p0[2] + (p1[2] - p0[2]) * k / steps
+        -- Ensure trees don't spawn right on the active paved crossings or any road
+        local near_road = false
+        for _, cr in ipairs(B.crossings) do
+          if U.dist2d(bx, bz, cr.pos[1], cr.pos[2]) < 25 then
+            near_road = true
+            break
+          end
+        end
+        if not near_road and city.network() and roadnet then
+          local _, _, rx, rz = roadnet.nearest_edge(bx, bz)
+          if rx and U.dist2d(bx, bz, rx, rz) < 18 then
+            near_road = true
+          end
+        end
+        if not near_road then
+          local by = U.ground(bx, bz)
+          engine.spawn{
+            mesh = "tree",
+            pos = {bx + (k % 2 == 0 and 6 or -6), by, bz},
+            size = {0.8, 8.5, 0.8},
+            scale = 1.1,
+            tag = "tree",
+            body = "static",
+          }
+        end
+      end
+    end
   end
 end
 
