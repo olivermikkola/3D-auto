@@ -35,16 +35,17 @@ jobs:
           python-version: "3.12"
       - run: python -m unittest discover -s tools -p "test_*.py"
       # One runner plays every headless test and checks each printed PASSED
-      # marker, not just the exit code. Linux and Windows play every seed on
-      # both maps; macOS spot-checks the default seed; only Linux soaks.
+      # marker, not just the exit code. On pull requests, all OS runners run
+      # the fast smoke test (default seed, no soak) so CI finishes in ~2 mins.
+      # Deep multi-seed testing and the 300s soak run on merge to main.
       - name: Headless tests (all seeds, both maps)
-        if: runner.os != 'macOS'
+        if: github.event_name != 'pull_request' && runner.os != 'macOS'
         run: python tools/headless_tests.py --output headless-results ${{ runner.os == 'Linux' && '--soak' || '' }}
       - name: Headless tests (the starter map people copy for their own city)
-        if: runner.os == 'Linux'
+        if: github.event_name != 'pull_request' && runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/starter --maps starter --seeds 1337
-      - name: Headless tests (default seed, both maps)
-        if: runner.os == 'macOS'
+      - name: "Headless tests (fast PR smoke test, default seed)"
+        if: github.event_name == 'pull_request' || runner.os == 'macOS'
         run: python tools/headless_tests.py --output headless-results --seeds 1337
       - name: Upload test logs
         if: always()
