@@ -10,6 +10,12 @@ return {
   -- 8 x 8 blocks centered on Kauppatori / Aurakatu / Eerikinkatu
   grid = {nx = 8, nz = 8, bx = 80, bz = 55, avenue = 16, street = 13},
 
+  -- Aurajoki river corridor blocks: cleared of generic buildings so the water,
+  -- stone quays, bridge decks, restaurant boats, and Föri ferry are unobstructed.
+  water_blocks = {
+    {6, 1}, {5, 2}, {4, 3}, {3, 4}, {2, 5}, {1, 6}, {0, 7}
+  },
+
   districts = {
     {"residential", j = {0, 2}, brownstones = 0.6}, -- Portsa wooden district vibe
     {"downtown", j = {3, 5}},                       -- Kauppatori & commercial center
@@ -26,13 +32,13 @@ return {
   specials = {
     lot = {2, 2},
     plaza = {4, 4},       -- Kauppatori
-    stunt = {1, 6},
+    stunt = {1, 4},
     carpark = {3, 3},     -- Louhi underground parking entrance
     tower = {6, 2},       -- Tuomiokirkko cathedral spire
-    park = {{5, 4}, {5, 3}}, -- Samppalinnanpuisto / Vartiovuori
+    park = {{5, 4}, {6, 3}}, -- Samppalinnanpuisto / Vartiovuori
   },
 
-  billboards = {{3, 4}, {4, 3}},
+  billboards = {{3, 3}, {4, 4}},
 
   -- Named landmarks on the radar minimap
   labels = {
@@ -55,19 +61,19 @@ return {
     hospital = {node = {3, 5}},       -- TYKS (Turun yliopistollinen keskussairaala)
     taxi_rank = {node = {4, 4}},      -- Kauppatori taxi rank
     police_station = {node = {5, 5}}, -- Eerikinkatu police station
-    joyride_garage = {node = {6, 1}},
+    joyride_garage = {node = {6, 2}},
     race_start = {node = {2, 4}},
     race = {route = {{2, 4}, {2, 1}, {5, 1}, {5, 6}, {2, 6}}},
-    bank = {node = {4, 3}},           -- Aurakatu banking quarter
+    bank = {node = {4, 2}},           -- Aurakatu banking quarter
     getaway_start = {node = {3, 3}},
     cargo_pickup = {node = {1, 2}},
     cargo_drop = {node = {6, 5}},
     takedown_start = {node = {4, 2}},
-    target_start = {node = {2, 5}},
-    smuggle = {route = {{1, 6}, {6, 6}, {6, 1}, {1, 1}}},
-    smuggle_drop = {node = {5, 2}},
-    stunt = {node = {1, 6}},
-    castle = {node = {0, 7}},
+    target_start = {node = {2, 4}},
+    smuggle = {route = {{1, 5}, {6, 6}, {6, 2}, {1, 1}}},
+    smuggle_drop = {node = {5, 1}},
+    stunt = {node = {1, 4}},
+    castle = {node = {0, 6}},
     speedboat_dock = {node = {0, 6}},
     archipelago_drop = {node = {0, 1}},
   },

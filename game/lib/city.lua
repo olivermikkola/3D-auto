@@ -68,6 +68,11 @@ function C.use(map)
     for _, b in ipairs(pairs_of(v)) do SPECIAL[b[1] .. "," .. b[2]] = kind end
   end
   for _, b in ipairs(map.billboards or {}) do BILLBOARDS[b[1] .. "," .. b[2]] = true end
+  if map.water_blocks then
+    local wb = {}
+    for _, b in ipairs(map.water_blocks) do wb[b[1] .. "," .. b[2]] = true end
+    map.water_blocks_map = wb
+  end
   roads, GRAPH = {}, nil
   C.check()
   return map
@@ -146,6 +151,7 @@ end
 
 function C.district(i, j)
   if i < 0 or i >= NX or j < 0 or j >= NZ then return "water" end
+  if MAP and MAP.water_blocks_map and MAP.water_blocks_map[i .. "," .. j] then return "water" end
   local a, b = island(j)
   if i < a or i > b then return "water" end
   if in_park(i, j) then return "park" end
