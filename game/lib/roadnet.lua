@@ -138,7 +138,7 @@ function R.load(map)
           n.edge_of[b .. ">" .. a] = #n.edges + 1
         end
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck or is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
+                                 deck = road.deck or is_deck(map, road, seg), inferred = not road.deck and is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
                                  sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway}
         start = i
       end
@@ -1170,9 +1170,10 @@ build = function(map, kit)
   -- the deck is well above the ground.
   for _, r in ipairs(rails) do
     local x, z, ei = r[1], r[3], r[7]
-    -- Where the deck is still down at the ground, a road forking off beside
-    -- it is driven over its edge: no railing across that.
-    local reach = r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
+    -- Where a deck the map didn't mark (is_deck) is still down at the
+    -- ground, a road forking off beside it is driven over its edge: no
+    -- railing across that.
+    local reach = NET.edges[ei].inferred and r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
     local on_road = H.near(x, z, 40, function(it)
       return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
                  and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
@@ -1948,8 +1949,11 @@ build = function(map, kit)
       local a = r() * 2 * math.pi
       local reach = math.max(y[3], y[4]) / 2 + 3 + r() * 5
       local tx, tz = y[1] + math.cos(a) * reach, y[2] + math.sin(a) * reach
-      if free(H, tx, tz, 2) and not R.wet(tx, tz) then
-        kit.static{mesh = r() < 0.6 and "pine" or "tree", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.7 + r() * 0.6, tag = "tree"}
+      if free(H, tx, tz, 2) then
+        local mesh, scale = r() < 0.6 and "pine" or "tree", 0.7 + r() * 0.6
+        if not R.wet(tx, tz) then -- not out in the river (the draw stays, so the rest of the city does too)
+          kit.static{mesh = mesh, pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = scale, tag = "tree"}
+        end
         add_circle(H, tx, tz, 1.5)
         planted = planted + 1
       end
@@ -1993,7 +1997,10 @@ build = function(map, kit)
                   if r() < 0.5 then -- a tree in the yard
                     pine_mesh()
                     local tx, tz = cx - nx * (d / 2 + 2.5) + fx * (w / 2 + 1), cz - nz * (d / 2 + 2.5) + fz * (w / 2 + 1)
-                    if free(H, tx, tz, 1) and not R.wet(tx, tz) then kit.static{mesh = "pine", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = 0.8 + r() * 0.5, tag = "tree"} end
+                    if free(H, tx, tz, 1) then
+                      local scale = 0.8 + r() * 0.5
+                      if not R.wet(tx, tz) then kit.static{mesh = "pine", pos = {tx, 0, tz}, size = {0.5, 6, 0.5}, scale = scale, tag = "tree"} end
+                    end
                   end
                 elseif kind == "industrial" then
                   local h = 6 + r(0, 3) * 2
