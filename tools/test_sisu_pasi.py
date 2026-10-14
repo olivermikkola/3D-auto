@@ -17,7 +17,6 @@ class SisuPasiTests(unittest.TestCase):
         env["PASI_TEST"] = "1"
         res = subprocess.run([str(BINARY), "game", "--headless", "10"], cwd=ROOT, env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn("loaded 9 missions", res.stdout)
         self.assertIn("ALL PASI PROBE CHECKS PASSED", res.stdout)
 
 

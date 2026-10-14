@@ -6,21 +6,23 @@ local U = require "lib.util"
 local M = {}
 M.MAX_SPEED, M.REVERSE, M.ACCEL, M.BRAKE, M.DRAG = 38, 10, 18, 30, 0.12
 
--- Anything tagged "car" or "cop" or "pasi" can be driven.
-M.tags = {car = true, cop = true, pasi = true}
+-- Anything tagged "car" or "cop" or "pasi" or "bus" can be driven.
+M.tags = {car = true, cop = true, pasi = true, bus = true}
 
 -- y is the road's height there when it isn't the ground's (on a bridge,
 -- in a tunnel).
 function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local n = color_index or math.random(8)
   local is_pasi = mesh == "pasi" or tag == "pasi"
-  local size = is_pasi and {2.9, 2.5, 7.2} or {2.0, 1.4, 4.4}
-  local mass = is_pasi and 13500 or 1200
-  local step = is_pasi and 0.65 or 0.35
-  local id_mesh = mesh or (is_pasi and "pasi" or ("car" .. n))
-  local id = engine.spawn{mesh = id_mesh, pos = {x, (is_pasi and 1.25 or 0.75) + (y or U.ground(x, z)), z},
+  local is_bus = mesh == "bus" or tag == "bus"
+  local size = is_pasi and {2.9, 2.5, 7.2} or (is_bus and {2.6, 3.2, 12.2} or {2.0, 1.4, 4.4})
+  local mass = is_pasi and 13500 or (is_bus and 11500 or 1200)
+  local step = (is_pasi or is_bus) and 0.55 or 0.35
+  local id_mesh = mesh or (is_pasi and "pasi" or (is_bus and "bus" or ("car" .. n)))
+  local default_tag = is_pasi and "pasi" or (is_bus and "bus" or "car")
+  local id = engine.spawn{mesh = id_mesh, pos = {x, (is_bus and 1.6 or (is_pasi and 1.25 or 0.75)) + (y or U.ground(x, z)), z},
                           yaw = yaw or 0, size = size, body = "dynamic", mass = mass, friction = 0,
-                          step = step, tag = tag or (is_pasi and "pasi" or "car")}
+                          step = step, tag = tag or default_tag}
   return id
 end
 
