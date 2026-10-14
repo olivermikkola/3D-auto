@@ -299,8 +299,14 @@ engine.on("frame", function(dt)
 
   local H = require "lib.health"
   if G.vehicle and engine.exists(G.vehicle) then
+    local is_boat = engine.tag(G.vehicle) == "boat"
     local kmh = math.abs(require("lib.vehicle").speed(G.vehicle)) * 3.6
-    shadow_text(string.format("%3d KM/H", math.floor(kmh)), 20, h - 50, 28, 1, 1, 1)
+    if is_boat then
+      local knots = math.floor(kmh * 0.54)
+      shadow_text(string.format("%2d KNOTS", knots), 20, h - 50, 28, 0.4, 0.85, 1)
+    else
+      shadow_text(string.format("%3d KM/H", math.floor(kmh)), 20, h - 50, 28, 1, 1, 1)
+    end
     -- Car condition.
     local hp = H.get(G.vehicle) or H.VEHICLE_HP
     bar(20, h - 92, 160, 8, hp / H.VEHICLE_HP, 1, 0.6, 0.1)
