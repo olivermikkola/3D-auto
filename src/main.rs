@@ -225,6 +225,22 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
         }
     }
     let e = eng.borrow();
+    // MESH_REPORT=1: where the mesh memory goes, by name with its chunk or
+    // road number dropped ("road12" and "road7" are both "road").
+    if std::env::var_os("MESH_REPORT").is_some() {
+        let mut by: std::collections::HashMap<&str, (usize, usize)> = Default::default();
+        for (name, &id) in &e.mesh_ids {
+            let m = &e.meshes[id];
+            let v = by.entry(name.trim_end_matches(|c: char| c.is_ascii_digit() || ",-_".contains(c))).or_default();
+            v.0 += m.verts.len() * size_of::<mesh::Vertex>() + m.indices.len() * 4;
+            v.1 += 1;
+        }
+        let mut by: Vec<_> = by.into_iter().collect();
+        by.sort_by_key(|(_, (bytes, _))| std::cmp::Reverse(*bytes));
+        for (name, (bytes, n)) in by.iter().take(12) {
+            println!("mesh {name:24} {:6.1} MB in {n}", *bytes as f64 / 1e6);
+        }
+    }
     let mesh_mb = e.meshes.iter().map(|m| m.verts.len() * size_of::<mesh::Vertex>() + m.indices.len() * 4).sum::<usize>() as f64 / 1e6;
     println!(
         "headless: {} ticks in {:.1} ms, {} entities, {} meshes ({mesh_mb:.0} MB)",

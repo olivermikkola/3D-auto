@@ -688,6 +688,10 @@ CI reuses one build per platform: Linux and Windows run the full maintained seed
 suites; macOS explicitly checks both suites on every map at 1337. Only Linux runs the soak. Raw logs and
 a reconciled results matrix are uploaded as CI artifacts even when a check fails.
 
+`MESH_REPORT=1` with `--headless` lists where the mesh memory goes, by mesh name. For example,
+`MAP=raisio MESH_REPORT=1 auto game --headless 2` shows terrain at 93 MB, roads at 38 and paved
+areas at 26.
+
 `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
 pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and

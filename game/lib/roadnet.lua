@@ -587,36 +587,47 @@ local function dome_mesh(w, d, h)
 end
 -- A strip along a polyline: a box per segment and a disc at each bend, so
 -- curves have no gaps.
+-- A band `width` wide along pts, its top `top` above the ground (or above
+-- hf, a bridge deck's heights): one ribbon, sampled every 6 m or less so it
+-- follows the ground, mitred at the bends. Round discs only where a band
+-- ends (with `discs`: a junction, so roads meeting there leave no notch)
+-- and at bends too sharp for a mitre.
+local capped = {} -- "x z top" -> width of the disc already there
 local function strip(parts, pts, width, top, color, discs, hf)
   hf = hf or GROUND
-  if hf then -- on terrain: pieces at most 6 m long, each tilted to follow the ground
-    for i = 2, #pts do
-      local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
-      local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
-      local n = math.max(1, math.ceil(len / 6))
-      local yaw = math.atan(bx - ax, bz - az)
-      for k = 0, n - 1 do
-        local t0, t1 = k / n, (k + 1) / n
-        local h0, h1 = hf(ax + (bx - ax) * t0, az + (bz - az) * t0), hf(ax + (bx - ax) * t1, az + (bz - az) * t1)
-        local l = len / n
-        parts[#parts + 1] = {mesh = "cube", pos = {ax + (bx - ax) * (t0 + t1) / 2, (h0 + h1) / 2 + top - 0.15, az + (bz - az) * (t0 + t1) / 2},
-                             yaw = yaw, pitch = -math.atan(h1 - h0, l), size = {width, 0.3, l + 0.1}, color = color, abs = true}
+  local line, skirt = {}, hf and 0.3 or 0.02
+  local x0, z0 = pts[1][1], pts[1][2]
+  local function y(x, z) return (hf and hf(x, z) or 0) + top end
+  for i = 1, #pts do
+    local ax, az = pts[i][1], pts[i][2]
+    if i > 1 then
+      local px, pz = pts[i - 1][1], pts[i - 1][2]
+      local n = hf and math.max(1, math.ceil(math.sqrt((ax - px) ^ 2 + (az - pz) ^ 2) / 6)) or 1
+      for k = 1, n - 1 do
+        local x, z = px + (ax - px) * k / n, pz + (az - pz) * k / n
+        line[#line + 1], line[#line + 2], line[#line + 3] = x - x0, y(x, z), z - z0
       end
     end
-    for i = discs and 1 or 2, discs and #pts or #pts - 1 do
-      parts[#parts + 1] = {mesh = "cylinder", pos = {pts[i][1], hf(pts[i][1], pts[i][2]) + top - 0.15, pts[i][2]},
-                           size = {width, 0.3, width}, color = color, abs = true}
+    line[#line + 1], line[#line + 2], line[#line + 3] = ax - x0, y(ax, az), az - z0
+  end
+  if #pts >= 2 then
+    parts[#parts + 1] = {ribbon = line, width = width, depth = skirt, pos = {x0, 0, z0}, color = color, abs = true}
+  end
+  for i = 1, #pts do
+    local sharp = false
+    if i > 1 and i < #pts then
+      local ux, uz = pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]
+      local vx, vz = pts[i + 1][1] - pts[i][1], pts[i + 1][2] - pts[i][2]
+      local cos = (ux * vx + uz * vz) / (math.sqrt((ux * ux + uz * uz) * (vx * vx + vz * vz)) + 1e-9)
+      sharp = cos < 0.5 -- turning more than 60 degrees: a mitre would spike
     end
-    return
-  end
-  for i = 2, #pts do
-    local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
-    local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
-    parts[#parts + 1] = {mesh = "cube", pos = {(ax + bx) / 2, top - 0.01, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
-                         size = {width, 0.02, len}, color = color}
-  end
-  for i = discs and 1 or 2, discs and #pts or #pts - 1 do
-    parts[#parts + 1] = {mesh = "cylinder", pos = {pts[i][1], top - 0.01, pts[i][2]}, size = {width, 0.02, width}, color = color}
+    -- Where several roads meet, the widest disc covers the others.
+    local key = string.format("%.1f %.1f %.2f", pts[i][1], pts[i][2], top)
+    if (sharp or (discs and (i == 1 or i == #pts))) and (capped[key] or 0) < width then
+      capped[key] = width
+      parts[#parts + 1] = {mesh = "disc", pos = {pts[i][1], y(pts[i][1], pts[i][2]) - skirt / 2, pts[i][2]},
+                           size = {width, skirt, width}, color = color, abs = true}
+    end
   end
 end
 
@@ -630,7 +641,7 @@ local function dashes(parts, pts, top, hf)
     for s = 8, len - 8, 9 do
       local t = s / len
       local x, z = ax + (bx - ax) * t, az + (bz - az) * t
-      local part = {mesh = "cube", pos = {x, top, z}, yaw = yaw, size = {0.18, 0.01, 3}, color = {0.9, 0.9, 0.86}}
+      local part = {mesh = "plane", pos = {x, top + 0.005, z}, yaw = yaw, size = {0.18, 1, 3}, color = {0.9, 0.9, 0.86}}
       if hf then
         local d = 1.5 / len
         local h0, h1 = hf(ax + (bx - ax) * (t - d), az + (bz - az) * (t - d)), hf(ax + (bx - ax) * (t + d), az + (bz - az) * (t + d))
@@ -979,6 +990,19 @@ local WALK, KERBSTONE, BRICK, GRASS = {0.44, 0.44, 0.43}, {0.68, 0.67, 0.64}, {0
 -- up, a kerbstone along the asphalt's edge, verges a kerbstone alone.
 local function kerbs(parts, ei, e)
   local half = e.width / 2
+  -- Each side's slab and kerbstone as ribbons: a run that starts where the
+  -- last one ended carries on the same ribbon, so a long street is a few
+  -- strips, not a box per piece.
+  local open = {}
+  local function flush(s)
+    local o = open[s]
+    if not o then return end
+    if o.slab then
+      parts[#parts + 1] = {ribbon = o.slab, width = o.w, pos = {0, 0, 0}, color = o.color, abs = true}
+    end
+    parts[#parts + 1] = {ribbon = o.kerb, width = 0.2, pos = {0, 0, 0}, color = KERBSTONE, abs = true}
+    open[s] = nil
+  end
   for _, pc in ipairs(e.pieces) do
     local ax, az, bx, bz = pc[1], pc[2], pc[3], pc[4]
     local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
@@ -986,36 +1010,53 @@ local function kerbs(parts, ei, e)
       local ux, uz = (bx - ax) / len, (bz - az) / len
       for s = 1, 2 do
         local sd = pc.side[s]
-        if sd.kind ~= "none" then
+        if sd.kind == "none" then
+          flush(s)
+        else
           local sign = s == 1 and 1 or -1
           local rx, rz = sign * uz, -sign * ux
           local w = sd.kind == "walk" and SIDEWALK or sd.kind == "median" and sd.w or 0
+          local color = w > 0 and (sd.kind == "walk" and WALK or (w <= 2.5 and BRICK or GRASS)) or nil
           local function at(t, o) return {ax + ux * t + rx * o, az + uz * t + rz * o} end
           for _, run in ipairs(clear_runs(ei, ax, az, ux, uz, len, rx, rz, half, half + math.max(w, 0.3))) do
             -- One height each end for the slab and its kerbstone: on a
             -- pavement the ground's (a kerb up already), on a verge the
             -- road's edge plus a kerb.
             local o = w > 0 and half + w / 2 or half + 0.1
-            local p0, p1 = at(run[1], o), at(run[2], o)
             local o2 = w > 0 and half + math.min(w, SIDEWALK) / 2 or o -- within the raised part
-            local g0, g1 = at(run[1], o2), at(run[2], o2)
-            local h0, h1 = GROUND and GROUND(g0[1], g0[2]) or 0, GROUND and GROUND(g1[1], g1[2]) or 0
-            if w == 0 or not GROUND then h0, h1 = h0 + KERB, h1 + KERB end
-            local l, pitch = run[2] - run[1], -math.atan(h1 - h0, run[2] - run[1])
-            local yaw = math.atan(ux, uz)
-            if w > 0 then
-              local color = sd.kind == "walk" and WALK or (w <= 2.5 and BRICK or GRASS)
-              parts[#parts + 1] = {mesh = "cube", pos = {(p0[1] + p1[1]) / 2, (h0 + h1) / 2 + 0.08 - 0.15, (p0[2] + p1[2]) / 2}, yaw = yaw,
-                                   pitch = pitch, size = {w, 0.3, l + 0.1}, color = color, abs = true}
+            local ends = {}
+            for k, t in ipairs{run[1], run[2]} do
+              local g = at(t, o2)
+              local h = GROUND and GROUND(g[1], g[2]) or 0
+              if w == 0 or not GROUND then h = h + KERB end
+              ends[k] = {slab = at(t, o), kerb = at(t, half + 0.1), h = h}
             end
-            local k0, k1 = at(run[1], half + 0.1), at(run[2], half + 0.1)
-            parts[#parts + 1] = {mesh = "cube", pos = {(k0[1] + k1[1]) / 2, (h0 + h1) / 2 + 0.095 - 0.15, (k0[2] + k1[2]) / 2}, yaw = yaw,
-                                 pitch = pitch, size = {0.2, 0.3, l + 0.1}, color = KERBSTONE, abs = true}
+            local cur = open[s]
+            local first = ends[1].kerb
+            if not (cur and cur.w == w and cur.color == color
+                    and (cur.last[1] - first[1]) ^ 2 + (cur.last[2] - first[2]) ^ 2 < 0.04) then
+              flush(s)
+              cur = {w = w, color = color, slab = w > 0 and {} or nil, kerb = {}}
+              open[s] = cur
+            else
+              table.remove(ends, 1) -- the start is the last run's end
+            end
+            for _, p in ipairs(ends) do
+              if cur.slab then
+                local n = #cur.slab
+                cur.slab[n + 1], cur.slab[n + 2], cur.slab[n + 3] = p.slab[1], p.h + 0.08, p.slab[2]
+              end
+              local n = #cur.kerb
+              cur.kerb[n + 1], cur.kerb[n + 2], cur.kerb[n + 3] = p.kerb[1], p.h + 0.095, p.kerb[2]
+              cur.last = p.kerb
+            end
           end
         end
       end
     end
   end
+  flush(1)
+  flush(2)
 end
 
 -- The side (1 or 2) of edge e at fraction t along its bend i.
@@ -1098,6 +1139,7 @@ function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
 
 build = function(map, kit)
   baked_chunks = {} -- the last city's are gone
+  capped = {}
   local sx, sz = map.size[1], map.size[2]
   local midx, midz = (map.center or {0, 0})[1], (map.center or {0, 0})[2] -- the map's middle
   local r = kit.rng(7, 11)
