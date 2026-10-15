@@ -3,7 +3,7 @@
 -- A full day takes DAY_LENGTH real seconds. Press N to skip ahead 3 hours.
 local U = require "lib.util"
 
-local D = {hour = 16.5, DAY_LENGTH = 8 * 60}
+local D = {hour = 16.5, DAY_LENGTH = 48 * 60}
 
 local function lerp3(a, b, t) return {U.lerp(a[1], b[1], t), U.lerp(a[2], b[2], t), U.lerp(a[3], b[3], t)} end
 

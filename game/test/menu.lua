@@ -32,6 +32,10 @@ local steps, frozen = {}, nil
 if phase == 1 then
   steps[30] = function()
     check(not engine.paused() and settings.get("volume") == 70, "starts unpaused with default settings")
+    local hud = require "lib.hud"
+    check(hud.help_shown() and not engine.load("help_seen"), "the very first start shows the controls")
+    key("f1")
+    check(not hud.help_shown() and settings.get("help_on") == false and engine.load("help_seen"), "F1 hides them, for good")
     local x, y, z = U.player_pos()
     frozen = {ticks = engine.ticks(), time = engine.time(), pos = {x, y, z}}
     key("escape")
@@ -45,7 +49,7 @@ if phase == 1 then
     -- Mouse: click SETTINGS.
     menu.click(center("SETTINGS"))
     check(menu.page == "settings", "clicking SETTINGS opens the settings page")
-    -- Keyboard: volume up, sensitivity to its floor, flip invert, wider FOV, help off.
+    -- Keyboard: volume up, sensitivity to its floor, flip invert, wider FOV, help on.
     key("right")
     check(settings.get("volume") == 80 and math.abs(engine.volume() - 0.8) < 1e-6, "right raises the volume and applies it")
     key("down")
@@ -60,10 +64,10 @@ if phase == 1 then
     select("HELP OVERLAY")
     local _, r = menu.row_at(center("HELP OVERLAY"))
     menu.click(r.x + r.w - 100, r.y + 5)
-    check(settings.get("help") == false, "clicking a switch flips it")
+    check(settings.get("help_on") == true, "clicking a switch flips it")
     menu.click(r.x + r.w - 100, r.y + 5)
     menu.click(r.x + r.w - 100, r.y + 5)
-    check(settings.get("help") == false, "and flips it back each click")
+    check(settings.get("help_on") == true, "and flips it back each click")
     local saved = engine.load("settings")
     check(saved and saved.volume == 80 and saved.fov == 75 and saved.invert_y == true, "settings save as they change")
     key("escape")
@@ -95,7 +99,11 @@ elseif phase == 2 then
   steps[2] = function()
     check(settings.get("volume") == 80 and math.abs(engine.volume() - 0.8) < 1e-6, "volume survives a restart and is applied")
     check(settings.get("sensitivity") == 1 and settings.get("invert_y") == true, "mouse settings survive a restart")
-    check(settings.get("fov") == 75 and settings.get("help") == false, "FOV and help overlay survive a restart")
+    check(settings.get("fov") == 75 and settings.get("help_on") == true, "FOV and help overlay survive a restart")
+    settings.set("help_on", false)
+    check(not require("lib.hud").help_shown(), "no controls on later starts unless asked for")
+    engine.emit("key", "f1", true)
+    check(require("lib.hud").help_shown() and settings.get("help_on") == true, "F1 brings them back, and keeps them")
     check(G.cash == 123, "quitting from the menu saved progress")
     engine.emit("minimized")
     check(menu.open and engine.paused(), "minimizing the window pauses")
@@ -107,7 +115,7 @@ elseif phase == 2 then
     check(settings.get("shadows") == false and settings.get("view") == 90, "shadows switch off and the view shortens")
     select("RESET TO DEFAULTS")
     key("enter")
-    check(settings.get("volume") == 70 and settings.get("invert_y") == false and settings.get("help") == true, "reset restores defaults")
+    check(settings.get("volume") == 70 and settings.get("invert_y") == false and settings.get("help_on") == false, "reset restores defaults")
     check(settings.get("shadows") == true and settings.get("view") == 100, "including shadows and view distance")
     check(engine.load("settings").volume == 70, "and saves them")
     select("BACK")

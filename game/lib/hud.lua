@@ -281,7 +281,28 @@ engine.on("wanted_changed", function(level, old)
   radio = {text = text, till = engine.time() + 5}
 end)
 
-engine.on("key", function(k, down) if k == "f1" and down then settings.set("help", not settings.get("help")) end end)
+-- The controls: shown for the first half minute until someone has seen them
+-- through (or closed them), then only while the HELP OVERLAY setting is on.
+-- Every start says "F1 HELP" for a few seconds, so they can be found again.
+local HINT, help_until = 8, engine.load("help_seen") and 0 or 30
+local function seen()
+  help_until = 0
+  engine.save("help_seen", true)
+end
+local function help_shown()
+  if help_until > 0 and engine.time() >= help_until then seen() end
+  return settings.get("help_on") or engine.time() < help_until
+end
+M.help_shown = help_shown
+engine.on("key", function(k, down)
+  if k ~= "f1" or not down then return end
+  if help_shown() then
+    if help_until > 0 then seen() end
+    settings.set("help_on", false)
+  else
+    settings.set("help_on", true)
+  end
+end)
 
 engine.on("frame", function(dt)
   local w, h = engine.screen()
@@ -363,11 +384,16 @@ engine.on("frame", function(dt)
   minimap(w, h)
   whereabouts(h)
 
-  if settings.get("help") then
+  if help_shown() then
     local lines = require("lib.input").connected() and
       "L STICK MOVE/STEER  R STICK CAMERA  RT ACCELERATE/FIRE  LT BRAKE\nA JUMP/HANDBRAKE  B RUN/HORN  Y ENTER/EXIT CAR  X SHOPS\nLB/RB WEAPONS  BACK PROGRESS  START PAUSE/SETTINGS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nF1 HIDE HELP" or "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nTAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC PAUSE/SETTINGS"
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
+  elseif engine.time() < HINT then
+    local a = math.min(1, HINT - engine.time())
+    local hint = require("lib.input").connected() and "HELP: START > SETTINGS" or "F1 HELP"
+    engine.rect(14, 14, engine.text_width(hint, 12) + 16, 24, 0, 0, 0, 0.45 * a)
+    engine.text(hint, 22, 20, 12, 0.9, 0.9, 0.9, a)
   end
 end)
 

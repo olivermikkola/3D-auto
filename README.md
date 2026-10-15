@@ -196,7 +196,7 @@ All of it is driven from Lua. `lib/daynight.lua` (~60 lines) moves the sun, blen
 and night palettes, and sets `glow`. Glow turns on emissive mesh parts (headlights, taillights,
 lamp bulbs, a third of the office floors) and scales every light. Street lamps and headlights
 are ordinary `engine.light`s that follow their entity, so the engine moves them; Lua never
-touches them per frame. A full day lasts 8 minutes. `HOUR=22 auto game` starts at night.
+touches them per frame. A full day lasts 48 minutes; N skips 3 hours. `HOUR=22 auto game` starts at night.
 
 | | |
 |---|---|

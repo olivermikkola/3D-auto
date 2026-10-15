@@ -9,7 +9,10 @@ M.list = {
   {key = "invert_y", label = "INVERT CAMERA Y", default = false},
   {key = "fov", label = "FIELD OF VIEW", min = 55, max = 100, step = 5, default = 70},
   {key = "fullscreen", label = "FULLSCREEN", default = false},
-  {key = "help", label = "HELP OVERLAY", default = true},
+  -- Keep the controls on screen. Off by default: they show on the very
+  -- first start, and F1 brings them back. (A new key: the old "help" was
+  -- saved as on by everyone who ever changed any setting.)
+  {key = "help_on", label = "HELP OVERLAY", default = false},
   -- For slower GPUs: no shadow pass, and a shorter view (a share of the
   -- map's own fog distance; nothing past it is drawn).
   {key = "shadows", label = "SHADOWS", default = true},
