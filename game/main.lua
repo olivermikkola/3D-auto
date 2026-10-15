@@ -50,6 +50,7 @@ engine.on("init", function()
   require("systems.kakola").build(city.map())
   require("systems.harbor").build(city.map())
   require("systems.kauppatori").build(city.map())
+  require("systems.suurtori").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -136,6 +137,7 @@ if os.getenv("HEIST_TEST") then require "test.heist_probe" end
 if os.getenv("KAKOLA_TEST") then require "test.kakola_probe" end
 if os.getenv("HARBOR_TEST") then require "test.harbor_probe" end
 if os.getenv("KAUPPATORI_TEST") then require "test.kauppatori_probe" end
+if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
