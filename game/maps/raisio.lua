@@ -23,6 +23,8 @@ return {
   terrain = osm.terrain, -- real heights (Maanmittauslaitos), roads graded in
   pitches = osm.pitches,
   footbridges = osm.footbridges,
+  railways = osm.railways,
+  platforms = osm.platforms,
   wooden_footbridges = {
     {
       name = "Punttamäenpolun silta",
