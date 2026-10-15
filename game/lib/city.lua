@@ -104,7 +104,9 @@ C.MAPS = {}
 do
   local have = {}
   for _, f in ipairs(engine.files("maps")) do have[f] = true end
-  for _, m in ipairs{{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}} do
+  local order = have["manhattan.lua"] and {{"manhattan", "MANHATTAN"}, {"harbor", "HARBOR"}, {"raisio", "RAISIO"}, {"turku", "TURKU"}}
+                                      or {{"turku", "TURKU"}, {"raisio", "RAISIO"}, {"harbor", "HARBOR"}, {"manhattan", "MANHATTAN"}}
+  for _, m in ipairs(order) do
     if have[m[1] .. ".lua"] then C.MAPS[#C.MAPS + 1] = m end
   end
 end
