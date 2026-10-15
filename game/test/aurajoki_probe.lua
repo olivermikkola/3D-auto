@@ -44,6 +44,19 @@ engine.on("init", function()
     assert(R.water_level(p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t), "Föri runs onto land")
   end
   print("FORI_SHUTTLE_OK id=" .. f.id)
+
+  -- Check Koroistenniemi bishop's cross landmark
+  local landmarks = engine.find("landmark")
+  local found_cross = false
+  for _, id in ipairs(landmarks) do
+    if engine.mesh_of(id) == "koroisten_risti" then
+      found_cross = true
+      break
+    end
+  end
+  assert(found_cross, "Koroistenniemi White Bishop's Cross missing")
+  print("KOROISTENNIEMI_CROSS_OK")
+
   print("ALL AURAJOKI CHECKS PASSED")
   engine.quit()
 end)

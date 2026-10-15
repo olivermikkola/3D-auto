@@ -39,12 +39,27 @@ engine.on("frame", function(dt)
   local fx, fz = U.forward(G.cam_yaw)
   local c = math.cos(G.cam_pitch)
   local dx, dy, dz = -fx * c, math.sin(G.cam_pitch), -fz * c
-  -- Pull in if a wall is between the target and the camera.
+
+  -- Multi-probe spring-arm raycast: prevent clipping through bridge decks, arches, and walls
+  local best_dist = dist
   local hit, d = engine.raycast(tx, ty, tz, dx, dy, dz, dist, id)
-  if hit then dist = math.max(1.0, d - 0.4) end
+  if hit then best_dist = math.min(best_dist, math.max(1.2, d - 0.5)) end
+
+  -- Lateral clearance probes (cushions camera from bridge pillars and overhanging decks)
+  local rx, rz = -fz, fx
+  for _, side in ipairs{-0.35, 0.35} do
+    local sx, sy, sz = tx + rx * side, ty + 0.3, tz + rz * side
+    local h_side, d_side = engine.raycast(sx, sy, sz, dx, dy, dz, dist, id)
+    if h_side then best_dist = math.min(best_dist, math.max(1.2, d_side - 0.5)) end
+  end
+  dist = best_dist
+
   local want = {tx + dx * dist, ty + dy * dist, tz + dz * dist}
   if not eye then eye = want end
-  local k = math.min(1, dt * 12)
+  -- Instant pull-in on collision to guarantee zero geometry clipping; smooth ease-out
+  local pulling_in = dist < (M.last_dist or dist)
+  local k = pulling_in and 1.0 or math.min(1, dt * 10)
+  M.last_dist = dist
   for i = 1, 3 do eye[i] = eye[i] + (want[i] - eye[i]) * k end
   local fov = settings.get("fov")
   engine.camera(eye[1], eye[2], eye[3], tx, ty, tz, G.vehicle and fov + 7 or fov)

@@ -52,6 +52,35 @@ function P.build()
     {mesh = "sphere", pos = {0.5, 3.6, 0.2}, size = {1.5, 1.4, 1.5}, color = {0.26, 0.56, 0.22}},
   })
 
+  -- Leafy Aurajoki riverside boulevard linden / weeping willow tree
+  engine.mesh("willow_tree", {
+    {mesh = "cylinder", pos = {0, 1.5, 0}, size = {0.5, 3.0, 0.5}, color = {0.32, 0.22, 0.14}},
+    {mesh = "sphere", pos = {0, 3.8, 0}, size = {3.6, 2.6, 3.6}, color = {0.28, 0.54, 0.24}},
+    {mesh = "sphere", pos = {-0.6, 3.2, 0.5}, size = {2.2, 2.0, 2.2}, color = {0.22, 0.48, 0.20}},
+    {mesh = "sphere", pos = {0.7, 3.1, -0.4}, size = {2.4, 2.1, 2.4}, color = {0.32, 0.58, 0.26}},
+  })
+
+  -- Cast-iron riverside park bench (Jokirannan puistonpenkki)
+  local bench_wood, bench_iron = {0.62, 0.38, 0.18}, {0.18, 0.18, 0.20}
+  engine.mesh("park_bench", {
+    {mesh = "cube", pos = {0, 0.45, 0}, size = {2.0, 0.08, 0.55}, color = bench_wood},
+    {mesh = "cube", pos = {0, 0.72, -0.24}, size = {2.0, 0.45, 0.08}, color = bench_wood},
+    {mesh = "cube", pos = {-0.9, 0.35, 0}, size = {0.1, 0.7, 0.58}, color = bench_iron},
+    {mesh = "cube", pos = {0.9, 0.35, 0}, size = {0.1, 0.7, 0.58}, color = bench_iron},
+  })
+
+  -- Koroistenniemi White Bishop's Cross (Koroisten valkoinen piispanristi)
+  local cross_white, cross_stone = {0.96, 0.96, 0.98}, {0.55, 0.54, 0.52}
+  engine.mesh("koroisten_risti", {
+    -- Mound stone cairn base
+    {mesh = "cube", pos = {0, 0.5, 0}, size = {2.6, 1.0, 2.6}, color = cross_stone},
+    {mesh = "cube", pos = {0, 1.2, 0}, size = {2.0, 0.5, 2.0}, color = cross_stone},
+    -- Vertical wooden beam (6 meters high)
+    {mesh = "cube", pos = {0, 4.5, 0}, size = {0.35, 6.2, 0.35}, color = cross_white},
+    -- Horizontal cross arm (3.2 meters wide)
+    {mesh = "cube", pos = {0, 6.2, 0}, size = {3.4, 0.35, 0.35}, color = cross_white},
+  })
+
   engine.mesh("lamp", {
     {mesh = "cylinder", pos = {0, 2.5, 0}, size = {0.15, 5.0, 0.15}, color = {0.25, 0.25, 0.27}},
     {mesh = "cube", pos = {0, 5.0, 0.6}, size = {0.15, 0.12, 1.3}, color = {0.25, 0.25, 0.27}},
