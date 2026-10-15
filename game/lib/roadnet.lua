@@ -2043,8 +2043,19 @@ build = function(map, kit)
     end
   end
   local count, yards = 0, {}
-  for i, f in ipairs(map.footprints or {}) do
+  -- A building the map data cut into a few boxes comes as a run of them
+  -- with the same height, kind and turn, and so do a block's stairwells
+  -- mapped one by one: one building, so one colour and one style (not a
+  -- stripe of each). `i` below counts buildings.
+  local bi, last = 0, nil
+  for _, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
+    if not (last and last[6] == h and last[7] == kind and math.abs(last[5] - yaw) < 0.02
+            and (last[1] - x) ^ 2 + (last[2] - z) ^ 2 < (math.max(last[3], last[4], w, d) + 2) ^ 2) then
+      bi = bi + 1
+    end
+    last = f
+    local i = bi
     local fx, fz = math.cos(yaw), -math.sin(yaw)
     if GROUND then -- on a slope it stands on its lowest corner
       BASE = math.huge
@@ -2144,7 +2155,10 @@ build = function(map, kit)
                    yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
                    tag = "building"}
       elseif kind == "shed" then
-        kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = HOUSE[1 + i % #HOUSE], tag = "building"}
+        -- A garden shed in a house's colours; a big one (a garage deck
+        -- between blocks of flats, a depot) is concrete.
+        local color = w * d > 200 and {0.6, 0.59, 0.56} or HOUSE[1 + i % #HOUSE]
+        kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = color, tag = "building"}
       elseif kind == "works" or (kind == "shop" and w * d > 1500) then
         kit.static{mesh = kit.warehouse_mesh(1 + i % 4, h), pos = {x, kit.CURB + h / 2, z}, yaw = yaw, size = {w, h, d},
                    scale = {w, 1, d}, tag = "building"}
