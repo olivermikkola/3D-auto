@@ -120,7 +120,7 @@ function P.build()
   engine.mesh("pasi", pasi_parts)
   P.person("soldier", {0.24, 0.32, 0.19}, {0.16, 0.22, 0.14}, {0.8, 0.62, 0.48}, {0.08, 0.08, 0.08})
 
-  -- Föli Municipal Bus: Turku/Raisio regional transit bus (yellow & white livery)
+  -- Pöli Municipal Bus: Turku/Raisio regional transit bus (yellow & white livery)
   local foli_yellow, foli_white, foli_glass, bumper = {0.95, 0.82, 0.08}, {0.94, 0.94, 0.96}, {0.15, 0.22, 0.3}, {0.18, 0.18, 0.2}
   local bus_parts = {
     -- Lower chassis & yellow skirt
@@ -191,7 +191,7 @@ function P.build()
   }
   engine.mesh("riverboat", riverboat_parts)
 
-  -- Buster XXL Aluminum Speedboat: Finnish offshore planing motorboat
+  -- Puskuri XXL Speedboat: Finnish offshore planing motorboat
   local hull_grey, interior, windshield = {0.68, 0.7, 0.72}, {0.25, 0.28, 0.3}, {0.15, 0.22, 0.3}
   local boat_parts = {
     -- V-shaped marine aluminum hull
