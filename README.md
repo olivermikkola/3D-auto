@@ -534,8 +534,9 @@ wanted drivers must lose the cops first. Repairs don't restore player health or 
 - **Input goes to the menu.** While paused, key events arrive as `menu_key`, not `key`, so
   pressing `E` in the menu doesn't get you out of a car. Keys held when you pause are released
   to the game first, so a held trigger or accelerator doesn't stick.
-- **Settings:** volume, mouse sensitivity, invert mouse Y, field of view, fullscreen and the
-  help overlay (`F1` changes it too). They're saved in the `settings` save as you change them
+- **Settings:** volume, mouse sensitivity, invert mouse Y, field of view, fullscreen, the
+  help overlay (`F1` changes it too), and for slower GPUs shadows and view distance (a share of
+  the map's fog distance; nothing past it is drawn). They're saved in the `settings` save as you change them
   and applied on the next start. The menu works with arrows/WASD + Enter, or the mouse.
 - **Quit Game** in the menu saves progress like closing the window does.
 
