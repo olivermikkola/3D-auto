@@ -14,8 +14,10 @@ function H.build(map)
   if not map or (map.id ~= "turku" and map.name ~= "Turku") then return end
 
   -- 1. Turun linna (Turku Castle) Main Keep & Outer Bailey
-  -- Coordinates align with Linnankatu / Vallihaudankatu
-  local cx, cz, cyaw = -2140, 1720, -0.65
+  -- Where OpenStreetMap has the castle (60.4353 N, 22.2283 E): its footprint
+  -- runs about 140 m along x, so the keep's long side (the prefab's z) does too.
+  -- maps/turku.lua leaves the map data's boxes for it out.
+  local cx, cz, cyaw = -2265, 1785, math.pi / 2
   local gy = U.ground(cx, cz)
   H.castle_id = engine.spawn{
     mesh = "turun_linna",
@@ -27,9 +29,12 @@ function H.build(map)
 
   -- Outer bailey defensive curtain walls (esilinna courtyard)
   local stone = {0.70, 0.68, 0.65}
-  local wall_pts = {
-    {-2115, 1690}, {-2090, 1735}, {-2120, 1775}, {-2165, 1745}, {-2155, 1705}
-  }
+  -- The ring round the bailey, measured from the castle and turned with it.
+  local wall_pts = {}
+  local wc, ws = math.cos(cyaw + 0.65), math.sin(cyaw + 0.65)
+  for _, o in ipairs{{19, -23}, {38, 11}, {15, 41}, {-19, 19}, {-11, -11}} do
+    wall_pts[#wall_pts + 1] = {cx + wc * o[1] + ws * o[2], cz - ws * o[1] + wc * o[2]}
+  end
   for i = 1, #wall_pts do
     local p0 = wall_pts[i]
     local p1 = wall_pts[i % #wall_pts + 1]

@@ -34,6 +34,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tools -p "test_*.py"
+      # Render Turku's landmarks and check the pixels: a landmark that is
+      # black, buried or somewhere else fails here, before it is merged.
+      - name: Landmark render checks (software GL)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri
+          RENDER_CHECKS=1 RENDER_CHECKS_OUT=landmark-renders LIBGL_ALWAYS_SOFTWARE=1 \
+            xvfb-run -a -s "-screen 0 1280x720x24" python -m unittest tools/test_landmark_renders.py
+      - name: Upload landmark renders
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: landmark-renders
+          path: landmark-renders
+          if-no-files-found: ignore
       # One runner plays every headless test and checks each printed PASSED
       # marker, not just the exit code. On pull requests, all OS runners run
       # the fast smoke test (default seed, no soak) so CI finishes in ~2 mins.
