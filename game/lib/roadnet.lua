@@ -1517,6 +1517,73 @@ build = function(map, kit)
     ch.bake("paved", "cover")
   end
 
+  -- Railways: a bed of ballast and two rails, 1524 mm apart; masts for
+  -- the contact wire beside an electrified main line every 60 m; platforms
+  -- as raised concrete. Where a track crosses a road (a level crossing),
+  -- the road is left as it is.
+  if map.railways then
+    local ch, BALLAST, STEEL, MAST = chunked(), {0.45, 0.42, 0.39}, {0.36, 0.33, 0.31}, {0.55, 0.56, 0.58}
+    for _, r in ipairs(map.railways) do
+      -- Points at most 6 m apart, each with the track's sideways unit vector.
+      local pts = {}
+      for i = 4, #r do
+        local a, b = r[i - 1], r[i]
+        local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+        local n = math.max(1, math.ceil(len / 6))
+        for k = i == 4 and 0 or 1, n do
+          pts[#pts + 1] = {a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n, (b[2] - a[2]) / len, -(b[1] - a[1]) / len}
+        end
+      end
+      -- Runs off the roads.
+      local runs, cur = {}, nil
+      for _, p in ipairs(pts) do
+        if R.on_carriageway(p[1], p[2], 1.5) then
+          if cur and #cur >= 2 then runs[#runs + 1] = cur end
+          cur = nil
+        else
+          cur = cur or {}
+          cur[#cur + 1] = p
+        end
+      end
+      if cur and #cur >= 2 then runs[#runs + 1] = cur end
+      for _, run in ipairs(runs) do
+        local parts = {}
+        strip(parts, run, 3.2, 0.25, BALLAST, true)
+        for _, side in ipairs{-0.76, 0.76} do
+          local rail = {}
+          for i, p in ipairs(run) do rail[i] = {p[1] + p[3] * side, p[2] + p[4] * side} end
+          strip(parts, rail, 0.09, 0.4, STEEL)
+        end
+        if r[1] and r[2] then
+          local walked = 30
+          for i = 2, #run do
+            walked = walked + math.sqrt((run[i][1] - run[i - 1][1]) ^ 2 + (run[i][2] - run[i - 1][2]) ^ 2)
+            if walked >= 60 then
+              walked = 0
+              local p = run[i]
+              local x, z = p[1] + p[3] * 2.6, p[2] + p[4] * 2.6
+              if not R.on_carriageway(x, z, 1) then
+                local g = GROUND and GROUND(x, z) or 0
+                local yaw = math.atan(p[3], p[4])
+                parts[#parts + 1] = {mesh = "cube", pos = {x, g + 3.6, z}, size = {0.22, 7.2, 0.22}, color = MAST, abs = true}
+                parts[#parts + 1] = {mesh = "cube", pos = {x - p[3] * 1.3, g + 6.6, z - p[4] * 1.3}, yaw = yaw,
+                                     size = {0.1, 0.1, 2.8}, color = MAST, abs = true}
+              end
+            end
+          end
+        end
+        for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
+      end
+    end
+    ch.bake("rail", "cover")
+    for _, pf in ipairs(map.platforms or {}) do
+      local x, z = pf[1], pf[2]
+      local g = GROUND and GROUND(x, z) or 0
+      kit.static{mesh = "cube", pos = {x, g + 0.3, z}, yaw = pf[5], size = {pf[3], 0.6, pf[4]}, color = {0.6, 0.6, 0.58},
+                 tag = "sidewalk", abs = true}
+    end
+  end
+
   -- Football pitches: white lines, and goals you can hit.
   local lines = chunked()
   for _, p in ipairs(map.pitches or {}) do

@@ -23,6 +23,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -404,17 +405,80 @@ def overpass(q, timeout, tries=4):
     raise SystemExit(f"Overpass failed: {err}")
 
 
+def railways_of(els, P, inside):
+    """Railway track on the ground (not on bridges or in tunnels), and platforms."""
+    railways, platforms = [], []
+    for el in els:
+        t = el.get("tags", {})
+        rw = t.get("railway")
+        if rw in ("rail", "light_rail", "narrow_gauge", "tram"):
+            if t.get("tunnel") not in (None, "no") or t.get("bridge") not in (None, "no"): continue
+            pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.3)
+            pts = [p for p in pts if inside(*p)]
+            if len(pts) < 2: continue
+            # A main line or a branch line carries trains through; sidings,
+            # yard tracks and spurs are the yard's.
+            main = t.get("service") not in ("siding", "yard", "spur", "crossover")
+            wired = t.get("electrified") in ("contact_line", "yes")
+            railways.append((main, wired, pts))
+        elif rw == "platform" or t.get("public_transport") == "platform" and t.get("train") == "yes":
+            for ring in rings(el):
+                poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+                if len(poly) < 3 or not all(inside(*p) for p in poly): continue
+                ang, (cx, cz), pl, pw = min_rect(poly)
+                if pl < pw: ang, pl, pw = ang + math.pi / 2, pw, pl
+                if pl >= 20 and 2 <= pw <= 20 and area(poly) > 0.7 * pl * pw:
+                    platforms.append((cx, cz, pl, pw, -ang))
+    return railways, platforms
+
+
+def railway_lines(railways, platforms, f):
+    L = ["  -- railway track on the ground: {main line?, electrified?, points...}", "  railways = {"]
+    for main, wired, pts in railways:
+        L.append(f"    {{{'true' if main else 'false'}, {'true' if wired else 'false'}, "
+                 + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    L.append("  },")
+    L.append("  -- railway platforms: {x, z, length, width, yaw}")
+    L.append("  platforms = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pl)}, {f(pw)}, {a:.3f}}}" for x, z, pl, pw, a in platforms) + "},")
+    return L
+
+
+def splice_railways(dest, els, P, f):
+    """Put railways and platforms into an already generated map, inside its
+    bounds, leaving the rest of it as it was."""
+    text = dest.read_text()
+    m = re.search(r"\n  bounds = \{(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\},", text)
+    X0, Z0, X1, Z1 = map(float, m.groups())
+    def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    railways, platforms = railways_of(els, P, inside)
+    lines = text.split("\n")
+    out, skip = [], False
+    for line in lines:
+        if line.startswith("  -- railway track on the ground") or line.startswith("  -- railway platforms"): continue
+        if line == "  railways = {": skip = True; continue
+        if skip:
+            if line == "  },": skip = False
+            continue
+        if line.startswith("  platforms = {"): continue
+        if line.startswith("  -- towers and masts"): out.extend(railway_lines(railways, platforms, f))
+        out.append(line)
+    dest.write_text("\n".join(out))
+    print(f"{dest}: {len(railways)} railway tracks, {len(platforms)} platforms", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("area", choices=sorted(AREAS))
     ap.add_argument("--fetch", action="store_true", help="download fresh data from Overpass first")
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--only-railways", action="store_true",
+                    help="only put railways and platforms into the existing map (no terrain needed)")
     ap.add_argument("--terrain", nargs="+", type=Path,
                     help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
     cfg = AREAS[args.area]
-    if cfg.get("require_terrain") and not args.terrain:
+    if cfg.get("require_terrain") and not args.terrain and not args.only_railways:
         ap.error(f"{args.area} requires verified 2 m terrain; no flat-map fallback is permitted")
     elevation = None
     if args.terrain:
@@ -501,6 +565,9 @@ def main():
         X1, Z1 = math.floor(min(-X0, X1)), math.floor(min(-Z0, Z1))
         X0, Z0 = -X1, -Z1
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    if args.only_railways:
+        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."))
+        return
 
     # ---- roads ----
     ways = []
@@ -770,6 +837,8 @@ def main():
                    for _, c, d in G.near(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])))
         if over: footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts))
 
+    railways, platforms = railways_of(els, P, inside)
+
     # ---- towers, gantry cranes, piers ----
     towers, cranes, piers = [], [], []
     for el in els:
@@ -965,6 +1034,7 @@ def main():
     for wd, pts in footbridges:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
+    L.extend(railway_lines(railways, platforms, f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
@@ -998,7 +1068,7 @@ def main():
     print(f"{dest.relative_to(ROOT)}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
-          + f", {len(pitches)} pitches, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
+          + f", {len(pitches)} pitches, {len(railways)} railway tracks, {len(platforms)} platforms, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
           f" {len(piers)} piers, {len(areas)} areas; {dest.stat().st_size // 1024} KB")
 
 

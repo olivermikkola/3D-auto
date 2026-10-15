@@ -344,6 +344,12 @@ where they don't stand on another road; drive under one and you're on the ground
 pedestrians, police, pickups and shops spawn at the ground's height (`util.ground(x, z)`, 0 on
 the flat maps).
 
+Railway track on the ground comes from the map data's `railway` ways (bridges and tunnels left
+out): a ballast bed and two rails 1524 mm apart, a contact-wire mast every 60 m beside an
+electrified main line, platforms as raised concrete. Where a track crosses a road, the road is
+left as it is. `tools/osm_import.py <area> --only-railways` puts them into an already generated
+map without touching the rest of it.
+
 Each road side is built the way Finnish streets are, piece by piece (`classify` in
 `lib/roadnet.lua`):
 

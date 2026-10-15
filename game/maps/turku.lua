@@ -31,6 +31,8 @@ return {
   terrain = osm.terrain, -- real 2m LiDAR heights (MML), roads graded in
   pitches = osm.pitches,
   footbridges = osm.footbridges,
+  railways = osm.railways,
+  platforms = osm.platforms,
   cranes = osm.cranes,
   piers = osm.piers,
   fog = {180, 800},
