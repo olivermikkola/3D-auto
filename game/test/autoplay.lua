@@ -134,6 +134,12 @@ at(8.5, function()
   local cx, cz = city.place("stunt")
   press("e")
   check(G.player and not G.vehicle, "exited the driving car before the independent stunt")
+  -- Nor any traffic on the run-up: a passing car there (where it is
+  -- depends on everything else in town) rams the stunt car as it spawns.
+  for id in pairs(require("systems.traffic").cars) do
+    local x, _, z = engine.pos(id)
+    if math.abs(x - cx - 2) < 8 and z > cz - 40 and z < cz + 30 then engine.despawn(id) end
+  end
   car = vehicle.spawn(cx + 2, cz - 26, 0, 1)
   engine.set_pos(G.player, cx + 2, 2.75 + U.ground(cx + 2, cz - 26), cz - 26)
   press("e")
