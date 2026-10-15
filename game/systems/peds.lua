@@ -403,7 +403,7 @@ engine.on("tick", function(dt)
     cx, _, cz = engine.pos(car)
     cvx, _, cvz = engine.vel(car)
   end
-  local car_fast = car and cvx * cvx + cvz * cvz > 64
+  local car_fast = car and cvx * cvx + cvz * cvz > 36
 
   for id, p in pairs(Ped.peds) do
     if not engine.exists(id) then
@@ -413,7 +413,8 @@ engine.on("tick", function(dt)
         local x, _, z = engine.pos(id)
         local dx, dz = x - cx, z - cz
         local d2 = dx * dx + dz * dz
-        if d2 < 144 and dx * cvx + dz * cvz > 0 then Ped.scare(cx, cz, 4 + math.sqrt(d2)) end
+        -- Detect oncoming vehicle up to 24 meters away in the forward velocity cone
+        if d2 < 576 and dx * cvx + dz * cvz > 0 then Ped.scare(cx, cz, 4 + math.sqrt(d2)) end
       end
       walk(id, p, dt)
     end

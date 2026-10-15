@@ -2229,10 +2229,12 @@ function R.pavement(e, side)
   return NET.pave[key]
 end
 
--- Pavement for pedestrians: the edges they can walk (not highways, and with
--- a clear pavement on at least one side).
+-- Pavement for pedestrians: the edges they can walk (not highways, not roads
+-- explicitly tagged with no sidewalks, and with a clear pavement on at least one side).
 function R.walkable(e)
-  return NET.edges[e].kind ~= "highway" and (R.pavement(e, 1) or R.pavement(e, -1))
+  local ed = NET.edges[e]
+  if ed.kind == "highway" or ed.sidewalk == "no" then return false end
+  return (R.pavement(e, 1) or R.pavement(e, -1))
 end
 R.SIDEWALK = SIDEWALK
 
