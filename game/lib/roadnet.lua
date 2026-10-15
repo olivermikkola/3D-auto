@@ -1520,46 +1520,116 @@ build = function(map, kit)
   -- Railways: a bed of ballast and two rails, 1524 mm apart; masts for
   -- the contact wire beside an electrified main line every 60 m; platforms
   -- as raised concrete. Where a track crosses a road (a level crossing),
-  -- the road is left as it is.
-  if map.railways then
+  -- only the rails go over it: nothing in the carriageway to drive into.
+  if NET then NET.level_crossings = {} end -- {x, z, road edge} where a track crosses a road
+  if map.railways and NET then
     local ch, BALLAST, STEEL, MAST = chunked(), {0.45, 0.42, 0.39}, {0.7, 0.69, 0.68}, {0.55, 0.56, 0.58}
     for _, r in ipairs(map.railways) do
-      -- Points at most 6 m apart, each with the track's sideways unit vector.
+      -- Points at most 2 m apart (no road is narrower), each with the
+      -- track's sideways unit vector.
       local pts = {}
       for i = 4, #r do
         local a, b = r[i - 1], r[i]
         local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
-        local n = math.max(1, math.ceil(len / 6))
+        local n = math.max(1, math.ceil(len / 2))
         for k = i == 4 and 0 or 1, n do
           pts[#pts + 1] = {a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n, (b[2] - a[2]) / len, -(b[1] - a[1]) / len}
         end
       end
-      -- Runs off the roads.
-      local runs, cur = {}, nil
-      for _, p in ipairs(pts) do
-        if R.on_carriageway(p[1], p[2], 1.5) then
-          if cur and #cur >= 2 then runs[#runs + 1] = cur end
-          cur = nil
-        else
-          cur = cur or {}
-          cur[#cur + 1] = p
+      -- Runs off the roads, each end brought up to the asphalt's edge, and
+      -- the level crossings between them. A
+      -- bridge doesn't cut the track: it passes under (where a deck's end
+      -- comes down to the track, the map has them overlapping).
+      local function road_at(x, z)
+        local g = GROUND and GROUND(x, z) or 0
+        local e = R.on_carriageway(x, z, 0.5, g)
+        if e and not NET.edges[e].deck then return e, g end
+        return nil, g
+      end
+      local function edge(p, q) -- p off the road, q on it: the last spot off it, between them
+        local lo, hi = 0, 1
+        for _ = 1, 8 do
+          local m = (lo + hi) / 2
+          if road_at(p[1] + (q[1] - p[1]) * m, p[2] + (q[2] - p[2]) * m) then hi = m else lo = m end
         end
+        return {p[1] + (q[1] - p[1]) * lo, p[2] + (q[2] - p[2]) * lo, p[3], p[4]}
+      end
+      local runs, crossings, cur, prev, left, road = {}, {}, nil, nil, nil, nil
+      for _, p in ipairs(pts) do
+        local on = road_at(p[1], p[2])
+        if not on then
+          if not cur then
+            cur = {}
+            if prev then
+              cur[1] = edge(p, prev)
+              -- Over a road (not along one): rails across the asphalt.
+              if left and U.dist2d(left[1], left[2], cur[1][1], cur[1][2]) < 40 then
+                crossings[#crossings + 1] = {left, cur[1], road}
+              end
+            end
+          end
+          cur[#cur + 1] = p
+        else
+          road = on
+        end
+        if on and cur then
+          cur[#cur + 1] = edge(cur[#cur], p)
+          left = cur[#cur]
+          if #cur >= 2 then runs[#runs + 1] = cur end
+          cur = nil
+        end
+        prev = p
       end
       if cur and #cur >= 2 then runs[#runs + 1] = cur end
+      -- Drawn with every third point (6 m pieces), and both ends.
+      for k, run in ipairs(runs) do
+        local thin = {}
+        for i, p in ipairs(run) do
+          if i == 1 or i == #run or i % 3 == 1 then thin[#thin + 1] = p end
+        end
+        runs[k] = thin
+      end
+      -- A rail as a flat strip, side metres off the track's middle line,
+      -- from a to b at heights ya and yb.
+      local function rail(parts, a, b, side, ya, yb)
+        local ax, az, bx, bz = a[1] + a[3] * side, a[2] + a[4] * side, b[1] + b[3] * side, b[2] + b[4] * side
+        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+        parts[#parts + 1] = {mesh = "plane", pos = {(ax + bx) / 2, (ya + yb) / 2, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
+                             pitch = -math.atan(yb - ya, len), size = {0.16, 1, len + 0.05}, color = STEEL, abs = true}
+      end
+      -- Across a level crossing the rails lie in the asphalt, a hair above
+      -- it: something to see, nothing to drive over.
+      for _, c in ipairs(crossings) do
+        local a, b = c[1], c[2]
+        local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+        NET.level_crossings[#NET.level_crossings + 1] = {mx, mz, c[3]}
+        local n = math.max(1, math.ceil(U.dist2d(a[1], a[2], b[1], b[2]) / 3))
+        local function at(t)
+          local x, z = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+          local e, g = road_at(x, z)
+          return {x, z, a[3], a[4]}, e and (NET.edges[e].height or R.ground)(x, z) + 0.1 or g + 0.3
+        end
+        local parts = {}
+        for _, side in ipairs{-0.76, 0.76} do
+          local p0, y0 = at(0)
+          for k = 1, n do
+            local p1, y1 = at(k / n)
+            rail(parts, p0, p1, side, y0, y1)
+            p0, y0 = p1, y1
+          end
+        end
+        for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
+      end
       for _, run in ipairs(runs) do
         local parts = {}
         strip(parts, run, 3.2, 0.25, BALLAST)
         -- The rails as flat strips on the bed: only their tops show, and a
-        -- yard has a lot of them (a box each was 50 MB in Turku).
+        -- yard has a lot of them (a box each was 50 MB in Turku). On the
+        -- bed's heights, taken on the track's middle line.
         for _, side in ipairs{-0.76, 0.76} do
           for i = 2, #run do
             local a, b = run[i - 1], run[i]
-            local ax, az, bx, bz = a[1] + a[3] * side, a[2] + a[4] * side, b[1] + b[3] * side, b[2] + b[4] * side
-            -- (The bed's heights, on the track's middle line.)
-            local h0, h1 = GROUND and GROUND(a[1], a[2]) or 0, GROUND and GROUND(b[1], b[2]) or 0
-            local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
-            parts[#parts + 1] = {mesh = "plane", pos = {(ax + bx) / 2, (h0 + h1) / 2 + 0.3, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
-                                 pitch = -math.atan(h1 - h0, len), size = {0.16, 1, len + 0.05}, color = STEEL, abs = true}
+            rail(parts, a, b, side, (GROUND and GROUND(a[1], a[2]) or 0) + 0.3, (GROUND and GROUND(b[1], b[2]) or 0) + 0.3)
           end
         end
         if r[1] and r[2] then
@@ -1570,7 +1640,7 @@ build = function(map, kit)
               walked = 0
               local p = run[i]
               local x, z = p[1] + p[3] * 2.6, p[2] + p[4] * 2.6
-              if not R.on_carriageway(x, z, 1) then
+              if not R.on_carriageway(x, z, SIDEWALK + 1) then -- not on the pavement either
                 local g = GROUND and GROUND(x, z) or 0
                 local yaw = math.atan(p[3], p[4])
                 parts[#parts + 1] = {mesh = "cube", pos = {x, g + 3.6, z}, size = {0.22, 7.2, 0.22}, color = MAST, abs = true}

@@ -69,6 +69,16 @@ class RailwayTests(unittest.TestCase):
         self.assertIn("RAIL_CHUNKS=", res.stdout)
         self.assertGreater(int(res.stdout.split("RAIL_CHUNKS=")[1].split()[0]), 5)
 
+    @unittest.skipUnless(BINARY.exists(), "needs a release build")
+    def test_level_crossings_are_drivable(self):
+        for city, least in (("raisio", 20), ("turku", 8)):
+            env = dict(os.environ, MAP=city, SEED="1337", RAIL_CROSSING_TEST="1")
+            res = subprocess.run([str(BINARY), "game", "--headless", "5"], cwd=ROOT, env=env, capture_output=True,
+                                 text=True, timeout=900)
+            self.assertEqual(res.returncode, 0, res.stdout[-3000:] + res.stderr[-3000:])
+            self.assertIn("RAIL_CROSSING_OK", res.stdout, res.stdout[-3000:])
+            self.assertGreaterEqual(int(res.stdout.split("RAIL_CROSSINGS=")[1].split()[0]), least, city)
+
 
 if __name__ == "__main__":
     unittest.main()
