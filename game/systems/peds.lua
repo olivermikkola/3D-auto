@@ -10,6 +10,7 @@ local H = require "lib.health"
 
 local Ped = {peds = {}, down = {}}
 local COUNT, WALK, RUN = 40, 1.4, 6.5
+local PASS = 0.8 -- metres right of the pavement's middle a ped may step to pass
 local SKINS = {{0.95, 0.8, 0.65}, {0.85, 0.65, 0.5}, {0.6, 0.42, 0.3}, {0.4, 0.28, 0.2}}
 local SHIRTS = {{0.8, 0.2, 0.2}, {0.2, 0.4, 0.8}, {0.9, 0.8, 0.3}, {0.3, 0.6, 0.35}, {0.15, 0.15, 0.15}, {0.9, 0.9, 0.9}, {0.6, 0.3, 0.6}, {0.9, 0.5, 0.2}}
 local PANTS = {{0.15, 0.2, 0.4}, {0.25, 0.25, 0.25}, {0.5, 0.4, 0.3}, {0.1, 0.1, 0.1}}
@@ -47,7 +48,9 @@ local function nearest_corner(p, x, z)
   return bk
 end
 
-local function set_target(p, x, z) p.tx, p.tz = x, z end
+-- The old target is where the new leg starts: walkers keep to the line
+-- between them (see walk).
+local function set_target(p, x, z) p.sx, p.sz, p.tx, p.tz = p.tx, p.tz, x, z end
 
 -- Reached a corner: keep circling, or now and then cross to the next block.
 local function next_leg(p)
@@ -291,6 +294,21 @@ function Ped.scare(x, z, radius)
   end
 end
 
+-- Another walker in the way: within 2.5 m ahead and less than a shoulder's
+-- width (0.8 m) to either side. A ray from the middle misses someone a step
+-- to the side, and the two then stand shoulder to shoulder.
+local function someone_ahead(id, x, z, mx, mz)
+  for other in pairs(Ped.peds) do
+    if other ~= id then
+      local ox, _, oz = engine.pos(other)
+      local rx, rz = ox - x, oz - z
+      local fwd = rx * mx + rz * mz
+      if fwd > 0 and fwd < 2.5 and math.abs(rz * mx - rx * mz) < 0.8 then return true end
+    end
+  end
+  return false
+end
+
 local function walk(id, p, dt)
   local x, _, z = engine.pos(id)
   local vx, vy, vz = engine.vel(id)
@@ -301,10 +319,14 @@ local function walk(id, p, dt)
   if p.state == "flee" then
     if engine.time() > p.until_t then
       p.state = "walk"
-      if city.network() then net.rejoin(p, x, z) return end
-      p.i, p.j = block_of(x, z)
-      p.k = nearest_corner(p, x, z)
-      set_target(p, corner(p.i, p.j, p.k))
+      if city.network() then
+        net.rejoin(p, x, z)
+      else
+        p.i, p.j = block_of(x, z)
+        p.k = nearest_corner(p, x, z)
+        set_target(p, corner(p.i, p.j, p.k))
+      end
+      p.sx = nil -- ran off the line: no leg to keep to until the next target
       return
     end
     mx, mz, speed = p.fx, p.fz, RUN
@@ -318,6 +340,31 @@ local function walk(id, p, dt)
     -- Wait at the curb while a car is coming.
     local hit = p.crossing and engine.raycast(x, 0.9, z, mx, 0, mz, 7, id)
     if hit and (engine.tag(hit) == "car" or engine.tag(hit) == "cop") then speed = 0 end
+    -- Someone right ahead: keep right and pass, the Finnish way, instead of
+    -- walking into them and both standing there. Only as far as the pavement
+    -- allows (it is 3 m wide and the leg runs down its middle); at the edge,
+    -- slow down and let them step aside. Otherwise drift back to the line.
+    local d, lx, lz, along, len = 0
+    if p.sx then
+      lx, lz = p.tx - p.sx, p.tz - p.sz
+      len = math.sqrt(lx * lx + lz * lz) + 1e-3
+      lx, lz = lx / len, lz / len
+      d = (z - p.sz) * lx - (x - p.sx) * lz -- metres right of the line (x east, z south)
+      along = (x - p.sx) * lx + (z - p.sz) * lz
+    end
+    if speed > 0 and someone_ahead(id, x, z, mx, mz) then
+      if d < PASS then
+        local c, s = math.cos(0.6), math.sin(0.6)
+        mx, mz = mx * c - mz * s, mx * s + mz * c
+      else
+        speed = speed * 0.3
+      end
+    elseif p.sx and math.abs(d) > 0.25 and len - along > 3 then
+      local t = along + 2.5
+      local ax, az = p.sx + lx * t - x, p.sz + lz * t - z
+      local l = math.sqrt(ax * ax + az * az) + 1e-3
+      mx, mz = ax / l, az / l
+    end
   end
   engine.set_vel(id, mx * speed, vy, mz * speed)
   if speed > 0 then
