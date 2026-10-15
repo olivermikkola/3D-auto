@@ -23,7 +23,7 @@ fn unorm(x: f32) -> u8 {
 }
 
 fn snorm(x: f32) -> u8 {
-    (x.clamp(-1.0, 1.0) * 127.0).round() as i32 as u8 + 127
+    ((x.clamp(-1.0, 1.0) * 127.0).round() as i32 + 127) as u8
 }
 
 impl Vertex {
