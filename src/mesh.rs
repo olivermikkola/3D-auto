@@ -122,6 +122,50 @@ impl Mesh {
     }
 }
 
+/// A road (or pavement, river, track bed) as one strip: its top surface
+/// `width` wide along `pts` (x, y, z: the middle line at surface height),
+/// mitred at each bend so pieces meet without a seam, and a skirt `depth`
+/// deep down each side so its edge never shows a gap above the ground. No
+/// ends and no underside: nobody sees them. Two top and four skirt vertices
+/// a point, where a box per piece and a cylinder per bend took ~120.
+pub fn ribbon(pts: &[Vec3], width: f32, depth: f32, col: Vec3) -> Mesh {
+    let mut m = Mesh::default();
+    let n = pts.len();
+    if n < 2 {
+        return m;
+    }
+    let up = v3(0.0, 1.0, 0.0);
+    let flat = |v: Vec3| v3(v.x, 0.0, v.z).norm();
+    let half = width / 2.0;
+    for i in 0..n {
+        let (prev, next) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
+        // The bend's mitre: the average of the two pieces' directions,
+        // stretched so the edges stay `half` from both (but not past 3x).
+        let d0 = flat(pts[i.max(1)] - pts[i.max(1) - 1]);
+        let d1 = flat(pts[(i + 1).min(n - 1)] - pts[(i + 1).min(n - 1) - 1]);
+        let along = flat(d0 + d1);
+        let right = along.cross(up);
+        let stretch = (1.0 / along.dot(d1).max(1.0 / 3.0)).min(3.0);
+        let side = right * (half * stretch);
+        let top = right.cross(next - prev).norm();
+        let p = pts[i];
+        let down = v3(0.0, depth, 0.0);
+        for (q, nrm) in
+            [(p - side, top), (p + side, top), (p + side, right), (p + side - down, right), (p - side, -right), (p - side - down, -right)]
+        {
+            m.verts.push(Vertex::new(q, nrm, col, 0.0));
+        }
+    }
+    for i in 0..n as u32 - 1 {
+        let (a, b) = (6 * i, 6 * (i + 1));
+        // Top (left, right, right', left'); right skirt; left skirt.
+        m.indices.extend_from_slice(&[a, a + 1, b + 1, a, b + 1, b]);
+        m.indices.extend_from_slice(&[a + 2, a + 3, b + 3, a + 2, b + 3, b + 2]);
+        m.indices.extend_from_slice(&[a + 4, b + 4, b + 5, a + 4, b + 5, a + 5]);
+    }
+    m
+}
+
 /// A footprint pushed up into a solid: walls round `outline` (x, z points,
 /// either way round, not closed) from `bottom` to `top`, and a flat roof cut
 /// into triangles by ear clipping. No floor. Faces point out, flat shaded.
@@ -262,20 +306,57 @@ pub fn sphere(rings: usize, segs: usize) -> Mesh {
 }
 
 /// Unit quad in XZ facing +Y.
+/// A road's round end, cheap: like `cylinder`, but with no floor, a fan for
+/// a top and sides sharing a ring of vertices (smooth): 31 vertices where
+/// `cylinder` has 100.
+pub fn disc(sides: u32) -> Mesh {
+    let mut m = Mesh::default();
+    let (w, up) = (Vec3::ONE, v3(0., 1., 0.));
+    let ring = |i: u32| {
+        let a = i as f32 / sides as f32 * std::f32::consts::TAU;
+        v3(a.cos() * 0.5, 0.0, -a.sin() * 0.5)
+    };
+    m.verts.push(Vertex::new(v3(0., 0.5, 0.), up, w, 0.0));
+    for i in 0..sides {
+        m.verts.push(Vertex::new(ring(i) + v3(0., 0.5, 0.), up, w, 0.0));
+    }
+    for i in 0..sides {
+        m.indices.extend_from_slice(&[0, 1 + i, 1 + (i + 1) % sides]);
+    }
+    let base = m.verts.len() as u32;
+    for i in 0..sides {
+        let out = ring(i) * 2.0;
+        m.verts.push(Vertex::new(ring(i) + v3(0., 0.5, 0.), out, w, 0.0));
+        m.verts.push(Vertex::new(ring(i) - v3(0., 0.5, 0.), out, w, 0.0));
+    }
+    for i in 0..sides {
+        let (a, b) = (base + 2 * i, base + 2 * ((i + 1) % sides));
+        m.indices.extend_from_slice(&[a, a + 1, b + 1, a, b + 1, b]);
+    }
+    m
+}
+
 pub fn plane() -> Mesh {
     let mut m = Mesh::default();
     m.quad(v3(-0.5, 0., 0.5), v3(0.5, 0., 0.5), v3(0.5, 0., -0.5), v3(-0.5, 0., -0.5), Vec3::ONE);
     m
 }
 
-pub const BUILTIN_NAMES: [&str; 5] = ["cube", "wedge", "cylinder", "sphere", "plane"];
+pub const BUILTIN_NAMES: [&str; 6] = ["cube", "wedge", "cylinder", "sphere", "plane", "disc"];
 
 pub fn builtins_contains(name: &str) -> bool {
     BUILTIN_NAMES.contains(&name)
 }
 
 pub fn builtins() -> Vec<(&'static str, Mesh)> {
-    vec![("cube", cube()), ("wedge", wedge()), ("cylinder", cylinder(10)), ("sphere", sphere(6, 10)), ("plane", plane())]
+    vec![
+        ("cube", cube()),
+        ("wedge", wedge()),
+        ("cylinder", cylinder(10)),
+        ("sphere", sphere(6, 10)),
+        ("plane", plane()),
+        ("disc", disc(10)),
+    ]
 }
 
 /// Minimal Wavefront OBJ: v, f (any polygon, fan-triangulated, v/vt/vn and negative
