@@ -5,6 +5,17 @@
 -- The terrain comes from Maanmittauslaitos 2m LiDAR GeoTIFFs (N2000 heightfield).
 local osm = require "maps.turku_osm"
 
+-- Filter out generic procedural boxes at landmark sites replaced by custom high-fidelity prefabs
+local filtered_footprints = {}
+for _, f in ipairs(osm.footprints or {}) do
+  local x, z = f[1], f[2]
+  local d_tuomio = (x - 415)^2 + (z - (-100))^2
+  local in_suurtori_plaza = (x > 245 and x < 325 and z > 70 and z < 125)
+  if d_tuomio > 55*55 and not in_suurtori_plaza then
+    filtered_footprints[#filtered_footprints + 1] = f
+  end
+end
+
 return {
   name = "Turku",
   id = "turku",
@@ -14,7 +25,7 @@ return {
   junction_order = {osm.first},
   roads = osm.roads,
   paved = osm.paved,
-  footprints = osm.footprints,
+  footprints = filtered_footprints,
   cover = osm.cover,
   terrain = osm.terrain, -- real 2m LiDAR heights (MML), roads graded in
   pitches = osm.pitches,
@@ -28,7 +39,8 @@ return {
   -- Named landmarks on the radar minimap
   labels = {
     {x = 0, z = 0, letter = "K", name = "Turun Kauppatori"},
-    {x = 320, z = -180, letter = "T", name = "Turun Tuomiokirkko"},
+    {x = 385, z = -100, letter = "T", name = "Turun Tuomiokirkko"},
+    {x = 270, z = 95, letter = "V", name = "Vanha Suurtori & Brinkkala"},
     {x = 1222, z = -1865, letter = "O", name = "Koroistenniemi (Historic Cross)"},
     {x = -1450, z = 950, letter = "F", name = "Kakolanmäki & Funikulaari"},
     {x = -2600, z = 1750, letter = "C", name = "Turun linna (Castle)"},

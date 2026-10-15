@@ -413,6 +413,70 @@ function P.build()
     {mesh = "cylinder", pos = {0, 1.5, 0}, size = {0.12, 3.0, 0.12}, color = {0.25, 0.25, 0.27}},
     {mesh = "cube", pos = {0, 3.1, 0}, size = {0.7, 0.35, 0.25}, color = {0.96, 0.82, 0.08}, emissive = 0.8},
   })
+
+  -- Brinkkalan talo & Joulurauhan parveke (Historic Christmas Peace balcony)
+  local brink_yellow, brink_white = {0.92, 0.82, 0.58}, {0.96, 0.96, 0.96}
+  local brink_balcony_wood = {0.60, 0.42, 0.26}
+  engine.mesh("brinkkala_facade", {
+    -- Main neoclassical 3-story palace body
+    {mesh = "cube", pos = {0, 6.5, 0}, size = {28.0, 13.0, 12.0}, color = brink_yellow},
+    -- Mansard copper/tin roof
+    {mesh = "cube", pos = {0, 14.2, 0}, size = {27.0, 3.0, 11.0}, color = {0.35, 0.38, 0.36}},
+    -- Classical pediment triangular gable over central portico
+    {mesh = "cube", pos = {0, 14.5, 5.8}, size = {10.0, 2.2, 1.0}, color = brink_yellow},
+    -- The famous Joulurauha wooden declaration balcony (2nd floor central)
+    {mesh = "cube", pos = {0, 6.8, 6.5}, size = {6.2, 0.35, 2.0}, color = brink_balcony_wood},
+    -- Balcony decorative balustrade railing
+    {mesh = "cube", pos = {0, 7.6, 7.4}, size = {6.2, 1.2, 0.15}, color = brink_white},
+    {mesh = "cube", pos = {-3.0, 7.6, 6.5}, size = {0.15, 1.2, 1.8}, color = brink_white},
+    {mesh = "cube", pos = {3.0, 7.6, 6.5}, size = {0.15, 1.2, 1.8}, color = brink_white},
+  })
+
+  -- Henrik Gabriel Porthan monument (Porthaninpuisto bronze statue on granite plinth)
+  local porthan_granite, porthan_bronze = {0.45, 0.43, 0.42}, {0.22, 0.35, 0.28}
+  engine.mesh("porthan_monument", {
+    {mesh = "cube", pos = {0, 0.6, 0}, size = {2.4, 1.2, 2.4}, color = porthan_granite},
+    {mesh = "cube", pos = {0, 2.2, 0}, size = {1.8, 2.0, 1.8}, color = porthan_granite},
+    -- Bronze statue figure on top
+    {mesh = "cylinder", pos = {0, 4.0, 0}, size = {0.5, 1.8, 0.5}, color = porthan_bronze},
+    {mesh = "sphere", pos = {0, 5.1, 0}, size = {0.6, 0.6, 0.6}, color = porthan_bronze},
+  })
+
+  -- Turun Tuomiokirkko (National Cathedral of Finland, consecrated 1300)
+  local church_brick = {0.62, 0.26, 0.18}
+  local church_copper = {0.24, 0.48, 0.38}
+  local church_copper_dark = {0.20, 0.40, 0.32}
+  local church_gold = {0.96, 0.84, 0.22}
+  local cathedral_parts = {
+    -- Western clock tower: lower masonry shaft (14x14m, 30m high)
+    {mesh = "cube", pos = {-22.0, 15.0, 0}, size = {14.0, 30.0, 14.0}, color = church_brick},
+    -- Western clock tower: copper clock face & belfry tier
+    {mesh = "cube", pos = {-22.0, 32.5, 0}, size = {12.4, 5.0, 12.4}, color = church_copper},
+    -- Western clock tower: octagonal/pyramidal copper spire (reaching ~52m in-game)
+    {mesh = "cube", pos = {-22.0, 40.5, 0}, size = {9.0, 11.0, 9.0}, color = church_copper_dark},
+    {mesh = "cube", pos = {-22.0, 48.0, 0}, size = {5.0, 5.0, 5.0}, color = church_copper},
+    -- Tower pinnacle golden cross
+    {mesh = "cube", pos = {-22.0, 52.0, 0}, size = {0.4, 3.2, 0.4}, color = church_gold, emissive = 0.6},
+    {mesh = "cube", pos = {-22.0, 52.6, 0}, size = {1.8, 0.4, 0.4}, color = church_gold, emissive = 0.6},
+
+    -- Main Gothic high nave (54m long, 24m wide, 22m high)
+    {mesh = "cube", pos = {12.0, 11.0, 0}, size = {54.0, 22.0, 24.0}, color = church_brick},
+    -- Steep copper ridge gable roof over nave
+    {mesh = "cube", pos = {12.0, 24.5, 0}, size = {55.0, 5.0, 22.2}, color = church_copper},
+
+    -- North side-aisle chapels (Tavast, Tigerstedt chapels)
+    {mesh = "cube", pos = {10.0, 6.5, -14.5}, size = {40.0, 13.0, 6.0}, color = church_brick},
+    {mesh = "cube", pos = {10.0, 14.0, -14.5}, size = {40.0, 2.2, 5.8}, color = church_copper},
+
+    -- South side-aisle chapels (Kankaisten kappeli, Karin Månsdotter's tomb chapel)
+    {mesh = "cube", pos = {10.0, 6.5, 14.5}, size = {40.0, 13.0, 6.0}, color = church_brick},
+    {mesh = "cube", pos = {10.0, 14.0, 14.5}, size = {40.0, 2.2, 5.8}, color = church_copper},
+
+    -- Eastern choir apse
+    {mesh = "cube", pos = {41.5, 10.5, 0}, size = {9.0, 21.0, 18.0}, color = church_brick},
+    {mesh = "cube", pos = {41.5, 22.5, 0}, size = {9.2, 3.5, 16.5}, color = church_copper},
+  }
+  engine.mesh("tuomiokirkko_cathedral", cathedral_parts)
 end
 
 return P
