@@ -90,10 +90,13 @@ function H.build(map)
     {-2415, 1915, -0.68},
     {-2510, 1975, -0.68},
   }
+  local roadnet = require "lib.roadnet"
   for _, cs in ipairs(crane_spots) do
+    local x, z = roadnet.off_carriageway(cs[1], cs[2], 2, 30) -- its legs off the port's roads
+    x, z = x or cs[1], z or cs[2]
     local cid = engine.spawn{
       mesh = "port_crane",
-      pos = {cs[1], U.ground(cs[1], cs[2]), cs[2]},
+      pos = {x, U.ground(x, z), z},
       yaw = cs[3],
       tag = "landmark",
       body = "static",
@@ -111,6 +114,7 @@ function H.build(map)
     {-2495, 1915, 0.85},
   }
   for _, cpos in ipairs(container_spots) do
+    if not roadnet.on_carriageway(cpos[1], cpos[2], 2) then -- none on the port's roads
     local stid = engine.spawn{
       mesh = "container_stack",
       pos = {cpos[1], U.ground(cpos[1], cpos[2]), cpos[2]},
@@ -119,6 +123,7 @@ function H.build(map)
       body = "static",
     }
     H.containers[#H.containers + 1] = stid
+    end
   end
 end
 

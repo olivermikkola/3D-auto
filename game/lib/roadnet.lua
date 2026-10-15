@@ -222,6 +222,45 @@ function R.nearest_edge(x, z, walkable, y)
   return be, bi, bx, bz, best
 end
 
+-- Is (x, z) on a road's asphalt, or within `clear` meters of it? Tunnels
+-- don't count, nor (when `y` is given) a road more than 4 m below it or
+-- above it at all, so neither something on a bridge nor a pier under one is
+-- "on" the road. For whatever places
+-- trees, lamps and props: none of them belongs in the carriageway. Returns
+-- the road's edge, or nil.
+function R.on_carriageway(x, z, clear, y)
+  if not NET then return nil end
+  local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+  for i = ci - 1, ci + 1 do
+    for j = cj - 1, cj + 1 do
+      for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+        local e = NET.edges[it[1]]
+        if not e.tunnel then
+          local a, b = e.pts[it[2] - 1], e.pts[it[2]]
+          local d, cx, cz = dist_seg(x, z, a[1], a[2], b[1], b[2])
+          if d < e.width / 2 + (clear or 0)
+             and not (y and GROUND and (y < (e.height or GROUND)(cx, cz) - 0.5 or y > (e.height or GROUND)(cx, cz) + 4)) then
+            return it[1]
+          end
+        end
+      end
+    end
+  end
+end
+
+-- The nearest spot to (x, z), within `reach` meters, at least `clear`
+-- meters off any carriageway: (x, z) itself if it already is, else nil.
+function R.off_carriageway(x, z, clear, reach)
+  if not R.on_carriageway(x, z, clear) then return x, z end
+  for d = 1, reach or 20 do
+    for k = 0, 15 do
+      local a = k * math.pi / 8
+      local px, pz = x + d * math.cos(a), z + d * math.sin(a)
+      if not R.on_carriageway(px, pz, clear) then return px, pz end
+    end
+  end
+end
+
 -- Where (x, z) is, for the HUD: the street it's on (nil off the road or on
 -- one without a name; a numbered road is the map's `street_names` for it,
 -- or "Road 40") and the part of town,
@@ -1178,7 +1217,9 @@ build = function(map, kit)
       return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
                  and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
     end)
-    if not on_road then
+    -- (On the inside of a bend, a railing piece can reach across the
+    -- deck's own next stretch: none there either.)
+    if not on_road and not R.on_carriageway(x, z, 0.1, r[2]) then
       kit.static{mesh = "cube", pos = {x, r[2], z}, yaw = r[4], pitch = r[5], size = {0.25, 1, r[6]}, color = {0.62, 0.64, 0.66},
                  tag = "wall", abs = true}
     end

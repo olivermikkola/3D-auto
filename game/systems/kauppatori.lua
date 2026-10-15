@@ -152,12 +152,16 @@ function K.build(map)
   local square_corners = {
     {-220, -50}, {-120, -70}, {-110, 40}, {-210, 60}
   }
+  local roadnet = require "lib.roadnet"
   for _, sc in ipairs(square_corners) do
-    engine.spawn{
-      mesh = "lamp",
-      pos = {sc[1], U.ground(sc[1], sc[2]), sc[2]},
-      tag = "lamp",
-    }
+    local lx, lz = roadnet.off_carriageway(sc[1], sc[2], 0.5) -- on the pavement, not the street
+    if lx then
+      engine.spawn{
+        mesh = "lamp",
+        pos = {lx, U.ground(lx, lz), lz},
+        tag = "lamp",
+      }
+    end
   end
 end
 
