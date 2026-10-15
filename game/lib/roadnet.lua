@@ -1522,7 +1522,7 @@ build = function(map, kit)
   -- as raised concrete. Where a track crosses a road (a level crossing),
   -- the road is left as it is.
   if map.railways then
-    local ch, BALLAST, STEEL, MAST = chunked(), {0.45, 0.42, 0.39}, {0.36, 0.33, 0.31}, {0.55, 0.56, 0.58}
+    local ch, BALLAST, STEEL, MAST = chunked(), {0.45, 0.42, 0.39}, {0.7, 0.69, 0.68}, {0.55, 0.56, 0.58}
     for _, r in ipairs(map.railways) do
       -- Points at most 6 m apart, each with the track's sideways unit vector.
       local pts = {}
@@ -1548,11 +1548,19 @@ build = function(map, kit)
       if cur and #cur >= 2 then runs[#runs + 1] = cur end
       for _, run in ipairs(runs) do
         local parts = {}
-        strip(parts, run, 3.2, 0.25, BALLAST, true)
+        strip(parts, run, 3.2, 0.25, BALLAST)
+        -- The rails as flat strips on the bed: only their tops show, and a
+        -- yard has a lot of them (a box each was 50 MB in Turku).
         for _, side in ipairs{-0.76, 0.76} do
-          local rail = {}
-          for i, p in ipairs(run) do rail[i] = {p[1] + p[3] * side, p[2] + p[4] * side} end
-          strip(parts, rail, 0.09, 0.4, STEEL)
+          for i = 2, #run do
+            local a, b = run[i - 1], run[i]
+            local ax, az, bx, bz = a[1] + a[3] * side, a[2] + a[4] * side, b[1] + b[3] * side, b[2] + b[4] * side
+            -- (The bed's heights, on the track's middle line.)
+            local h0, h1 = GROUND and GROUND(a[1], a[2]) or 0, GROUND and GROUND(b[1], b[2]) or 0
+            local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+            parts[#parts + 1] = {mesh = "plane", pos = {(ax + bx) / 2, (h0 + h1) / 2 + 0.3, (az + bz) / 2}, yaw = math.atan(bx - ax, bz - az),
+                                 pitch = -math.atan(h1 - h0, len), size = {0.16, 1, len + 0.05}, color = STEEL, abs = true}
+          end
         end
         if r[1] and r[2] then
           local walked = 30
