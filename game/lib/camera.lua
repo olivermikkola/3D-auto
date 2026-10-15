@@ -9,6 +9,7 @@ local last_look = -10
 local eye = nil
 
 engine.on("frame", function(dt)
+  if os.getenv("SHOT_CAM") then return end
   local id = G.vehicle or G.player
   if engine.paused() or not id or not engine.exists(id) then return end
   local mx, my = engine.mouse()
