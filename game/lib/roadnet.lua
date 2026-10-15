@@ -1159,11 +1159,39 @@ build = function(map, kit)
   -- Roads: pavement under, asphalt on top, a dashed center line. On
   -- terrain a bridge's deck is solid, a ramp from one end to the other,
   -- with railings and a pier under each end and in the middle.
+  -- Every deck's height first: a deck is cut back from its neighbours'.
+  for _, e in ipairs(NET.edges) do e.height = GROUND and (e.deck or e.over) and deck_height(e) or nil end
+  -- How far a deck's slab may reach to one side (r: unit vector that way)
+  -- from (x, z), at most `reach`: up to another road's asphalt that's at
+  -- another height (a twin carriageway's deck, a ramp's road below), where
+  -- its edge would stand up as an invisible kerb.
+  local function deck_reach(ei, x, z, h, rx, rz, reach)
+    local w = NET.edges[ei].width / 2
+    for o = w + 0.5, reach + 0.01, 0.5 do
+      local px, pz = x + rx * o, z + rz * o
+      local ci, cj = math.floor(px / CELL), math.floor(pz / CELL)
+      for i = ci - 1, ci + 1 do
+        for j = cj - 1, cj + 1 do
+          for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+            local oe = NET.edges[it[1]]
+            if it[1] ~= ei and not oe.tunnel then
+              local a, b = oe.pts[it[2] - 1], oe.pts[it[2]]
+              local d, cx, cz = dist_seg(px, pz, a[1], a[2], b[1], b[2])
+              if d < oe.width / 2 then
+                local dh = math.abs((oe.height or GROUND)(cx, cz) - h)
+                if dh > 0.15 and dh < 4 then return math.max(w, o - 0.5) end
+              end
+            end
+          end
+        end
+      end
+    end
+    return reach
+  end
   for ei, e in ipairs(NET.edges) do
     local parts = {}
     local walk = e.kind ~= "highway"
-    local hf = GROUND and (e.deck or e.over) and deck_height(e) or nil
-    e.height = hf
+    local hf = e.height
     if hf then
       if walk then strip(parts, e.pts, e.width + 2 * SIDEWALK, 0.05, PAVE, true, hf) end
     else
@@ -1183,12 +1211,24 @@ build = function(map, kit)
           local t0, t1 = k / n, (k + 1) / n
           local h0, h1 = hf(ax + (bx - ax) * t0, az + (bz - az) * t0), hf(ax + (bx - ax) * t1, az + (bz - az) * t1)
           local mx, mz, mh, pitch = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2, (h0 + h1) / 2, -math.atan(h1 - h0, len / n)
-          kit.static{pos = {mx, mh - 0.5, mz}, yaw = yaw, pitch = pitch, size = {wide, 1, len / n + 0.05}, visible = false,
+          -- Sample both ends too: a forking ramp can arrive under one end first.
+          local left, right = wide / 2, wide / 2
+          for _, f in ipairs{t0, (t0 + t1) / 2, t1} do
+            local fx, fz = ax + (bx - ax) * f, az + (bz - az) * f
+            local fh = hf(fx, fz)
+            left = math.min(left, deck_reach(ei, fx, fz, fh, -rx, -rz, left))
+            right = math.min(right, deck_reach(ei, fx, fz, fh, rx, rz, right))
+          end
+          local sx, sz, sw = mx + rx * (right - left) / 2, mz + rz * (right - left) / 2, left + right
+          kit.static{pos = {sx, mh - 0.5, sz}, yaw = yaw, pitch = pitch, size = {sw, 1, len / n + 0.05}, visible = false,
                      tag = "bridge", abs = true}
-          parts[#parts + 1] = {mesh = "cube", pos = {mx, mh - 0.7, mz}, yaw = yaw, pitch = pitch, size = {wide, 1.2, len / n + 0.05},
+          parts[#parts + 1] = {mesh = "cube", pos = {sx, mh - 0.7, sz}, yaw = yaw, pitch = pitch, size = {sw, 1.2, len / n + 0.05},
                                color = {0.55, 0.55, 0.53}, abs = true}
           for _, side in ipairs(e.over and {} or {-1, 1}) do -- over a tunnel, the roof is the ground
-            rails[#rails + 1] = {mx + rx * side * wide / 2, mh + 0.5, mz + rz * side * wide / 2, yaw, pitch, len / n + 0.05, ei}
+            local o = side > 0 and right or left
+            if o >= wide / 2 then -- no railing where the slab meets another road
+              rails[#rails + 1] = {mx + rx * side * o, mh + 0.5, mz + rz * side * o, yaw, pitch, len / n + 0.05, ei}
+            end
           end
         end
       end

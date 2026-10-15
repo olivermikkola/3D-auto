@@ -857,3 +857,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     Ok(api)
 }
+
+#[cfg(test)]
+#[path = "bridge_tests.rs"]
+mod bridge_tests;

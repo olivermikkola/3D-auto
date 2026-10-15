@@ -7,6 +7,7 @@
 -- Then the same for what a ray at bumper height can miss: anything standing
 -- in the carriageway (a tree or a lamp you drive through, a bench, a sign),
 -- by where it stands. ROAD_CLUTTER_MAX fails the run past that many.
+-- ROAD_CLEAR_DEBUG=1 lists nearby road heights for each hit.
 local roadnet = require "lib.roadnet"
 
 -- Things that have no business on the asphalt.
@@ -45,6 +46,22 @@ engine.on("init", function()
                   seen[id] = true
                   counts[tag] = (counts[tag] or 0) + 1
                   local _, ty = engine.pos(id)
+                  if os.getenv("ROAD_CLEAR_DEBUG") then
+                    for oi, o in ipairs(NET.edges) do
+                      for j = 2, #o.pts do
+                        local p, q = o.pts[j - 1], o.pts[j]
+                        local ux, uz = q[1] - p[1], q[2] - p[2]
+                        local l2 = ux * ux + uz * uz
+                        local t = l2 > 0 and math.max(0, math.min(1, ((hx - p[1]) * ux + (hz - p[2]) * uz) / l2)) or 0
+                        local d = math.sqrt((hx - p[1] - ux * t) ^ 2 + (hz - p[2] - uz * t) ^ 2)
+                        if d < o.width / 2 + 4 then
+                          print(string.format("  near %s%s%s d=%.1f w=%.1f h=%.2f", o.name or oi, o.deck and " deck" or "",
+                                              o.inferred and " inferred" or "", d, o.width,
+                                              (o.height or roadnet.ground)(p[1] + ux * t, p[2] + uz * t)))
+                        end
+                      end
+                    end
+                  end
                   hits[#hits + 1] = string.format("%-10s %8.1f %8.1f  on %s%s, its surface %.1f, the thing at %.1f", tag, hx, hz,
                                                   e.name or ("edge " .. ei), e.height and " (a deck)" or "", y0 - 0.7, ty or hy)
                 end
