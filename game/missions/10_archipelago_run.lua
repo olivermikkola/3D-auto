@@ -1,5 +1,5 @@
 -- Infiltrate the Port of Turku container berths past Turun linna (Turku Castle),
--- commandeer an offshore Buster speedboat, blast down the Aurajoki mouth,
+-- commandeer an offshore Puskuri speedboat, blast down the Aurajoki mouth,
 -- dodge marine pursuit, and escape into the Turku archipelago.
 local city = require "lib.city"
 local U = require "lib.util"
@@ -21,7 +21,7 @@ return {
     m:timer(280)
     m:say("Head past Turun linna to the harbor berths and secure the offshore speedboat.")
 
-    -- Spawn Buster speedboat moored at the pier
+    -- Spawn Puskuri speedboat moored at the pier
     local boat_id = m:spawn(vehicle.spawn(dock_pos[1], dock_pos[2], -0.7, nil, "speedboat", "boat"))
 
     local dock_marker = m:marker(dock_pos[1], dock_pos[2], {0.2, 0.8, 0.3})

@@ -14,7 +14,7 @@ engine.on("init", function()
   local all = mission.all()
   local found_foli = false
   for _, m in ipairs(all) do
-    if m.title == "Föli Transit: Line 7" then
+    if m.title == "Pöli Transit: Line 7" then
       found_foli = true
       break
     end

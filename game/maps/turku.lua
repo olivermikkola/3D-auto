@@ -98,9 +98,9 @@ return {
     {-640, -150, 45, {color = {0.75, 0.73, 0.70}, floors = 4}},
     -- Kupittaan urheiluhalli: arched white sports hall
     {850, 490, 60, {dome = 16, color = {0.92, 0.92, 0.95}}},
-    -- Veritas Stadion & Rajupaja Areena: sports arenas
+    -- Verkkari Stadion & Rajupaja Areena: sports arenas
     {1100, 600, 70, {style = "glass", color = {0.35, 0.55, 0.65}, floors = 4}},
-    -- Wiklund & Hamburger Börs (Kauppatori commercial core)
+    -- Vicklund & Hamburger Börs (Kauppatori commercial core)
     {-160, 70, 45, {style = "glass", color = {0.88, 0.90, 0.92}, floors = 5}},
     {-60, 20, 45, {style = "balconies", color = {0.95, 0.92, 0.88}, floors = 6}},
     -- Turun Kauppahalli: historic red brick market hall

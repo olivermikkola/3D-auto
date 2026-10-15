@@ -90,7 +90,7 @@ function A.build(map)
     pause = 0.0,
   }
 
-  -- A Buster speedboat to take, by Auransilta
+  -- A Puskuri speedboat to take, by Auransilta
   local boat_id = vehicle.spawn(-45, 320, -1.8, nil, "speedboat", "boat")
   A.speedboat = boat_id
 end
