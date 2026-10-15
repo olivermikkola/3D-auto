@@ -93,6 +93,130 @@ function A.build(map)
   -- A Puskuri speedboat to take, by Auransilta
   local boat_id = vehicle.spawn(-45, 320, -1.8, nil, "speedboat", "boat")
   A.speedboat = boat_id
+
+  -- 6. Aurajoki Riverbank Promenade: Stone Quays, Willows, Bollards & Lamps
+  -- Follows both banks from Satama/Forum Marinum past Tuomiokirkko to Koroistenniemi.
+  local river_banks = {
+    -- West bank (Läntinen Rantakatu & river path)
+    west = {
+      {-2150, 1720}, {-1850, 1520}, {-1550, 1330}, {-1258, 1117},
+      {-980, 920}, {-820, 770}, {-680, 670}, {-460, 520},
+      {-310, 430}, {-150, 350}, {-25, 295}, {120, 150},
+      {250, -40}, {360, -320}, {420, -680}, {460, -950},
+      {620, -1250}, {880, -1550}, {1120, -1750}, {1210, -1860}
+    },
+    -- East bank (Itäinen Rantakatu & river path)
+    east = {
+      {-2050, 1820}, {-1750, 1610}, {-1450, 1410}, {-1166, 1174},
+      {-920, 970}, {-760, 820}, {-620, 720}, {-400, 580},
+      {-250, 480}, {-100, 400}, {25, 345}, {180, 200},
+      {300, 10}, {420, -260}, {490, -640}, {540, -920},
+      {720, -1210}, {980, -1510}, {1200, -1710}, {1280, -1820}
+    }
+  }
+
+  local quay_stone = {0.52, 0.50, 0.48}
+  local bollard_iron = {0.18, 0.18, 0.20}
+
+  for bank_name, pts in pairs(river_banks) do
+    for i = 2, #pts do
+      local p0, p1 = pts[i - 1], pts[i]
+      local len = U.dist2d(p0[1], p0[2], p1[1], p1[2])
+      local yaw = math.atan(p1[1] - p0[1], p1[2] - p0[2])
+      local n_steps = math.max(1, math.floor(len / 16.0))
+
+      for s = 0, n_steps - 1 do
+        local t = s / n_steps
+        local x = p0[1] + (p1[1] - p0[1]) * t
+        local z = p0[2] + (p1[2] - p0[2]) * t
+        local y = U.ground(x, z)
+
+        -- Urban stone quay section (Forum Marinum to Tuomiokirkko)
+        if z > -400 and z < 1700 then
+          -- Low granite edge quay barrier
+          engine.spawn{
+            mesh = "cube",
+            pos = {x, y + 0.35, z},
+            yaw = yaw,
+            size = {1.2, 0.7, 15.8},
+            color = quay_stone,
+            tag = "wall",
+            body = "static",
+          }
+
+          -- Quayside cast-iron mooring bollard every other segment
+          if s % 2 == 0 then
+            engine.spawn{
+              mesh = "cylinder",
+              pos = {x, y + 0.8, z},
+              size = {0.35, 0.6, 0.35},
+              color = bollard_iron,
+              tag = "prop",
+              body = "static",
+            }
+          end
+
+          -- Riverside promenade weeping willows & linden trees
+          local rx, rz = U.right(yaw)
+          local tx = x + rx * (bank_name == "west" and -4.5 or 4.5)
+          local tz = z + rz * (bank_name == "west" and -4.5 or 4.5)
+          local ty = U.ground(tx, tz)
+          if not R.wet(tx, tz) then
+            engine.spawn{
+              mesh = (s % 2 == 0) and "willow_tree" or "tree",
+              pos = {tx, ty, tz},
+              scale = 0.95 + (s % 3) * 0.15,
+              tag = "tree",
+            }
+          end
+
+          -- Promenade park benches & night lighting
+          if s % 3 == 0 then
+            local bx = x + rx * (bank_name == "west" and -3.2 or 3.2)
+            local bz = z + rz * (bank_name == "west" and -3.2 or 3.2)
+            engine.spawn{
+              mesh = "park_bench",
+              pos = {bx, U.ground(bx, bz), bz},
+              yaw = yaw + (bank_name == "west" and math.pi/2 or -math.pi/2),
+              tag = "prop",
+            }
+            engine.spawn{
+              mesh = "lamp",
+              pos = {bx, U.ground(bx, bz), bz},
+              yaw = yaw,
+              tag = "lamp",
+            }
+          end
+        else
+          -- Natural green riverbank upstream toward Koroistenniemi
+          local rx, rz = U.right(yaw)
+          local tx = x + rx * (bank_name == "west" and -6.0 or 6.0)
+          local tz = z + rz * (bank_name == "west" and -6.0 or 6.0)
+          local ty = U.ground(tx, tz)
+          if not R.wet(tx, tz) then
+            engine.spawn{
+              mesh = "tree",
+              pos = {tx, ty, tz},
+              scale = 1.1 + (s % 2) * 0.2,
+              tag = "tree",
+            }
+          end
+        end
+      end
+    end
+  end
+
+  -- 7. Koroistenniemi Historic Memorial Cross & Bishop's Knoll
+  -- Sits on the elevated promontory where Vähäjoki meets Aurajoki
+  local kx, kz = 1222.0, -1865.0
+  local ky = U.ground(kx, kz)
+  engine.spawn{
+    mesh = "koroisten_risti",
+    pos = {kx, ky, kz},
+    yaw = 0.45,
+    tag = "landmark",
+    body = "static",
+  }
 end
 
 -- Update Föri ferry position across Aurajoki

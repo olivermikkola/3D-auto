@@ -6,7 +6,12 @@ local settings = require "lib.settings"
 local M = {}
 
 local function shadow_text(s, x, y, size, r, g, b)
-  engine.text(s, x + 2, y + 2, size, 0, 0, 0, 0.6)
+  -- 4-way dark outline drop shadow for maximum legibility against bright sky, water, and glare
+  engine.text(s, x - 1, y, size, 0, 0, 0, 0.75)
+  engine.text(s, x + 1, y, size, 0, 0, 0, 0.75)
+  engine.text(s, x, y - 1, size, 0, 0, 0, 0.75)
+  engine.text(s, x, y + 1, size, 0, 0, 0, 0.75)
+  engine.text(s, x + 1.5, y + 1.5, size, 0, 0, 0, 0.85)
   engine.text(s, x, y, size, r, g, b, 1)
 end
 

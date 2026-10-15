@@ -29,6 +29,7 @@ return {
   labels = {
     {x = 0, z = 0, letter = "K", name = "Turun Kauppatori"},
     {x = 320, z = -180, letter = "T", name = "Turun Tuomiokirkko"},
+    {x = 1222, z = -1865, letter = "O", name = "Koroistenniemi (Historic Cross)"},
     {x = -1450, z = 950, letter = "F", name = "Kakolanmäki & Funikulaari"},
     {x = -2600, z = 1750, letter = "C", name = "Turun linna (Castle)"},
     {x = -1400, z = 200, letter = "P", name = "Port Arthur (Portsa)"},

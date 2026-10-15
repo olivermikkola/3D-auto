@@ -85,7 +85,17 @@ function M.drive(id, dt, input)
   local wx, wy, wz = engine.angvel(id)
   local wu = wx * ux + wy * uy + wz * uz
   local k = 0.8
-  engine.set_angvel(id, (wx - ux * wu) * k + ux * rate, (wy - uy * wu) * k + uy * rate, (wz - uz * wu) * k + uz * rate)
+  local nwx, nwy, nwz = (wx - ux * wu) * k + ux * rate, (wy - uy * wu) * k + uy * rate, (wz - uz * wu) * k + uz * rate
+
+  -- Upright suspension roll stiffness: prevents vehicles from tilting 90 degrees or rolling onto doors
+  if uy > 0.3 and uy < 0.99 then
+    -- Strong restoring torque towards world up
+    local roll_fix_x = uz * 3.5
+    local roll_fix_z = -ux * 3.5
+    nwx = nwx + roll_fix_x
+    nwz = nwz + roll_fix_z
+  end
+  engine.set_angvel(id, nwx, nwy, nwz)
 
   -- Kill sideways slip (tyre grip), less with the handbrake on for drifts.
   side = side * (input.handbrake and 0.92 or 0.6)

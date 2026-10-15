@@ -20,6 +20,7 @@ class AurajokiTests(unittest.TestCase):
         self.assertRegex(res.stdout, r"AURAJOKI_OK bridges=\d+")
         self.assertIn("BOATS_AFLOAT_OK", res.stdout)
         self.assertIn("FORI_SHUTTLE_OK", res.stdout)
+        self.assertIn("KOROISTENNIEMI_CROSS_OK", res.stdout)
         self.assertIn("ALL AURAJOKI CHECKS PASSED", res.stdout)
 
 
