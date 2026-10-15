@@ -10,8 +10,12 @@ M.list = {
   {key = "fov", label = "FIELD OF VIEW", min = 55, max = 100, step = 5, default = 70},
   {key = "fullscreen", label = "FULLSCREEN", default = false},
   {key = "help", label = "HELP OVERLAY", default = true},
+  -- For slower GPUs: no shadow pass, and a shorter view (a share of the
+  -- map's own fog distance; nothing past it is drawn).
+  {key = "shadows", label = "SHADOWS", default = true},
+  {key = "view", label = "VIEW DISTANCE", min = 40, max = 100, step = 10, default = 100, fmt = "%d%%"},
 }
-local by_key, values = {}, {}
+local by_key, values, watchers = {}, {}, {}
 for _, s in ipairs(M.list) do by_key[s.key] = s end
 
 -- Snap a value to its setting's type, range and step; nil if it doesn't fit.
@@ -28,9 +32,18 @@ end
 local function apply(key, v)
   if key == "volume" then engine.volume(v / 100) end
   if key == "fullscreen" then engine.fullscreen(v) end
+  if key == "shadows" then engine.lighting{shadows = v} end
+  for _, fn in ipairs(watchers[key] or {}) do fn(v) end
 end
 
 function M.get(key) return values[key] end
+
+-- Call fn(value) now and whenever the setting changes.
+function M.watch(key, fn)
+  watchers[key] = watchers[key] or {}
+  table.insert(watchers[key], fn)
+  fn(values[key])
+end
 
 -- Change a setting (snapped into range), apply and save it.
 function M.set(key, v)

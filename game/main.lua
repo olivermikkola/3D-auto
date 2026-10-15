@@ -6,6 +6,7 @@ local U = require "lib.util"
 require "lib.progress" -- loads saved cash and missions before anything reads them
 local prefabs = require "lib.prefabs"
 local city = require "lib.city"
+local settings = require "lib.settings"
 -- The map, before anything asks the city where things are: the one picked
 -- in the pause menu, or MAP=<name> for any in maps/.
 city.use(city.start())
@@ -37,7 +38,7 @@ engine.on("init", function()
   math.randomseed(seed)
   print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
   local fog = city.map().fog or {110, 380} -- a map can see further
-  engine.fog(fog[1], fog[2])
+  settings.watch("view", function(p) engine.fog(fog[1] * p / 100, fog[2] * p / 100) end)
 
   prefabs.build()
   sfx.build()
