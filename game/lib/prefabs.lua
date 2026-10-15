@@ -248,6 +248,36 @@ function P.build()
     {mesh = "cylinder", pos = {0, 3.8, 32.0}, size = {0.3, 9.0, 0.3}, color = mast_color},
   }
   engine.mesh("suomen_joutsen", joutsen_parts)
+
+  -- Kakolan funikulaari (Turku slope elevator cabin)
+  local f_yellow, f_chassis, f_glass = {0.96, 0.78, 0.12}, {0.18, 0.18, 0.20}, {0.15, 0.24, 0.32}
+  local funi_parts = {
+    -- Heavy wheel truck / chassis
+    {mesh = "cube", pos = {0, 0.2, 0}, size = {2.3, 0.4, 4.6}, color = f_chassis},
+    -- Lower yellow body panels
+    {mesh = "cube", pos = {0, 0.75, 0}, size = {2.42, 0.7, 4.75}, color = f_yellow},
+    -- Wrap-around panoramic passenger glass
+    {mesh = "cube", pos = {0, 1.65, 0}, size = {2.38, 1.1, 4.65}, color = f_glass},
+    -- Sloped yellow roof cap
+    {mesh = "cube", pos = {0, 2.3, 0}, size = {2.45, 0.2, 4.8}, color = f_yellow},
+    -- Roof equipment and air pod
+    {mesh = "cube", pos = {0, 2.5, 0}, size = {1.6, 0.3, 3.2}, color = {0.82, 0.84, 0.86}},
+  }
+  engine.mesh("funikulaari", funi_parts)
+
+  -- Funicular station terminal shelter
+  local f_steel, f_zinc = {0.22, 0.24, 0.26}, {0.32, 0.35, 0.38}
+  local station_parts = {
+    -- Concrete platform foundation
+    {mesh = "cube", pos = {0, 0.25, 0}, size = {6.5, 0.5, 8.0}, color = {0.6, 0.6, 0.62}},
+    -- Steel canopy supports
+    {mesh = "cube", pos = {-2.8, 2.0, -3.2}, size = {0.25, 3.2, 0.25}, color = f_steel},
+    -- Glass passenger kiosk
+    {mesh = "cube", pos = {1.8, 1.5, 0}, size = {2.2, 2.2, 5.0}, color = f_glass},
+    -- Slanted terminal canopy
+    {mesh = "cube", pos = {0, 3.4, 0}, size = {6.8, 0.35, 8.5}, color = f_zinc},
+  }
+  engine.mesh("funicular_station", station_parts)
 end
 
 return P

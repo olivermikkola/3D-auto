@@ -455,6 +455,30 @@ local function building_mesh(style, floors)
     for _, u in ipairs{-0.475, 0, 0.475} do
       parts[#parts + 1] = {mesh = "cube", pos = {u, FLOOR / 2, 0}, size = {0.05, h - FLOOR, 1.09}, color = {0.76, 0.32, 0.18}}
     end
+  elseif style == "granite" then
+    -- Finnish National Romantic granite fortress style (Kakola, Turun taidemuseo)
+    local granite_dark, granite_band = {0.38, 0.36, 0.35}, {0.28, 0.27, 0.26}
+    parts = {{mesh = "cube", size = {1, h, 1}, color = granite_dark}}
+    for f = 0, floors - 1 do
+      window_band(parts, -h / 2 + f * FLOOR + 1.8, 0.98, lit(f, floors))
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.1, 0}, size = {1.02, 0.22, 1.02}, color = granite_band}
+    end
+    parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.4, 0}, size = {1.04, 0.8, 1.04}, color = granite_band}
+  elseif style == "wooden" then
+    -- Finnish wooden town style (Port Arthur, 2-3 stories): wooden planks, white trims, gable roof
+    parts = {{mesh = "cube", size = {1, h, 1}, color = {0.82, 0.68, 0.32}}}
+    for f = 0, floors - 1 do
+      window_band(parts, -h / 2 + f * FLOOR + 1.6, 0.98, lit(f, floors))
+      parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.05, 0}, size = {1.02, 0.14, 1.02}, color = {0.94, 0.94, 0.92}}
+    end
+    for _, cx in ipairs{-0.49, 0.49} do
+      for _, cz in ipairs{-0.49, 0.49} do
+        parts[#parts + 1] = {mesh = "cube", pos = {cx, 0, cz}, size = {0.05, h, 0.05}, color = {0.94, 0.94, 0.92}}
+      end
+    end
+    parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.8, -0.25}, size = {1.04, 1.6, 0.52}, color = {0.45, 0.20, 0.16}}
+    parts[#parts + 1] = {mesh = "wedge", pos = {0, h / 2 + 0.8, 0.25}, yaw = math.pi, size = {1.04, 1.6, 0.52}, color = {0.45, 0.20, 0.16}}
+    parts[#parts + 1] = {mesh = "cube", pos = {0.3, h / 2 + 1.5, 0.1}, size = {0.12, 0.9, 0.12}, color = {0.62, 0.26, 0.18}}
   else
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
