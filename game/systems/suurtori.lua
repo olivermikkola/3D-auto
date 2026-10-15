@@ -113,14 +113,15 @@ function S.build(map)
       tag = "tree",
     }
   end
+  local roadnet = require "lib.roadnet"
   for _, bx_off in ipairs{{-4, 4}, {4, 4}} do
     local bx, bz = px + bx_off[1], pz + bx_off[2]
-    engine.spawn{
+    if not roadnet.on_carriageway(bx, bz, 1) then engine.spawn{
       mesh = "park_bench",
       pos = {bx, U.ground(bx, bz), bz},
       yaw = 0.5,
       tag = "prop",
-    }
+    } end
   end
 
   -- 5. Tuomiokirkon grilli (Iconic Turku late-night food kiosk)

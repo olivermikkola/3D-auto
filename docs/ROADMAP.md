@@ -117,6 +117,9 @@ with a render check (see 1).
   `tools/*_render_checks.py` only check that a PPM file was written.
 - **Place landmarks from the map data, not by eye.** Compute the position from latitude and
   longitude with the map's `origin`. Filter the OSM boxes the prefab replaces (see `maps/turku.lua`).
+- **Nothing hand-placed goes on a carriageway.** Check every tree, lamp, bench and wall with
+  `roadnet.on_carriageway` (or move it with `roadnet.off_carriageway`). The Aurajoki promenade put
+  208 of them on Turku's streets. `tools/test_road_clear.py` keeps the count at zero.
 - **A look's colour multiplies the mesh's.** Mesh walls that a look colours must be white.
 - **PRs run the seed-1337 smoke test only.** The full seed suite runs after merge, so run it
   locally before merging.

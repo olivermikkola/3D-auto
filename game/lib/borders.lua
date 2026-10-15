@@ -192,21 +192,35 @@ function B.build(map)
       name = c.name,
     }
     local cx, cz = c.pos[1], c.pos[2]
-    local cy = U.ground(cx, cz)
     local cyaw = c.yaw or 0
     local rx, rz = U.right(cyaw)
     local width = c.kind == "highway" and 12 or 9
 
-    -- Place roadside boundary markers and warning cones (leaving drivable passing lane)
-    local count = math.ceil(width / 3.0)
-    for i = 0, count - 1 do
-      local offset = (i - (count - 1) / 2) * 2.8
-      engine.spawn{
-        mesh = "jersey_barrier",
-        pos = {cx + rx * offset, cy, cz + rz * offset},
-        tag = "barrier",
-        body = "static",
-      }
+    -- Barriers down both kerbs, along the road, leaving the carriageway
+    -- open: the crossing is driven through.
+    local roadnet = require "lib.roadnet"
+    local ei, si = roadnet.nearest_edge(cx, cz)
+    if ei then
+      local e = roadnet.net().edges[ei]
+      local p, q = e.pts[si - 1], e.pts[si]
+      local fyaw = math.atan(q[1] - p[1], q[2] - p[2])
+      rx, rz = U.right(fyaw)
+      width = e.width
+      cyaw = fyaw
+    end
+    for _, side in ipairs{-1, 1} do
+      for k = -1, 1 do
+        local o, f = side * (width / 2 + 0.8), k * 3.2
+        local px, pz = cx + rx * o + math.sin(cyaw) * f, cz + rz * o + math.cos(cyaw) * f
+        -- (Not where a side road joins, either.)
+        if not roadnet.on_carriageway(px, pz, 0.6) then engine.spawn{
+          mesh = "jersey_barrier",
+          pos = {px, U.ground(px, pz), pz},
+          yaw = cyaw + math.pi / 2, -- the barrier's length is its x
+          tag = "barrier",
+          body = "static",
+        } end
+      end
     end
   end
 
@@ -221,18 +235,13 @@ function B.build(map)
     local cy = U.ground(cx, cz)
     local cyaw = c.yaw or 0
     local rx, rz = U.right(cyaw)
-    engine.spawn{
-      mesh = "jersey_barrier",
-      pos = {cx + rx * 2.5, cy, cz + rz * 2.5},
-      tag = "barrier",
-      body = "static",
-    }
-    engine.spawn{
-      mesh = "jersey_barrier",
-      pos = {cx - rx * 2.5, cy, cz - rz * 2.5},
-      tag = "barrier",
-      body = "static",
-    }
+    local roadnet = require "lib.roadnet"
+    for _, side in ipairs{-1, 1} do
+      local px, pz = cx + side * rx * 2.5, cz + side * rz * 2.5
+      if not roadnet.on_carriageway(px, pz, 0.6) then
+        engine.spawn{mesh = "jersey_barrier", pos = {px, cy, pz}, tag = "barrier", body = "static"}
+      end
+    end
   end
 end
 

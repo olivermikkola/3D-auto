@@ -115,6 +115,9 @@ function A.build(map)
     }
   }
 
+  -- The banks are drawn by hand and run over the riverside streets in
+  -- places: nothing goes down on a carriageway.
+  local function off_road(x, z, r) return not R.on_carriageway(x, z, r) end
   local quay_stone = {0.52, 0.50, 0.48}
   local bollard_iron = {0.18, 0.18, 0.20}
 
@@ -133,8 +136,10 @@ function A.build(map)
 
         -- Urban stone quay section (Forum Marinum to Tuomiokirkko)
         if z > -400 and z < 1700 then
-          -- Low granite edge quay barrier
-          engine.spawn{
+          -- Low granite edge quay barrier, where it misses the street
+          local fx, fz = math.sin(yaw) * 7.9, math.cos(yaw) * 7.9
+          local wall = off_road(x, z, 0.6) and off_road(x + fx, z + fz, 0.6) and off_road(x - fx, z - fz, 0.6)
+          if wall then engine.spawn{
             mesh = "cube",
             pos = {x, y + 0.35, z},
             yaw = yaw,
@@ -142,10 +147,10 @@ function A.build(map)
             color = quay_stone,
             tag = "wall",
             body = "static",
-          }
+          } end
 
           -- Quayside cast-iron mooring bollard every other segment
-          if s % 2 == 0 then
+          if s % 2 == 0 and off_road(x, z, 0.4) then
             engine.spawn{
               mesh = "cylinder",
               pos = {x, y + 0.8, z},
@@ -161,7 +166,7 @@ function A.build(map)
           local tx = x + rx * (bank_name == "west" and -4.5 or 4.5)
           local tz = z + rz * (bank_name == "west" and -4.5 or 4.5)
           local ty = U.ground(tx, tz)
-          if not R.wet(tx, tz) then
+          if not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
             engine.spawn{
               mesh = (s % 2 == 0) and "willow_tree" or "tree",
               pos = {tx, ty, tz},
@@ -171,9 +176,9 @@ function A.build(map)
           end
 
           -- Promenade park benches & night lighting
-          if s % 3 == 0 then
-            local bx = x + rx * (bank_name == "west" and -3.2 or 3.2)
-            local bz = z + rz * (bank_name == "west" and -3.2 or 3.2)
+          local bx = x + rx * (bank_name == "west" and -3.2 or 3.2)
+          local bz = z + rz * (bank_name == "west" and -3.2 or 3.2)
+          if s % 3 == 0 and off_road(bx, bz, 1) then
             engine.spawn{
               mesh = "park_bench",
               pos = {bx, U.ground(bx, bz), bz},
@@ -193,7 +198,7 @@ function A.build(map)
           local tx = x + rx * (bank_name == "west" and -6.0 or 6.0)
           local tz = z + rz * (bank_name == "west" and -6.0 or 6.0)
           local ty = U.ground(tx, tz)
-          if not R.wet(tx, tz) then
+          if not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
             engine.spawn{
               mesh = "tree",
               pos = {tx, ty, tz},
