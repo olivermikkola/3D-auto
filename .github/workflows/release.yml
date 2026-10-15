@@ -31,12 +31,12 @@ jobs:
       - run: cargo build --release
       - name: Smoke test
         run: AUTO_TEST=1 ./target/release/auto game --headless 9000
-      # Grand Theft Aurajoki: just Raisio and Turku. The demo cities
+      # Aurajoki: just Raisio and Turku. The demo cities
       # (Manhattan, the harbor, the starter map, archived variants) and the
       # tests stay in the repo; the menu offers only the maps shipped.
       - name: Package
         run: |
-          dir="grand-theft-aurajoki-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
+          dir="aurajoki-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
           mkdir "$dir"
           cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md LICENSE "$dir/"
           cp -r game "$dir/game"
@@ -45,7 +45,7 @@ jobs:
           ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} "$dir/game" --headless 300 | tee pkg.log
           grep -q "map=raisio" pkg.log
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
-          echo "ARCHIVE=$(ls grand-theft-aurajoki-*.zip grand-theft-aurajoki-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
+          echo "ARCHIVE=$(ls aurajoki-*.zip aurajoki-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
@@ -62,5 +62,6 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          name: Aurajoki ${{ github.ref_name }}
           files: dist/*
           generate_release_notes: true
