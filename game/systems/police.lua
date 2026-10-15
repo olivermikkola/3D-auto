@@ -269,7 +269,8 @@ local function drive_cop(c, dt)
   local dist = U.dist2d(x, z, px, pz)
   local tx, tz, want
 
-  if P.direct_pursuit(c.sees, dist) then
+  local direct = P.direct_pursuit(c.sees, dist) and engine.time() >= (c.roads_until or 0)
+  if direct then
     -- Direct pursuit, leading the target a little.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
@@ -335,6 +336,11 @@ local function drive_cop(c, dt)
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
   if c.stuck > 1.2 then
     c.reverse, c.stuck = 1.0, 0
+    -- Repeated direct approaches into a fence or quay need a road detour.
+    if direct then
+      c.direct_jams = (c.direct_jams or 0) + 1
+      if c.direct_jams >= 2 then c.roads_until, c.direct_jams, c.goal = engine.time() + 6, 0, nil end
+    end
     -- Wedged again and again on a road map (a U-turn on a narrow street):
     -- back up further, a proper three-point turn, and think again about
     -- the way.
