@@ -140,6 +140,7 @@ if os.getenv("HARBOR_TEST") then require "test.harbor_probe" end
 if os.getenv("KAUPPATORI_TEST") then require "test.kauppatori_probe" end
 if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
 if os.getenv("PED_EVASION_TEST") then require "test.ped_evasion_probe" end
+if os.getenv("PED_PASS_TEST") then require "test.ped_pass_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
