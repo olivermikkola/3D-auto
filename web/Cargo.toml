@@ -1,0 +1,25 @@
+# The game in a browser: the same engine source, built for wasm32 with the
+# game folder packed inside. See web/README.md.
+[package]
+name = "auto-web"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "auto"
+path = "../src/main.rs"
+
+[dependencies]
+miniquad = "0.4"
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+
+[patch.crates-io]
+lua-src = { path = "lua-src" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

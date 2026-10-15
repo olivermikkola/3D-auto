@@ -191,7 +191,7 @@ impl Script {
         let r = root.display();
         pkg.set("path", format!("{r}/?.lua;{r}/?/init.lua"))?;
         let main = root.join("main.lua");
-        let src = std::fs::read_to_string(&main).map_err(|e| mlua::Error::external(format!("{}: {e}", main.display())))?;
+        let src = crate::vfs::read_to_string(&main).map_err(|e| mlua::Error::external(format!("{}: {e}", main.display())))?;
         lua.load(src).set_name("@main.lua").exec()?;
         let emit = lua.globals().get::<Table>("engine")?.get::<Function>("emit")?;
         Ok(Script { lua, emit })
@@ -468,7 +468,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let (heights, classes): (Vec<f32>, Option<Vec<u8>>) = match t.get::<Value>("heights")? {
             Value::String(rel) => {
                 let path = game_path(&e.root, &rel.to_str()?)?;
-                let bytes = std::fs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
+                let bytes = crate::vfs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
                 let n = w * d;
                 if bytes.len() != 2 * n && bytes.len() != 3 * n {
                     return Err(mlua::Error::runtime(format!("{} is {} bytes, not {} or {}", rel.to_str()?, bytes.len(), 2 * n, 3 * n)));
@@ -616,7 +616,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     f!("load_wav", |e, _lua, (name, path): (String, String)| {
         let full = game_path(&e.root, &path)?;
-        let bytes = std::fs::read(&full).map_err(|err| mlua::Error::runtime(format!("{}: {err}", full.display())))?;
+        let bytes = crate::vfs::read(&full).map_err(|err| mlua::Error::runtime(format!("{}: {err}", full.display())))?;
         let buf = audio::load_wav(&bytes).map_err(|err| mlua::Error::runtime(format!("{path}: {err}")))?;
         let secs = buf.len() as f32 / audio::RATE as f32;
         e.sounds.insert(name, std::sync::Arc::new(buf));
@@ -805,17 +805,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             name,
             lua.create_function(move |_lua, dir: String| {
                 let path = game_path(&eng.borrow().root, &dir)?;
-                let mut names: Vec<String> = std::fs::read_dir(path)
-                    .map(|rd| {
-                        rd.filter_map(|d| {
-                            let d = d.ok()?;
-                            (d.file_type().ok()?.is_dir() == want_dir).then(|| d.file_name().into_string().ok())?
-                        })
-                        .collect()
-                    })
-                    .unwrap_or_default();
-                names.sort();
-                Ok(names)
+                Ok(crate::vfs::list(&path, want_dir))
             })?,
         )?;
     }

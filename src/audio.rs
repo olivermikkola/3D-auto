@@ -404,7 +404,21 @@ mod backend {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+// The browser: silent for now (WebAudio to come).
+#[cfg(target_arch = "wasm32")]
+mod backend {
+    use super::Mixer;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    pub type Started = (Option<std::thread::JoinHandle<()>>, Option<Box<dyn std::any::Any>>);
+
+    pub fn start(_mixer: Arc<Mutex<Mixer>>, _stop: Arc<AtomicBool>) -> Result<Started, String> {
+        Err("no sound in the browser yet".into())
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 mod backend {
     use super::Mixer;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};

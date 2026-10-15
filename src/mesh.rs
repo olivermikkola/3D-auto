@@ -281,7 +281,7 @@ pub fn builtins() -> Vec<(&'static str, Mesh)> {
 /// Minimal Wavefront OBJ: v, f (any polygon, fan-triangulated, v/vt/vn and negative
 /// indices), mtllib + usemtl for flat Kd colors. Normals are recomputed flat.
 pub fn load_obj(path: &Path) -> Result<Mesh, String> {
-    let src = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let src = crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut pos: Vec<Vec3> = Vec::new();
     let mut mats: HashMap<String, (Vec3, f32)> = HashMap::new();
@@ -294,7 +294,7 @@ pub fn load_obj(path: &Path) -> Result<Mesh, String> {
             Some("v") => pos.push(v3(num(it.next()), num(it.next()), num(it.next()))),
             Some("mtllib") => {
                 if let Some(f) = it.next()
-                    && let Ok(txt) = std::fs::read_to_string(dir.join(f))
+                    && let Ok(txt) = crate::vfs::read_to_string(&dir.join(f))
                 {
                     parse_mtl(&txt, &mut mats);
                 }

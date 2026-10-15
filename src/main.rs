@@ -13,6 +13,9 @@ mod physics;
 mod render;
 mod save;
 mod script;
+mod vfs;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 use engine::{Engine, TICK_HZ};
 use miniquad::{EventHandler, KeyCode, KeyMods, MouseButton, conf, window};
@@ -21,7 +24,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::SystemTime;
 
 struct Opts {
     root: PathBuf,
@@ -77,6 +80,11 @@ fn parse_args() -> Result<Opts, String> {
             s => o.root = PathBuf::from(s),
         }
     }
+    // In a browser the game folder is packed into the module, under "/".
+    if cfg!(target_arch = "wasm32") {
+        o.root = PathBuf::from("/game");
+        return Ok(o);
+    }
     // Released builds ship `game/` next to the executable; find it from anywhere.
     if !o.root.join("main.lua").exists()
         && o.root == Path::new("game")
@@ -112,6 +120,9 @@ fn plain_path(p: PathBuf) -> PathBuf {
 /// screenshot and timed runs keep them in memory so tests and docs never read
 /// or overwrite real progress, unless `--save-dir` names a folder.
 fn save_store(o: &Opts) -> save::Store {
+    if cfg!(target_arch = "wasm32") {
+        return save::Store::default(); // for now: gone when the page closes
+    }
     let dir = match &o.save_dir {
         Some(d) => Some(d.clone()),
         None if o.headless.is_some() || o.screenshot.is_some() || o.frames.is_some() => None,
@@ -138,6 +149,9 @@ fn save_store(o: &Opts) -> save::Store {
 
 /// Newest modification time of any file under `dir`.
 fn newest_mtime(dir: &Path) -> Option<SystemTime> {
+    if cfg!(target_arch = "wasm32") {
+        return None; // the pack doesn't change
+    }
     let mut best = None;
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let t = if entry.file_type().ok()?.is_dir() { newest_mtime(&entry.path()) } else { entry.metadata().ok()?.modified().ok() };
@@ -258,8 +272,9 @@ struct App {
     closed: bool,
     fullscreen: bool,
     pads: pad::Pads,
-    target_frame: Option<Duration>,
-    frame_start: Instant,
+    /// Seconds per frame to hold to (--fps), and when this frame began.
+    target_frame: Option<f64>,
+    frame_start: f64,
     failed: Rc<Cell<bool>>,
 }
 
@@ -380,11 +395,11 @@ impl EventHandler for App {
         }
         self.gfx.commit();
         if let Some(target) = self.target_frame {
-            let elapsed = self.frame_start.elapsed();
+            let elapsed = miniquad::date::now() - self.frame_start;
             if elapsed < target {
-                std::thread::sleep(target - elapsed);
+                std::thread::sleep(std::time::Duration::from_secs_f64(target - elapsed));
             }
-            self.frame_start = Instant::now();
+            self.frame_start = miniquad::date::now();
         }
         if self.eng.borrow().quit || self.quit_after == Some(self.frame) {
             self.close();
@@ -549,6 +564,8 @@ fn key_name(k: KeyCode) -> &'static str {
 }
 
 fn main() {
+    #[cfg(target_arch = "wasm32")]
+    web::init();
     let o = match parse_args() {
         Ok(o) => o,
         Err(e) => {
@@ -567,11 +584,13 @@ fn main() {
         fullscreen: o.fullscreen,
         sample_count: 4,
         window_resizable: true,
+        platform: conf::Platform { webgl_version: conf::WebGLVersion::WebGL2, ..Default::default() },
         ..Default::default()
     };
     let (root, shot, frames, ticks_per_frame, fps, fullscreen) =
         (o.root, o.screenshot, o.frames, o.ticks_per_frame.max(1), o.fps, o.fullscreen);
-    let target_frame = if shot.is_none() && frames.is_none() && fps > 0 { Some(Duration::from_secs_f64(1.0 / fps as f64)) } else { None };
+    // (A browser paces frames itself.)
+    let target_frame = (shot.is_none() && frames.is_none() && fps > 0 && !cfg!(target_arch = "wasm32")).then(|| 1.0 / fps as f64);
     let failed = Rc::new(Cell::new(false));
     let result = failed.clone();
     miniquad::start(conf, move || {
@@ -602,7 +621,7 @@ fn main() {
             fullscreen,
             pads: pad::Pads::new(),
             target_frame,
-            frame_start: Instant::now(),
+            frame_start: miniquad::date::now(),
             failed,
         })
     });

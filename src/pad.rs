@@ -6,6 +6,8 @@
 //! no build dependencies); every driver that follows the kernel gamepad API
 //! (xpad, hid-playstation, hid-nintendo, ...) reports the same codes. On
 //! Windows and macOS, gilrs does the work.
+// The browser has no pads yet, so the shared helpers go unused there.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
 
 /// The first connected pad, normalized: sticks -1..1 with up and right
 /// positive, triggers 0..1.
@@ -40,8 +42,30 @@ fn trigger_edge(name: &'static str, old: f32, new: f32, out: &mut Vec<Event>) {
 
 #[cfg(target_os = "linux")]
 pub use evdev::Pads;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 pub use gil::Pads;
+#[cfg(target_arch = "wasm32")]
+pub use none::Pads;
+
+// ---- The browser: none yet (the Gamepad API to come) --------------------------------
+#[cfg(target_arch = "wasm32")]
+mod none {
+    use super::{Event, State};
+
+    pub struct Pads;
+
+    impl Pads {
+        pub fn new() -> Pads {
+            Pads
+        }
+
+        pub fn poll(&mut self, _now: f64, _out: &mut Vec<Event>) {}
+
+        pub fn state(&self) -> Option<&State> {
+            None
+        }
+    }
+}
 
 // ---- Linux: evdev ---------------------------------------------------------------
 #[cfg(target_os = "linux")]
@@ -330,7 +354,7 @@ mod evdev {
 }
 
 // ---- Windows and macOS: gilrs -----------------------------------------------------
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 mod gil {
     use super::{Event, State, trigger_edge};
     use gilrs::{Axis, Button, EventType, Gilrs};

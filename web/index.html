@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>GTÅ: Grand Tour Åbo</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; }
+    canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
+    #log { position: fixed; left: 8px; bottom: 8px; max-width: 90vw; max-height: 40vh; overflow: hidden;
+           font: 12px/1.35 ui-monospace, monospace; color: #ddd; background: rgba(0, 0, 0, 0.6);
+           padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; pointer-events: none; }
+    #log:empty { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas" tabindex="1"></canvas>
+  <div id="log">Loading…</div>
+  <script src="gl.js"></script>
+  <script>
+    // Lines the game prints, also on the page: there is no console on a phone.
+    // The box goes away once the game has run for a few seconds without
+    // trouble; ?log=1 keeps it.
+    const box = document.getElementById("log");
+    const keep = new URLSearchParams(location.search).has("log");
+    let lines = [];
+    function show(text) {
+      lines.push(text);
+      if (lines.length > 30) lines = lines.slice(-30);
+      box.textContent = lines.join("\n");
+    }
+    window.addEventListener("error", e => show("error: " + e.message));
+    miniquad_add_plugin({
+      name: "auto_web",
+      version: 1,
+      register_plugin(imports) {
+        const log = imports.env.console_log;
+        imports.env.console_log = ptr => { show(UTF8ToString(ptr)); log(ptr); };
+        // The page's query string, for the game's environment (src/web.rs).
+        imports.env.web_query = (ptr, cap) => {
+          const q = new TextEncoder().encode(location.search);
+          new Uint8Array(wasm_memory.buffer, ptr, Math.min(cap, q.length)).set(q.subarray(0, cap));
+          return q.length;
+        };
+      },
+      on_init() {
+        box.textContent = "";
+        lines = [];
+        if (!keep) setTimeout(() => { if (!/error|panic/i.test(box.textContent)) box.textContent = ""; }, 8000);
+      },
+    });
+    load("auto.wasm");
+  </script>
+</body>
+</html>
