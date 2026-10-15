@@ -225,7 +225,14 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
         }
     }
     let e = eng.borrow();
-    println!("headless: {} ticks in {:.1} ms, {} entities, {} meshes", e.tick, t0.elapsed().as_secs_f64() * 1e3, e.live, e.meshes.len());
+    let mesh_mb = e.meshes.iter().map(|m| m.verts.len() * size_of::<mesh::Vertex>() + m.indices.len() * 4).sum::<usize>() as f64 / 1e6;
+    println!(
+        "headless: {} ticks in {:.1} ms, {} entities, {} meshes ({mesh_mb:.0} MB)",
+        e.tick,
+        t0.elapsed().as_secs_f64() * 1e3,
+        e.live,
+        e.meshes.len()
+    );
     if e.error.is_some() {
         std::process::exit(1);
     }
@@ -357,6 +364,8 @@ impl EventHandler for App {
             }
         }
         self.gfx.draw(&self.eng.borrow());
+        let uploaded = self.gfx.take_uploaded();
+        self.eng.borrow_mut().release_uploaded(&uploaded);
         self.eng.borrow_mut().unblend(saved);
         self.frame += 1;
         if let Some((path, at)) = &self.shot

@@ -541,7 +541,11 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let mut out = Mesh::default();
         for p in parts.sequence_values::<Table>() {
             let p = p?;
-            let src = mesh_id(&e, &p.get::<Option<String>>("mesh")?.unwrap_or("cube".into()))?;
+            let part = p.get::<Option<String>>("mesh")?.unwrap_or("cube".into());
+            let src = mesh_id(&e, &part)?;
+            if e.gpu_only.contains(&src) {
+                return Err(mlua::Error::runtime(format!("mesh '{part}' is drawn but too big to build other meshes from")));
+            }
             let c = color(&p.get("color")?)?;
             let size = vec3(&p.get("size")?, Vec3::ONE)?;
             let mut src = e.meshes[src].clone();

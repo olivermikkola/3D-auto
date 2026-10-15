@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 static EPOCH: AtomicU64 = AtomicU64::new(1);
 
 pub const TICK_HZ: f64 = 60.0;
+/// Meshes at least this big keep their vertices only on the GPU once drawn.
+const GPU_ONLY_VERTS: usize = 4096;
 
 #[derive(Clone, Debug)]
 pub struct Entity {
@@ -104,6 +106,8 @@ pub struct Engine {
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
     pub mesh_revs: Vec<u32>,
+    /// Big meshes whose vertices now live only on the GPU (see `release_uploaded`).
+    pub gpu_only: HashSet<usize>,
     /// Unique per Engine instance; a new epoch tells the renderer to drop GPU state.
     pub epoch: u64,
     pub camera: Camera,
@@ -192,6 +196,7 @@ impl Engine {
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
+            gpu_only: HashSet::new(),
             epoch: EPOCH.fetch_add(1, Ordering::Relaxed),
             camera: Camera { eye: v3(0., 10., -20.), target: Vec3::ZERO, fov: 70f32.to_radians() },
             env: Env {
@@ -238,12 +243,25 @@ impl Engine {
         if let Some(&id) = self.mesh_ids.get(name) {
             self.meshes[id] = m;
             self.mesh_revs[id] += 1;
+            self.gpu_only.remove(&id);
             return id;
         }
         self.meshes.push(m);
         self.mesh_revs.push(0);
         self.mesh_ids.insert(name.to_string(), self.meshes.len() - 1);
         self.meshes.len() - 1
+    }
+
+    /// Drop the CPU copy of meshes the renderer has uploaded. Only big ones
+    /// go (baked roads, blocks, terrain): they are most of a city's memory and
+    /// nothing builds other meshes from them. Replacing one uploads it again.
+    pub fn release_uploaded(&mut self, ids: &[usize]) {
+        for &id in ids {
+            if self.meshes[id].verts.len() >= GPU_ONLY_VERTS {
+                self.meshes[id] = Mesh::default();
+                self.gpu_only.insert(id);
+            }
+        }
     }
 
     pub fn spawn(&mut self, e: Entity) -> u32 {
