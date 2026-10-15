@@ -457,8 +457,9 @@ local function building_mesh(style, floors)
     end
   elseif style == "granite" then
     -- Finnish National Romantic granite fortress style (Kakola, Turun taidemuseo)
-    local granite_dark, granite_band = {0.38, 0.36, 0.35}, {0.28, 0.27, 0.26}
-    parts = {{mesh = "cube", size = {1, h, 1}, color = granite_dark}}
+    -- White walls and relative bands: the entity's colour is the stone's.
+    local granite_band = {0.74, 0.73, 0.72}
+    parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do
       window_band(parts, -h / 2 + f * FLOOR + 1.8, 0.98, lit(f, floors))
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.1, 0}, size = {1.02, 0.22, 1.02}, color = granite_band}
@@ -466,7 +467,8 @@ local function building_mesh(style, floors)
     parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.4, 0}, size = {1.04, 0.8, 1.04}, color = granite_band}
   elseif style == "wooden" then
     -- Finnish wooden town style (Port Arthur, 2-3 stories): wooden planks, white trims, gable roof
-    parts = {{mesh = "cube", size = {1, h, 1}, color = {0.82, 0.68, 0.32}}}
+    -- White walls: the entity's colour is the paint (ochre, red, green).
+    parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do
       window_band(parts, -h / 2 + f * FLOOR + 1.6, 0.98, lit(f, floors))
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.05, 0}, size = {1.02, 0.14, 1.02}, color = {0.94, 0.94, 0.92}}

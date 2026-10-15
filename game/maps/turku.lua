@@ -11,7 +11,8 @@ for _, f in ipairs(osm.footprints or {}) do
   local x, z = f[1], f[2]
   local d_tuomio = (x - 415)^2 + (z - (-100))^2
   local in_suurtori_plaza = (x > 245 and x < 325 and z > 70 and z < 125)
-  if d_tuomio > 55*55 and not in_suurtori_plaza then
+  local in_linna = (x > -2340 and x < -2185 and z > 1745 and z < 1825) -- Turun linna (systems/harbor.lua)
+  if d_tuomio > 55*55 and not in_suurtori_plaza and not in_linna then
     filtered_footprints[#filtered_footprints + 1] = f
   end
 end
@@ -38,12 +39,12 @@ return {
 
   -- Named landmarks on the radar minimap
   labels = {
-    {x = 0, z = 0, letter = "K", name = "Turun Kauppatori"},
+    {x = -175, z = -15, letter = "K", name = "Turun Kauppatori"},
     {x = 385, z = -100, letter = "T", name = "Turun Tuomiokirkko"},
     {x = 270, z = 95, letter = "V", name = "Vanha Suurtori & Brinkkala"},
     {x = 1222, z = -1865, letter = "O", name = "Koroistenniemi (Historic Cross)"},
     {x = -1450, z = 950, letter = "F", name = "Kakolanmäki & Funikulaari"},
-    {x = -2600, z = 1750, letter = "C", name = "Turun linna (Castle)"},
+    {x = -2265, z = 1785, letter = "C", name = "Turun linna (Castle)"},
     {x = -1400, z = 200, letter = "P", name = "Port Arthur (Portsa)"},
     {x = 1200, z = 500, letter = "U", name = "Kupittaanpuisto"},
     {x = -2900, z = 1900, letter = "S", name = "Turun Satama (Port)"},
@@ -104,8 +105,6 @@ return {
   looks = {
     -- Turun tuomiokirkko (National Cathedral): red brick nave and copper details
     {380, -90, 60, {color = {0.65, 0.28, 0.20}, floors = 8}},
-    -- Turun linna grounds (historic castle park)
-    {-2140, 1720, 80, {color = {0.74, 0.72, 0.68}, floors = 2}},
     -- Mikaelinkirkko (St. Michael's Church, Portsa): red brick Gothic revival
     {-1185, 218, 50, {color = {0.70, 0.25, 0.18}, floors = 7}},
     -- Turun taidemuseo (Puolalanmäki): granite palace
@@ -120,11 +119,11 @@ return {
     -- Turun Kauppahalli: historic red brick market hall
     {-80, 100, 40, {color = {0.68, 0.30, 0.22}, floors = 2}},
     -- Kakolan Graniittilinna: central granite prison fortress & watchtowers
-    {-1440, 950, 120, {style = "granite", color = {0.36, 0.38, 0.40}, floors = 5}},
+    {-1440, 950, 120, {style = "granite", color = {0.66, 0.65, 0.63}, floors = 5}},
     -- Kakolan Länsiselli & Tiililinna: institutional red-brick cellblock
     {-1535, 985, 90, {color = {0.58, 0.24, 0.18}, floors = 6}},
     -- Hotel Kakola & brewery courtyard (former prison warden quarters)
-    {-1300, 820, 80, {color = {0.42, 0.42, 0.44}, floors = 4}},
+    {-1300, 820, 80, {style = "granite", color = {0.62, 0.61, 0.60}, floors = 4}},
     -- Portsa (Port Arthur) wooden quarter: traditional 2-storey wooden workers' houses
     {-1360, 640, 130, {style = "wooden", color = {0.88, 0.74, 0.32}, floors = 2}},
     {-1440, 680, 120, {style = "wooden", color = {0.68, 0.25, 0.20}, floors = 2}},

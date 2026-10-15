@@ -25,12 +25,21 @@ function K.build(map)
   local foundation = {0.58, 0.58, 0.60}
   local plaza_granite = {0.72, 0.70, 0.68}
 
-  -- 0. Main Kauppatori paved granite plaza (replaces bare grass ground plane)
+  -- 0. Main Kauppatori paved granite plaza (replaces bare grass ground plane).
+  -- The square slopes about 2.5 m, so the slab is tilted to the ground's
+  -- slope instead of lying flat with the hillside showing through half of it.
+  local px, pz, pyaw, pw, pd = -175.0, -15.0, 0.602, 135.0, 115.0
+  local c, s = math.cos(pyaw), math.sin(pyaw)
+  local function at(u, v) return U.ground(px + c * pw * u + s * pd * v, pz - s * pw * u + c * pd * v) end
+  local gu = (at(0.5, 0) - at(-0.5, 0)) / pw
+  local gv = (at(0, 0.5) - at(0, -0.5)) / pd
   engine.spawn{
     mesh = "cube",
-    pos = {-175.0, U.ground(-175, -15) + 0.1, -15.0},
-    yaw = 0.602,
-    size = {135.0, 0.2, 115.0},
+    pos = {px, at(0, 0) + 0.3, pz},
+    yaw = pyaw,
+    pitch = -math.atan(gv),
+    roll = math.atan(gu),
+    size = {pw, 0.6, pd},
     color = plaza_granite,
     tag = "sidewalk",
     body = "static",
