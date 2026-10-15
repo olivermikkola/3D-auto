@@ -390,6 +390,29 @@ function P.build()
     {mesh = "cube", pos = {0, 20.0, 12.0}, size = {2.2, 2.5, 32.0}, color = crane_yellow},
   }
   engine.mesh("port_crane", crane_parts)
+
+  -- Turun Kauppatori: market tent stall with striped awning and produce crate
+  local stall_wood, stall_orange = {0.62, 0.42, 0.25}, {0.96, 0.45, 0.12}
+  local stall_parts = {
+    -- Table / display counter
+    {mesh = "cube", pos = {0, 0.45, 0}, size = {2.4, 0.9, 1.4}, color = stall_wood},
+    -- Slanted canvas awning roof
+    {mesh = "cube", pos = {0, 1.85, 0}, size = {2.6, 0.1, 1.6}, color = stall_orange},
+    -- White accent awning trim
+    {mesh = "cube", pos = {0, 1.82, 0.78}, size = {2.6, 0.25, 0.05}, color = {0.95, 0.95, 0.95}},
+    -- Thin corner canopy poles
+    {mesh = "cylinder", pos = {-1.2, 1.1, -0.7}, size = {0.05, 1.4, 0.05}, color = {0.8, 0.8, 0.82}},
+    {mesh = "cylinder", pos = {1.2, 1.1, -0.7}, size = {0.05, 1.4, 0.05}, color = {0.8, 0.8, 0.82}},
+    {mesh = "cylinder", pos = {-1.2, 0.9, 0.7}, size = {0.05, 1.0, 0.05}, color = {0.8, 0.8, 0.82}},
+    {mesh = "cylinder", pos = {1.2, 0.9, 0.7}, size = {0.05, 1.0, 0.05}, color = {0.8, 0.8, 0.82}},
+  }
+  engine.mesh("market_stall", stall_parts)
+
+  -- Kauppatori taxi rank illuminated marker pole
+  engine.mesh("taxi_pole", {
+    {mesh = "cylinder", pos = {0, 1.5, 0}, size = {0.12, 3.0, 0.12}, color = {0.25, 0.25, 0.27}},
+    {mesh = "cube", pos = {0, 3.1, 0}, size = {0.7, 0.35, 0.25}, color = {0.96, 0.82, 0.08}, emissive = 0.8},
+  })
 end
 
 return P
