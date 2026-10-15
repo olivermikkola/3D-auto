@@ -172,13 +172,65 @@ fn key_event(eng: &Shared) -> &'static str {
 }
 
 /// One simulation tick: scripts think, physics moves, contacts are reported.
-fn tick(eng: &Shared, script: &Script) {
+/// One fixed step. Returns the seconds spent in Lua and in physics.
+fn tick(eng: &Shared, script: &Script) -> (f64, f64) {
     let dt = (1.0 / TICK_HZ) as f32;
+    let t0 = now();
     eng.borrow_mut().snapshot();
     script.emit(eng, "tick", dt);
+    let t1 = now();
     let contacts = eng.borrow_mut().step(dt);
+    let t2 = now();
     for c in contacts {
         script.emit(eng, "contact", (c.a, c.b, c.speed));
+    }
+    (t1 - t0 + now() - t2, t2 - t1)
+}
+
+/// Seconds on a clock that also works in the browser (`Instant` doesn't).
+fn now() -> f64 {
+    miniquad::date::now()
+}
+
+/// PROFILE=1: every two seconds, print where the frames' time went.
+#[derive(Default)]
+struct Profile {
+    on: bool,
+    since: Option<f64>,
+    frames: u32,
+    ticks: u32,
+    tick_lua: f64,
+    physics: f64,
+    frame_lua: f64,
+    draw: f64,
+}
+
+impl Profile {
+    fn frame_done(&mut self, draw_calls: usize, triangles: usize) {
+        if !self.on {
+            return;
+        }
+        self.frames += 1;
+        let secs = now() - *self.since.get_or_insert_with(now);
+        if secs < 2.0 {
+            return;
+        }
+        let (f, ms) = (self.frames as f64, |s: f64| s * 1e3 / self.frames as f64);
+        println!(
+            "profile: {:.1} fps | {:.2} ticks/frame: Lua {:.1} ms + physics {:.1} ms | frame Lua {:.1} ms | \
+             draw {:.1} ms, {draw_calls} calls, {:.2} M triangles | waiting {:.1} ms",
+            f / secs,
+            self.ticks as f64 / f,
+            ms(self.tick_lua),
+            ms(self.physics),
+            ms(self.frame_lua),
+            ms(self.draw),
+            triangles as f64 / 1e6,
+            // The rest of the frame: the GPU and the display. High here and
+            // low elsewhere means the GPU is the limit.
+            (secs - self.tick_lua - self.physics - self.frame_lua - self.draw) * 1e3 / f
+        );
+        *self = Profile { on: true, ..Default::default() };
     }
 }
 
@@ -212,7 +264,7 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
         }
         n += 1;
         if !eng.borrow().paused {
-            tick(&eng, s);
+            let _ = tick(&eng, s);
         }
         eng.borrow_mut().hud.clear();
         s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
@@ -273,6 +325,7 @@ struct App {
     _audio: Option<audio::Output>,
     script: Option<Script>,
     gfx: render::Renderer,
+    profile: Profile,
     acc: f64,
     last: f64,
     /// Seconds between the last two frames.
@@ -355,7 +408,10 @@ impl EventHandler for App {
         self.acc += if self.shot.is_some() || self.quit_after.is_some() { self.ticks_per_frame as f64 / TICK_HZ } else { dt };
         while self.acc >= 1.0 / TICK_HZ {
             self.acc -= 1.0 / TICK_HZ;
-            tick(&self.eng, script);
+            let (lua, physics) = tick(&self.eng, script);
+            self.profile.ticks += 1;
+            self.profile.tick_lua += lua;
+            self.profile.physics += physics;
         }
     }
 
@@ -373,7 +429,9 @@ impl EventHandler for App {
         let saved = self.eng.borrow_mut().blend(along);
         if let Some(s) = &self.script {
             let dt = if fixed { self.ticks_per_frame as f32 / TICK_HZ as f32 } else { self.frame_time };
+            let t = now();
             s.emit(&self.eng, "frame", frame_dt(&self.eng, dt));
+            self.profile.frame_lua += now() - t;
         }
         self.eng.borrow_mut().update_audio();
         {
@@ -394,7 +452,9 @@ impl EventHandler for App {
                 window::show_mouse(!self.grabbed);
             }
         }
+        let t = now();
         self.gfx.draw(&self.eng.borrow());
+        self.profile.draw += now() - t;
         let uploaded = self.gfx.take_uploaded();
         self.eng.borrow_mut().release_uploaded(&uploaded);
         self.eng.borrow_mut().unblend(saved);
@@ -410,6 +470,7 @@ impl EventHandler for App {
             window::order_quit();
         }
         self.gfx.commit();
+        self.profile.frame_done(self.gfx.draw_calls, self.gfx.triangles);
         if let Some(target) = self.target_frame {
             let elapsed = miniquad::date::now() - self.frame_start;
             if elapsed < target {
@@ -638,6 +699,7 @@ fn main() {
             pads: pad::Pads::new(),
             target_frame,
             frame_start: miniquad::date::now(),
+            profile: Profile { on: std::env::var("PROFILE").is_ok_and(|v| v == "1"), ..Default::default() },
             failed,
         })
     });

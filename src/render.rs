@@ -203,6 +203,8 @@ pub struct Renderer {
     epoch: u64,
     hud_bind: Option<(Bindings, usize)>,
     pub draw_calls: usize,
+    /// Triangles drawn last frame, shadow pass included.
+    pub triangles: usize,
     pub lights_used: usize,
 }
 
@@ -370,6 +372,7 @@ impl Renderer {
             epoch: 0,
             hud_bind: None,
             draw_calls: 0,
+            triangles: 0,
             lights_used: 0,
         }
     }
@@ -473,6 +476,7 @@ impl Renderer {
         }
         alpha.sort_by(|a, b| b.0.total_cmp(&a.0));
         self.draw_calls = 0;
+        self.triangles = 0;
 
         // 1. Shadow map.
         if shadows {
@@ -486,6 +490,7 @@ impl Renderer {
                 self.ctx.apply_uniforms(UniformsSource::table(&mvp.0));
                 self.ctx.draw(0, g.count, 1);
                 self.draw_calls += 1;
+                self.triangles += g.count as usize / 3;
             }
             self.ctx.end_render_pass();
         }
@@ -570,6 +575,7 @@ impl Renderer {
                 self.ctx.apply_uniforms(UniformsSource::table(&uni));
                 self.ctx.draw(0, g.count, 1);
                 self.draw_calls += 1;
+                self.triangles += g.count as usize / 3;
             }
         }
         self.draw_hud(eng);
