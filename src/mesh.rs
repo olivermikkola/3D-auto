@@ -6,14 +6,51 @@ use crate::math::{Quat, Vec3, v3};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// 20 bytes: a city is millions of triangles, so normal and colour are bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub pos: [f32; 3],
-    pub normal: [f32; 3],
-    pub color: [f32; 3],
-    /// 0 = lit normally, 1 = glows at night (headlights, windows, bulbs).
-    pub emissive: f32,
+    /// Unit normal, each axis -1..1 stored as 0..254 (127 is zero); w unused.
+    pub normal: [u8; 4],
+    /// Color 0..255. Alpha is emissive: 0 = lit normally, 255 = glows at
+    /// night (headlights, windows, bulbs).
+    pub color: [u8; 4],
+}
+
+fn unorm(x: f32) -> u8 {
+    (x.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn snorm(x: f32) -> u8 {
+    (x.clamp(-1.0, 1.0) * 127.0).round() as i32 as u8 + 127
+}
+
+impl Vertex {
+    pub fn new(p: Vec3, n: Vec3, col: Vec3, emissive: f32) -> Vertex {
+        Vertex {
+            pos: [p.x, p.y, p.z],
+            normal: [snorm(n.x), snorm(n.y), snorm(n.z), 0],
+            color: [unorm(col.x), unorm(col.y), unorm(col.z), unorm(emissive)],
+        }
+    }
+
+    pub fn pos(&self) -> Vec3 {
+        v3(self.pos[0], self.pos[1], self.pos[2])
+    }
+
+    pub fn normal(&self) -> Vec3 {
+        let f = |b: u8| (b as f32 - 127.0) / 127.0;
+        v3(f(self.normal[0]), f(self.normal[1]), f(self.normal[2]))
+    }
+
+    pub fn color(&self) -> Vec3 {
+        v3(self.color[0] as f32 / 255.0, self.color[1] as f32 / 255.0, self.color[2] as f32 / 255.0)
+    }
+
+    pub fn emissive(&self) -> f32 {
+        self.color[3] as f32 / 255.0
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -31,15 +68,20 @@ impl Mesh {
         let n = (b - a).cross(c - a).norm();
         let base = self.verts.len() as u32;
         for p in [a, b, c] {
-            self.verts.push(Vertex { pos: [p.x, p.y, p.z], normal: [n.x, n.y, n.z], color: [col.x, col.y, col.z], emissive });
+            self.verts.push(Vertex::new(p, n, col, emissive));
         }
         self.indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
 
-    /// Counter-clockwise quad (seen from the front).
+    /// Counter-clockwise quad (seen from the front). Flat, so its two
+    /// triangles share four vertices.
     pub fn quad(&mut self, a: Vec3, b: Vec3, c: Vec3, d: Vec3, col: Vec3) {
-        self.tri(a, b, c, col);
-        self.tri(a, c, d, col);
+        let n = (b - a).cross(c - a).norm();
+        let base = self.verts.len() as u32;
+        for p in [a, b, c, d] {
+            self.verts.push(Vertex::new(p, n, col, 0.0));
+        }
+        self.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
     /// Point the mesh's Y axis along `axis` ("x" or "z"); e.g. a cylinder becomes a wheel.
@@ -51,8 +93,9 @@ impl Mesh {
             o => return Err(format!("bad axis '{o}'")),
         };
         for v in &mut self.verts {
-            v.pos = f(v.pos);
-            v.normal = f(v.normal);
+            let (p, n) = (f(v.pos), v.normal());
+            let n = f([n.x, n.y, n.z]);
+            *v = Vertex::new(v3(p[0], p[1], p[2]), v3(n[0], n[1], n[2]), v.color(), v.emissive());
         }
         Ok(())
     }
@@ -71,14 +114,9 @@ impl Mesh {
             (pitch != 0.0 || roll != 0.0).then(|| Quat::axis_angle(v3(1.0, 0.0, 0.0), pitch) * Quat::axis_angle(v3(0.0, 0.0, 1.0), roll));
         let turn = |v: Vec3| tilt.map_or(v, |q| q.rotate(v)).rot_y(yaw);
         for v in &src.verts {
-            let p = turn(v3(v.pos[0], v.pos[1], v.pos[2]).mul(scale)) + offset;
-            let n = turn(v3(v.normal[0], v.normal[1], v.normal[2]).mul(inv)).norm();
-            self.verts.push(Vertex {
-                pos: [p.x, p.y, p.z],
-                normal: [n.x, n.y, n.z],
-                color: [v.color[0] * col.x, v.color[1] * col.y, v.color[2] * col.z],
-                emissive: v.emissive.max(emissive),
-            });
+            let p = turn(v.pos().mul(scale)) + offset;
+            let n = turn(v.normal().mul(inv)).norm();
+            self.verts.push(Vertex::new(p, n, v.color().mul(col), v.emissive().max(emissive)));
         }
         self.indices.extend(src.indices.iter().map(|i| i + base));
     }
@@ -239,10 +277,29 @@ mod tests {
     fn outward(m: &Mesh) {
         for t in m.indices.chunks(3) {
             let v = &m.verts[t[0] as usize];
-            let p = v3(v.pos[0], v.pos[1], v.pos[2]);
-            let n = v3(v.normal[0], v.normal[1], v.normal[2]);
+            let (p, n) = (v.pos(), v.normal());
             assert!(p.dot(n) > 0.0, "inward face at {p:?} n={n:?}");
         }
+    }
+
+    #[test]
+    fn packed_vertices_round_trip() {
+        assert_eq!(size_of::<Vertex>(), 20);
+        let n = v3(0.6, -0.8, 0.0);
+        let v = Vertex::new(v3(1.5, -2.0, 3.25), n, v3(0.2, 0.55, 1.0), 0.6);
+        assert_eq!(v.pos(), v3(1.5, -2.0, 3.25));
+        assert!((v.normal() - n).len() < 0.01, "{:?}", v.normal());
+        assert!((v.color() - v3(0.2, 0.55, 1.0)).len() < 0.005, "{:?}", v.color());
+        assert!((v.emissive() - 0.6).abs() < 0.005);
+        // Out of range clamps rather than wrapping round.
+        let w = Vertex::new(Vec3::ZERO, v3(0.0, 1.0, 0.0), v3(1.4, -0.2, 0.5), 2.0);
+        assert_eq!((w.color[0], w.color[1], w.color[3]), (255, 0, 255));
+    }
+
+    #[test]
+    fn quads_share_their_corners() {
+        let c = cube();
+        assert_eq!((c.verts.len(), c.tri_count()), (24, 12));
     }
 
     #[test]

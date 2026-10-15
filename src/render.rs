@@ -19,9 +19,8 @@ const PRECISION: &str = "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp floa
 
 const VS: &str = r#"
 attribute vec3 in_pos;
-attribute vec3 in_normal;
-attribute vec3 in_color;
-attribute float in_emissive;
+attribute vec4 in_normal; // bytes: 127 is zero, 254 is one
+attribute vec4 in_color;  // bytes: rgb, and emissive in a
 uniform mat4 mvp;
 uniform mat4 model;
 uniform vec4 inv_scale2;
@@ -31,9 +30,9 @@ varying vec3 v_world;
 varying float v_emissive;
 void main() {
     v_world = (model * vec4(in_pos, 1.0)).xyz;
-    v_normal = (model * vec4(in_normal * inv_scale2.xyz, 0.0)).xyz;
-    v_color = in_color;
-    v_emissive = in_emissive;
+    v_normal = (model * vec4((in_normal.xyz / 127.0 - 1.0) * inv_scale2.xyz, 0.0)).xyz;
+    v_color = in_color.rgb / 255.0;
+    v_emissive = in_color.a / 255.0;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }"#;
 
@@ -198,6 +197,8 @@ pub struct Renderer {
     shadow_tex: TextureId,
     sky_bind: Bindings,
     meshes: Vec<Option<GpuMesh>>,
+    /// Meshes uploaded since the last `take_uploaded`.
+    uploaded: Vec<usize>,
     epoch: u64,
     hud_bind: Option<(Bindings, usize)>,
     pub draw_calls: usize,
@@ -257,9 +258,8 @@ impl Renderer {
         );
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
-            VertexAttribute::new("in_normal", VertexFormat::Float3),
-            VertexAttribute::new("in_color", VertexFormat::Float3),
-            VertexAttribute::new("in_emissive", VertexFormat::Float1),
+            VertexAttribute::new("in_normal", VertexFormat::Byte4),
+            VertexAttribute::new("in_color", VertexFormat::Byte4),
         ];
         let base =
             PipelineParams { depth_test: Comparison::LessOrEqual, depth_write: true, cull_face: CullFace::Back, ..Default::default() };
@@ -329,6 +329,7 @@ impl Renderer {
             shadow_tex,
             sky_bind,
             meshes: Vec::new(),
+            uploaded: Vec::new(),
             epoch: 0,
             hud_bind: None,
             draw_calls: 0,
@@ -366,7 +367,13 @@ impl Renderer {
                 radius,
                 rev,
             });
+            self.uploaded.push(i);
         }
+    }
+
+    /// Meshes uploaded since the last call, whose CPU copies the engine may drop.
+    pub fn take_uploaded(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.uploaded)
     }
 
     /// Orthographic sun view covering a box in front of the camera, snapped
