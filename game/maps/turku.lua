@@ -29,6 +29,7 @@ return {
   labels = {
     {x = 0, z = 0, letter = "K", name = "Turun Kauppatori"},
     {x = 320, z = -180, letter = "T", name = "Turun Tuomiokirkko"},
+    {x = -1450, z = 950, letter = "F", name = "Kakolanmäki & Funikulaari"},
     {x = -2600, z = 1750, letter = "C", name = "Turun linna (Castle)"},
     {x = -1400, z = 200, letter = "P", name = "Port Arthur (Portsa)"},
     {x = 1200, z = 500, letter = "U", name = "Kupittaanpuisto"},
@@ -105,8 +106,16 @@ return {
     {-60, 20, 45, {style = "balconies", color = {0.95, 0.92, 0.88}, floors = 6}},
     -- Turun Kauppahalli: historic red brick market hall
     {-80, 100, 40, {color = {0.68, 0.30, 0.22}, floors = 2}},
-    -- Kakolanmäki: historic granite fortress
-    {-1150, 750, 75, {color = {0.55, 0.54, 0.52}, floors = 5}},
+    -- Kakolan Graniittilinna: central granite prison fortress & watchtowers
+    {-1440, 950, 120, {style = "granite", color = {0.36, 0.38, 0.40}, floors = 5}},
+    -- Kakolan Länsiselli & Tiililinna: institutional red-brick cellblock
+    {-1535, 985, 90, {color = {0.58, 0.24, 0.18}, floors = 6}},
+    -- Hotel Kakola & brewery courtyard (former prison warden quarters)
+    {-1300, 820, 80, {color = {0.42, 0.42, 0.44}, floors = 4}},
+    -- Portsa (Port Arthur) wooden quarter: traditional 2-storey wooden workers' houses
+    {-1360, 640, 130, {style = "wooden", color = {0.88, 0.74, 0.32}, floors = 2}},
+    {-1440, 680, 120, {style = "wooden", color = {0.68, 0.25, 0.20}, floors = 2}},
+    {-1490, 640, 110, {style = "wooden", color = {0.55, 0.65, 0.52}, floors = 2}},
     -- Aboa Vetus Ars Nova: riverside museum mansion
     {138, 254, 40, {color = {0.85, 0.82, 0.75}, floors = 3}},
     -- EduCity & Medisiina D: modern Kupittaa university campus
