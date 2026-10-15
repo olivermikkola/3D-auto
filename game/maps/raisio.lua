@@ -24,6 +24,7 @@ return {
   pitches = osm.pitches,
   footbridges = osm.footbridges,
   railways = osm.railways,
+  outlines = osm.outlines,
   platforms = osm.platforms,
   wooden_footbridges = {
     {

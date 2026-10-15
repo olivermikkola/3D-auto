@@ -432,6 +432,50 @@ def railways_of(els, P, inside):
     return railways, platforms
 
 
+MATERIALS = {"brick": (0.55, 0.27, 0.2), "concrete": (0.7, 0.69, 0.66), "plaster": (0.86, 0.83, 0.76),
+             "glass": (0.55, 0.65, 0.7), "metal": (0.6, 0.62, 0.64), "wood": (0.62, 0.45, 0.3), "stone": (0.62, 0.6, 0.56)}
+
+
+def wall_colour(t):
+    """building:colour (a name or #rrggbb), else building:material's usual colour; None if neither."""
+    c = t.get("building:colour", "").strip().lower()
+    if c in COLOURS: return COLOURS[c]
+    if re.fullmatch(r"#[0-9a-f]{6}", c): return tuple(int(c[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return MATERIALS.get(t.get("building:material", "").strip().lower())
+
+
+def outlines_of(els, P, inside):
+    """Footprints that boxes fit badly (an L, a U, a block round a yard), or
+    whose walls have a mapped colour, as their own outlines:
+    (height, kind, wall colour or None, points). The game draws these as
+    they are and keeps the boxes only to collide with."""
+    out = []
+    for el in els:
+        t = el.get("tags", {})
+        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        for ring in rings(el):
+            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+            if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
+            A = area(poly)
+            if A < 150: continue
+            kind = building_kind(t, A)
+            if kind in ("house", "terrace", "church", "shed"): continue
+            wall = wall_colour(t)
+            if len(boxes_of(poly)) < 2 and not wall: continue
+            pts = simplify(poly, 0.3)  # open: the closing side is implied
+            if len(pts) >= 3: out.append((height_of(t, kind, A), kind, wall, pts))
+    return out
+
+
+def outline_lines(outlines, f):
+    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points...}", "  outlines = {"]
+    for h, kind, wall, pts in outlines:
+        w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
+        L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    L.append("  },")
+    return L
+
+
 def railway_lines(railways, platforms, f):
     L = ["  -- railway track on the ground: {main line?, electrified?, points...}", "  railways = {"]
     for main, wired, pts in railways:
@@ -451,19 +495,22 @@ def splice_railways(dest, els, P, f):
     X0, Z0, X1, Z1 = map(float, m.groups())
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
     railways, platforms = railways_of(els, P, inside)
+    outlines = outlines_of(els, P, inside)
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
-        if line.startswith("  -- railway track on the ground") or line.startswith("  -- railway platforms"): continue
-        if line == "  railways = {": skip = True; continue
+        if line.startswith(("  -- railway track on the ground", "  -- railway platforms", "  -- footprints drawn as they are")): continue
+        if line in ("  railways = {", "  outlines = {"): skip = True; continue
         if skip:
             if line == "  },": skip = False
             continue
         if line.startswith("  platforms = {"): continue
-        if line.startswith("  -- towers and masts"): out.extend(railway_lines(railways, platforms, f))
+        if line.startswith("  -- towers and masts"):
+            out.extend(railway_lines(railways, platforms, f))
+            out.extend(outline_lines(outlines, f))
         out.append(line)
     dest.write_text("\n".join(out))
-    print(f"{dest}: {len(railways)} railway tracks, {len(platforms)} platforms", file=sys.stderr)
+    print(f"{dest}: {len(railways)} railway tracks, {len(platforms)} platforms, {len(outlines)} outlines", file=sys.stderr)
 
 
 def main():
@@ -473,7 +520,7 @@ def main():
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--out", type=Path)
     ap.add_argument("--only-railways", action="store_true",
-                    help="only put railways and platforms into the existing map (no terrain needed)")
+                    help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
     ap.add_argument("--terrain", nargs="+", type=Path,
                     help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
@@ -1035,6 +1082,7 @@ def main():
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f))
+    L.extend(outline_lines(outlines_of(els, P, inside), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")

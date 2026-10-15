@@ -115,6 +115,8 @@ engine.raycast(ox,oy,oz, dx,dy,dz[, max[, ignore]]) -> id, dist, hx,hy,hz, nx,ny
 
 -- meshes (builtin unit shapes: cube wedge cylinder sphere plane)
 engine.mesh(name, {{mesh="cube", pos=..., size=..., yaw=..., color=..., axis="x", emissive=0}, ...})
+-- a part can be a footprint pushed up instead: walls round it from pos up `height`, a flat roof
+engine.mesh(name, {{outline={x,z, x,z, ...}, height=12, pos=..., yaw=..., color=...}, ...})
 engine.load_obj(name, "assets/thing.obj")      -- usemtl Kd = color, Ke = glows at night
 
 -- lighting (lights and emissive parts are scaled by glow: 0 by day, 1 at night)

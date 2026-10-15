@@ -541,6 +541,18 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         let mut out = Mesh::default();
         for p in parts.sequence_values::<Table>() {
             let p = p?;
+            // A footprint pushed up: outline = {x, z, x, z, ...} (part-local),
+            // walls from 0 to `height` and a flat roof.
+            if let Some(outline) = p.get::<Option<Vec<f32>>>("outline")? {
+                let pts: Vec<(f32, f32)> = outline.as_chunks::<2>().0.iter().map(|&[x, z]| (x, z)).collect();
+                let c = color(&p.get("color")?)?;
+                let h = p.get::<Option<f32>>("height")?.unwrap_or(1.0);
+                let src = mesh::prism(&pts, 0.0, h, Vec3::ONE);
+                let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
+                let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
+                out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (yaw, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), glow);
+                continue;
+            }
             let part = p.get::<Option<String>>("mesh")?.unwrap_or("cube".into());
             let src = mesh_id(&e, &part)?;
             if e.gpu_only.contains(&src) {

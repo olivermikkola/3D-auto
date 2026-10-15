@@ -122,6 +122,75 @@ impl Mesh {
     }
 }
 
+/// A footprint pushed up into a solid: walls round `outline` (x, z points,
+/// either way round, not closed) from `bottom` to `top`, and a flat roof cut
+/// into triangles by ear clipping. No floor. Faces point out, flat shaded.
+pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3) -> Mesh {
+    let mut m = Mesh::default();
+    let mut pts: Vec<(f32, f32)> = Vec::with_capacity(outline.len());
+    for &p in outline {
+        if pts.last().is_none_or(|q: &(f32, f32)| (q.0 - p.0).abs() + (q.1 - p.1).abs() > 1e-4) {
+            pts.push(p);
+        }
+    }
+    while pts.len() > 1 && (pts[0].0 - pts[pts.len() - 1].0).abs() + (pts[0].1 - pts[pts.len() - 1].1).abs() <= 1e-4 {
+        pts.pop();
+    }
+    if pts.len() < 3 {
+        return m;
+    }
+    // The faces' winding (see cube's +y) wants the outline clockwise seen
+    // from above, which in x, z is a negative shoelace area.
+    let twice_area = |p: &[(f32, f32)]| -> f32 {
+        (0..p.len())
+            .map(|i| {
+                let (a, b) = (p[i], p[(i + 1) % p.len()]);
+                a.0 * b.1 - b.0 * a.1
+            })
+            .sum()
+    };
+    if twice_area(&pts) > 0.0 {
+        pts.reverse();
+    }
+    let at = |p: (f32, f32), y: f32| v3(p.0, y, p.1);
+    for i in 0..pts.len() {
+        let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+        m.quad(at(a, bottom), at(b, bottom), at(b, top), at(a, top), col);
+    }
+    for [a, b, c] in ear_clip(&pts) {
+        m.tri(at(pts[a], top), at(pts[b], top), at(pts[c], top), col);
+    }
+    m
+}
+
+/// Triangles (as indices into `pts`) covering a simple polygon that runs
+/// clockwise in x, z (negative shoelace area). A polygon that defeats it
+/// (self-crossing) gets a fan from its first point for what's left.
+fn ear_clip(pts: &[(f32, f32)]) -> Vec<[usize; 3]> {
+    let cross = |o: (f32, f32), a: (f32, f32), b: (f32, f32)| (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0);
+    let mut idx: Vec<usize> = (0..pts.len()).collect();
+    let mut out = Vec::with_capacity(pts.len().saturating_sub(2));
+    while idx.len() > 3 {
+        let n = idx.len();
+        let ear = (0..n).find(|&i| {
+            let (a, b, c) = (pts[idx[(i + n - 1) % n]], pts[idx[i]], pts[idx[(i + 1) % n]]);
+            // Convex at b (clockwise turn), and no other corner inside abc.
+            cross(a, b, c) < 0.0
+                && idx.iter().all(|&k| {
+                    let p = pts[k];
+                    p == a || p == b || p == c || !(cross(a, b, p) <= 0.0 && cross(b, c, p) <= 0.0 && cross(c, a, p) <= 0.0)
+                })
+        });
+        let Some(i) = ear else { break };
+        out.push([idx[(i + n - 1) % n], idx[i], idx[(i + 1) % n]]);
+        idx.remove(i);
+    }
+    for k in 1..idx.len().saturating_sub(1) {
+        out.push([idx[0], idx[k], idx[k + 1]]);
+    }
+    out
+}
+
 /// Unit cube centered on the origin.
 pub fn cube() -> Mesh {
     let mut m = Mesh::default();
@@ -272,6 +341,42 @@ fn parse_mtl(txt: &str, out: &mut HashMap<String, (Vec3, f32)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prism_of_an_l_has_walls_out_and_a_roof_up() {
+        // An L, given counter-clockwise (positive area): it gets turned round.
+        let l = [(0.0, 0.0), (10.0, 0.0), (10.0, 4.0), (4.0, 4.0), (4.0, 10.0), (0.0, 10.0)];
+        let m = prism(&l, 0.0, 6.0, Vec3::ONE);
+        let roof: Vec<_> = m.indices.chunks(3).filter(|t| m.verts[t[0] as usize].normal().y > 0.9).collect();
+        assert_eq!(roof.len(), 4, "an L's roof is 4 triangles");
+        let area: f32 = roof
+            .iter()
+            .map(|t| {
+                let (a, b, c) = (m.verts[t[0] as usize].pos(), m.verts[t[1] as usize].pos(), m.verts[t[2] as usize].pos());
+                (b - a).cross(c - a).len() / 2.0
+            })
+            .sum();
+        assert!((area - 64.0).abs() < 1e-3, "roof covers the L: {area}");
+        // Each wall faces away from the L's inside: a point just outside
+        // its middle, along its normal, isn't in the L.
+        let inside = |x: f32, z: f32| (0.0..10.0).contains(&x) && (0.0..10.0).contains(&z) && (x < 4.0 || z < 4.0);
+        for t in m.indices.chunks(3) {
+            let v = &m.verts[t[0] as usize];
+            let n = v.normal();
+            if n.y.abs() < 0.1 {
+                let c = (m.verts[t[0] as usize].pos() + m.verts[t[1] as usize].pos() + m.verts[t[2] as usize].pos()) * (1.0 / 3.0);
+                assert!(!inside(c.x + n.x * 0.1, c.z + n.z * 0.1), "wall at {c:?} faces in");
+                assert!(inside(c.x - n.x * 0.1, c.z - n.z * 0.1), "wall at {c:?} has the L behind it");
+            }
+        }
+    }
+
+    #[test]
+    fn prism_skips_repeated_and_closing_points() {
+        let sq = [(0.0, 0.0), (0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)];
+        assert_eq!(prism(&sq, 0.0, 3.0, Vec3::ONE).tri_count(), 4 * 2 + 2);
+        assert_eq!(prism(&[(0.0, 0.0), (1.0, 0.0)], 0.0, 1.0, Vec3::ONE).tri_count(), 0);
+    }
 
     /// Every face normal of a closed convex primitive must point away from its center.
     fn outward(m: &Mesh) {

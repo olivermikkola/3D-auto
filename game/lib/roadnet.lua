@@ -2042,9 +2042,58 @@ build = function(map, kit)
       if (x - l[1]) ^ 2 + (z - l[2]) ^ 2 < l[3] ^ 2 then return l[4] end
     end
   end
+  -- Footprints the map gives as outlines (an L, a U, a block round its
+  -- yard) are drawn as they are; their boxes stay, unseen, to collide
+  -- with. Not one that reaches a carriageway (its boxes were trimmed clear).
+  local OUT, out_grid = {}, {}
+  local function inside_poly(pts, x, z)
+    local inside, j = false, #pts
+    for k = 1, #pts do
+      local a, b = pts[k], pts[j]
+      if (a[2] > z) ~= (b[2] > z) and x < (b[1] - a[1]) * (z - a[2]) / (b[2] - a[2]) + a[1] then inside = not inside end
+      j = k
+    end
+    return inside
+  end
+  for oi, o in ipairs(map.outlines or {}) do
+    local pts, x0, z0, x1, z1, clear = {}, math.huge, math.huge, -math.huge, -math.huge, true
+    for k = 4, #o do
+      local p = o[k]
+      pts[#pts + 1] = p
+      x0, z0, x1, z1 = math.min(x0, p[1]), math.min(z0, p[2]), math.max(x1, p[1]), math.max(z1, p[2])
+      clear = clear and not R.on_carriageway(p[1], p[2], 0.5)
+    end
+    if clear then
+      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+      for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
+        for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
+          local k = cell_key(ci, cj)
+          out_grid[k] = out_grid[k] or {}
+          table.insert(out_grid[k], oi)
+        end
+      end
+    end
+  end
+  local function outline_of(x, z, h)
+    for _, oi in ipairs(out_grid[cell_key(math.floor(x / CELL), math.floor(z / CELL))] or {}) do
+      local o = OUT[oi]
+      if math.abs(o.h - h) < 0.5 and x > o.x0 and x < o.x1 and z > o.z0 and z < o.z1 and inside_poly(o.pts, x, z) then return o end
+    end
+  end
   local count, yards = 0, {}
-  for i, f in ipairs(map.footprints or {}) do
+  -- A building the map data cut into a few boxes comes as a run of them
+  -- with the same height, kind and turn, and so do a block's stairwells
+  -- mapped one by one: one building, so one colour and one style (not a
+  -- stripe of each). `i` below counts buildings.
+  local bi, last = 0, nil
+  for _, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
+    if not (last and last[6] == h and last[7] == kind and math.abs(last[5] - yaw) < 0.02
+            and (last[1] - x) ^ 2 + (last[2] - z) ^ 2 < (math.max(last[3], last[4], w, d) + 2) ^ 2) then
+      bi = bi + 1
+    end
+    last = f
+    local i = bi
     local fx, fz = math.cos(yaw), -math.sin(yaw)
     if GROUND then -- on a slope it stands on its lowest corner
       BASE = math.huge
@@ -2062,7 +2111,14 @@ build = function(map, kit)
     end
     local rp = (kind == "shop" or kind == "works") and roof_parked(x, z)
     local look = ok and look_of(x, z)
-    if ok and kind == "round" then -- a silo or a tank: a drum with a darker cap
+    local outline = ok and not look and not rp and kind ~= "round" and kind ~= "church" and outline_of(x, z, h)
+    if outline then
+      kit.static{pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, visible = false, tag = "building"}
+      outline.placed, outline.i = true, outline.i or i
+      outline.base = math.min(outline.base or math.huge, BASE or 0)
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif ok and kind == "round" then -- a silo or a tank: a drum with a darker cap
       local rh, color = look and look.height or h, look and look.color or {0.8, 0.8, 0.78}
       kit.static{mesh = "cylinder", pos = {x, rh / 2, z}, size = {w, rh, w}, color = color, tag = "building"}
       engine.spawn{mesh = "cylinder", pos = {x, rh + 0.3, z}, size = {w * 0.9, 0.6, w * 0.9},
@@ -2144,7 +2200,10 @@ build = function(map, kit)
                    yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
                    tag = "building"}
       elseif kind == "shed" then
-        kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = HOUSE[1 + i % #HOUSE], tag = "building"}
+        -- A garden shed in a house's colours; a big one (a garage deck
+        -- between blocks of flats, a depot) is concrete.
+        local color = w * d > 200 and {0.6, 0.59, 0.56} or HOUSE[1 + i % #HOUSE]
+        kit.static{mesh = "cube", pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, color = color, tag = "building"}
       elseif kind == "works" or (kind == "shop" and w * d > 1500) then
         kit.static{mesh = kit.warehouse_mesh(1 + i % 4, h), pos = {x, kit.CURB + h / 2, z}, yaw = yaw, size = {w, h, d},
                    scale = {w, 1, d}, tag = "building"}
@@ -2167,6 +2226,40 @@ build = function(map, kit)
     end
   end
   BASE = nil
+  -- The outlines whose boxes stood: walls in the building's colour, a
+  -- band of windows on every wall each floor (some lit at night), a dark
+  -- flat roof. Baked a chunk at a time; they collide through their boxes.
+  local walls, GLASS, ROOF = chunked(), {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
+  local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
+  for _, o in pairs(OUT) do
+    if o.placed then
+      local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
+      local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68}) or (o.kind == "shop" and {0.84, 0.84, 0.82})
+                    or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
+      local flat = {}
+      for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
+      walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true})
+      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = ROOF, abs = true})
+      local floors = o.kind == "works" and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
+      for k = 1, n do
+        local a, b = o.pts[k], o.pts[k % n + 1]
+        local dx, dz = b[1] - a[1], b[2] - a[2]
+        local len = math.sqrt(dx * dx + dz * dz)
+        if len > 2.5 then
+          local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+          local nx, nz = dz / len, -dx / len
+          if inside_poly(o.pts, mx + nx * 0.3, mz + nz * 0.3) then nx, nz = -nx, -nz end
+          for f = 0, floors - 1 do
+            local lit = (f * 7 + o.i * 3 + k) % 3 == 0
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + f * kit.FLOOR + 1.9, mz + nz * 0.06},
+                               yaw = math.atan(dx, dz), size = {0.1, 1.4, len - 1.2}, color = GLASS, emissive = lit and 1 or 0,
+                               abs = true})
+          end
+        end
+      end
+    end
+  end
+  walls.bake("outline", "outline")
   -- A tree or two in the yards round homes, once every building stands.
   pine_mesh()
   local planted = 0
