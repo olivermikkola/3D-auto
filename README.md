@@ -4,6 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/olivermikkola/3D-auto)](https://github.com/olivermikkola/3D-auto/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+![Grand Tour Åbo: Aurajoki](docs/art/cover.jpg)
+
 A minimal 3D sandbox kernel in Rust. One ~1 MB binary renders low-poly meshes with shadows
 and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **The game is entirely Lua**: the binary emits events
 into a tiny pub/sub bus, and scripts build the world on top of it.
@@ -696,6 +698,17 @@ shore walls, the skyline's peaks, the landmarks) and a drive up the car park, `M
 these on the second map, `PAD_TEST=1` the gamepad controls, and `MISSION_TEST=1` the later
 missions and the order they unlock in (see `.github/workflows/ci.yml`). Headless runs mix audio into a discarded buffer, so the mixer is exercised too. CI runs
 all of this on Linux, Windows and macOS.
+
+## Cover art
+
+<p>
+  <img src="docs/art/cover-vice.jpg" width="49%" alt="Grand Tour Åbo: Aurajoki, the Vice City take">
+  <img src="docs/art/cover-fori.jpg" width="49%" alt="Grand Tour Åbo: Aurajoki, with Föri and Turun linna">
+</p>
+
+The covers are AI-made from Oliver Mikkola's prompts, in tribute to the Grand Theft Auto box art.
+They are fan art: not made by, endorsed by or connected to Rockstar Games. The MoE logo belongs to
+[MoE Systems](https://moesystems.com).
 
 ## Releasing
 
