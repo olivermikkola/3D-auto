@@ -20,46 +20,74 @@ Targets after Raisio, roughly in order of difficulty:
 Everything built for Raisio should be generic and driven by map tags, in `tools/osm_import.py`
 and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
-## Where things stand (v0.7.0)
+## Where things stand (v0.9.1, "Aurajoki")
 
-- Raisio covers about 8 × 8 km: 2,936 junctions and 13,500 buildings from OpenStreetMap.
-  Heights come from Maanmittauslaitos' 10 m elevation model.
-- Roads are graded into the terrain and drive smoothly. Bridges are solid decks. Tunnels exist
-  (Raisio 2030).
-- Dynamic road widths from `lanes=*`, rounded corner fillets at junctions, and raised physical
-  traffic islands.
-- Real municipal border from OSM relation data with Raisionjoki wooden footbridge (Punttamäenpolun
-  silta) and perimeter military barriers around Pansion varuskunta.
-- Authentic Finnish architecture: glazed balconies (`style = "balconies"`) on flats ($\ge 3$ floors),
-  commercial glass shopfronts, and roof tagging.
-- Sisu XA-180 "Pasi" 6x6 APC (13.5 tons) with 5-star military response and Pansio Base Heist mission.
-- Föli regional municipal buses navigating real routes, drivable with heavy transit bus handling.
-- Engine spatial chunk streaming: 300 m grid meshes dynamically culled beyond active 9x9 tile ring.
-- Four Raisios (today, 2030, 1980) plus Manhattan and Harbor. Switch with **Esc → CITY**.
+- The release is called **Aurajoki** and ships Raisio and Turku (`aurajoki-v0.9.1-*`). Brands
+  in the game are Finnish parodies (Häsburger, Pöli, Puskuri, Vicklund, Verkkari Stadion).
+- Turku at real size: OSM roads and 2 m MML LiDAR terrain, the Aurajoki with real bridges,
+  boats and the Föri, and hand-made 500 m slices: Kauppatori, Vanha Suurtori and Tuomiokirkko,
+  Kakolanmäki with the funicular, Portsa, Turun linna and the harbour.
+- Raisio is about 8 × 8 km of OSM data on the 10 m elevation model. Raisio ↔ Turku is one
+  corridor, and you keep your car when you cross.
+- Föli buses, Pasi the APC, police pursuits, pedestrians that keep to pavements and avoid
+  traffic, and a camera spring arm.
+- **Memory:** Turku peaks at about 1.2 GB RSS and Raisio at 1.1 GB. Lua accounts for 60–120 MB
+  of that. About 800 MB is 6 M triangles of CPU-side geometry at 132 bytes each (a 40-byte
+  vertex ×3, plus indices). Roads alone are 3.1 M triangles.
 
 ## Next, in order
 
-### 1. Many cities, and moving between them (Turku first)
+### 1. See every landmark in CI
 
-- **Per-city config in the importer:** each country has its own defaults (Finnish street
-  defaults vs American ones, which roads get pavements, building heights), so a new city is a
-  config entry, not new code.
-- **A city is its municipal area.** Neighbouring cities join at crossings, the roads over the
-  border. Driving through a crossing loads the neighbouring city and puts you at the matching
-  crossing on its side, keeping your car, speed and wanted level. Seamless with spatial chunk
-  streaming.
-- First real attempt: Turku, then Raisio ↔ Turku crossings.
+`tools/test_landmark_renders.py` renders Turku's landmarks and checks the pixels: a landmark
+that is black, buried or in the wrong place fails. Extend it to every slice (Portsa, harbour,
+Koroistenniemi, Raisio's centre) as each one is touched. A slice isn't done until it has a
+camera here.
 
-### 2. Laser-scan 3D roof shapes & heights
+### 2. Halve the memory
 
-- Import 3D roof structures and laser point clouds from Maanmittauslaitos open data (CC BY 4.0).
-- Match roof ridges, pitches, and heights to OSM building polygons.
+- Pack vertices from 40 to 20 bytes: f32 position, i8 normal, u8 colour, emissive in alpha.
+- Free the CPU copy of a mesh once the GPU has it; keep it only where something reads it back.
+- Fewer road triangles: check what makes 3.1 M (kerbs, fillets, segment length).
 
-### 3. More gameplay & jobs
+Target: Turku under 500 MB, measured with `/usr/bin/time -v` on `--headless`.
 
-- Pizza delivery job in Raisio center.
-- Archipelago speedboats and water police pursuit.
-- Tow truck missions.
+### 3. What the Gemini review found that is still open
+
+- One speed for everything: the bus does 107 km/h like a sedan. Give each vehicle class its
+  own acceleration and top speed (bus about 70–80 km/h).
+- Headlight and lamp cones are hard-edged polygons that add up to white. Soften and clamp them.
+- Explosions are big white cubes. Make them smaller and short-lived.
+- A 6-star wanted level is lost in 10 s of driving straight. Losing the cops should need time
+  out of sight, scaled by stars.
+- A whole evening passes in under two minutes. Slow the clock.
+- The controls help box covers the top left on every start. Show it on the first run only.
+
+### 4. A story that reacts: catalogue + scorer
+
+The world stays fixed. What happens in it is picked from hand-written material:
+
+- **Catalogue** (Lua): story fragments, mission branches and reactions. Each one has
+  preconditions (place, wanted level, time, what just happened), weights and cooldowns.
+- **Scorer** (Lua, deterministic): scores the fragments that fit the current state and picks
+  the best (same state and seed give the same pick), so tests stay stable. It costs no
+  noticeable memory.
+- Only once the catalogue is big enough to need it: swap the scorer for a small classifier
+  behind the same interface (ONNX through `tract`). A 400 M-parameter model is 0.4–1.7 GB,
+  more than the whole game today. Keep it out of the open world, and load it only for story
+  missions.
+
+### 5. More Turku
+
+Kupittaa and Yliopistonmäki (from Forge's list), then Turku's other districts. Each slice comes
+with a render check (see 1).
+
+### Later
+
+- Laser-scan roof shapes and heights (MML, CC BY 4.0) matched to OSM footprints.
+- In-game credits screen for OSM and MML (attribution is in `game/maps/LICENSE` and the
+  generated files today).
+- Helsinki, then 1:1 Manhattan.
 
 ## Data sources
 
@@ -82,6 +110,17 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   `python3 -m unittest discover -s tools -p "test_*.py"`.
 - **Maintain PRNG determinism:** keep `math.random` calls consistent across vehicle spawns so
   soak tests don't desynchronize between seeds.
-- **Check visuals headlessly:** use `tools/*_render_checks.py` under Xvfb with llvmpipe software GL.
-  Never pop open GUI windows on the host desktop without permission.
+- **Check visuals by looking at pixels.** Probes like `KAKOLA_TEST` only prove an entity exists. In
+  v0.9.1, Kakola rendered black, Kauppatori's paving was half under the hillside, and Turun linna
+  stood on a road, all with green CI. Run `RENDER_CHECKS=1 python -m unittest
+  tools/test_landmark_renders.py`, and look at the frames yourself. The older
+  `tools/*_render_checks.py` only check that a PPM file was written.
+- **Place landmarks from the map data, not by eye.** Compute the position from latitude and
+  longitude with the map's `origin`. Filter the OSM boxes the prefab replaces (see `maps/turku.lua`).
+- **A look's colour multiplies the mesh's.** Mesh walls that a look colours must be white.
+- **PRs run the seed-1337 smoke test only.** The full seed suite runs after merge, so run it
+  locally before merging.
+- **Fewer, checked PRs beat many fast ones.** 79 PRs in four days meant no one looked at a frame
+  before merging.
+- Never pop open GUI windows on the host desktop without permission.
 - **Always branch fresh from `origin/main`** after every merge and delete merged branches immediately.
