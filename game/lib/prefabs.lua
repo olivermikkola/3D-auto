@@ -208,19 +208,49 @@ function P.build()
   }
   engine.mesh("speedboat", boat_parts)
 
-  -- Turun linna (Turku Castle) keep tower
-  local castle_stone, roof_copper = {0.72, 0.7, 0.68}, {0.22, 0.48, 0.38}
+  -- Turun linna (Turku Castle) authentic medieval keep and Renaissance bailey
+  local castle_stone = {0.74, 0.72, 0.68}
+  local castle_wall_dark = {0.62, 0.60, 0.58}
+  local roof_copper = {0.24, 0.48, 0.38}
+  local roof_copper_dark = {0.18, 0.38, 0.30}
+  local wood_dark = {0.35, 0.25, 0.18}
   local castle_parts = {
-    -- Main keep rectangular stone block
-    {mesh = "cube", pos = {0, 8.0, 0}, size = {28.0, 16.0, 42.0}, color = castle_stone},
-    -- West gatehouse tower
-    {mesh = "cube", pos = {-12.0, 11.0, 18.0}, size = {10.0, 22.0, 10.0}, color = castle_stone},
-    -- East keep tower
-    {mesh = "cube", pos = {12.0, 11.0, -18.0}, size = {10.0, 22.0, 10.0}, color = castle_stone},
-    -- Weathered green copper hipped roofs
-    {mesh = "cube", pos = {0, 17.5, 0}, size = {26.0, 3.0, 40.0}, color = roof_copper},
-    {mesh = "cube", pos = {-12.0, 23.0, 18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
-    {mesh = "cube", pos = {12.0, 23.0, -18.0}, size = {9.0, 2.5, 9.0}, color = roof_copper},
+    -- 1. Main Keep (Päälinna) central hall block
+    {mesh = "cube", pos = {0, 10.0, 0}, size = {26.0, 20.0, 48.0}, color = castle_stone},
+    -- Steep copper pitched roof over the central keep (wedges back-to-back)
+    {mesh = "wedge", pos = {-6.5, 24.5, 0}, yaw = math.pi / 2, size = {48.0, 9.0, 13.0}, color = roof_copper},
+    {mesh = "wedge", pos = {6.5, 24.5, 0}, yaw = -math.pi / 2, size = {48.0, 9.0, 13.0}, color = roof_copper},
+    -- Stepped gable walls at north and south ends
+    {mesh = "cube", pos = {0, 22.0, 24.1}, size = {24.0, 4.0, 0.4}, color = castle_stone},
+    {mesh = "cube", pos = {0, 25.0, 24.1}, size = {16.0, 4.0, 0.4}, color = castle_stone},
+    {mesh = "cube", pos = {0, 27.5, 24.1}, size = {8.0, 3.0, 0.4}, color = castle_stone},
+    {mesh = "cube", pos = {0, 22.0, -24.1}, size = {24.0, 4.0, 0.4}, color = castle_stone},
+    {mesh = "cube", pos = {0, 25.0, -24.1}, size = {16.0, 4.0, 0.4}, color = castle_stone},
+    {mesh = "cube", pos = {0, 27.5, -24.1}, size = {8.0, 3.0, 0.4}, color = castle_stone},
+
+    -- 2. Massive West Keep Tower (Länsitorni)
+    {mesh = "cube", pos = {-12.0, 14.0, 22.0}, size = {12.0, 28.0, 12.0}, color = castle_stone},
+    {mesh = "cube", pos = {-12.0, 29.5, 22.0}, size = {12.6, 3.0, 12.6}, color = castle_wall_dark},
+    {mesh = "cube", pos = {-12.0, 33.0, 22.0}, size = {11.5, 4.0, 11.5}, color = roof_copper_dark},
+    {mesh = "cylinder", pos = {-12.0, 38.0, 22.0}, size = {0.2, 7.0, 0.2}, color = {0.85, 0.85, 0.88}},
+
+    -- 3. Massive East Keep Tower (Itätorni)
+    {mesh = "cube", pos = {12.0, 14.0, -22.0}, size = {12.0, 28.0, 12.0}, color = castle_stone},
+    {mesh = "cube", pos = {12.0, 29.5, -22.0}, size = {12.6, 3.0, 12.6}, color = castle_wall_dark},
+    {mesh = "cube", pos = {12.0, 33.0, -22.0}, size = {11.5, 4.0, 11.5}, color = roof_copper_dark},
+
+    -- 4. Renaissance Outer Bailey (Esilinna)
+    {mesh = "cube", pos = {18.0, 7.0, 8.0}, size = {18.0, 14.0, 32.0}, color = castle_stone},
+    {mesh = "wedge", pos = {18.0, 17.0, 0}, size = {18.0, 6.0, 16.0}, color = roof_copper},
+    {mesh = "wedge", pos = {18.0, 17.0, 16.0}, yaw = math.pi, size = {18.0, 6.0, 16.0}, color = roof_copper},
+
+    -- 5. The iconic Round Tower (Pyöreä torni - Renaissance artillery roundel)
+    {mesh = "cylinder", pos = {26.0, 9.0, 26.0}, size = {14.0, 18.0, 14.0}, color = castle_stone},
+    {mesh = "cylinder", pos = {26.0, 19.5, 26.0}, size = {14.6, 3.0, 14.6}, color = castle_wall_dark},
+    {mesh = "cylinder", pos = {26.0, 22.5, 26.0}, size = {12.0, 3.5, 12.0}, color = roof_copper},
+
+    -- 6. Gatehouse and portal archway
+    {mesh = "cube", pos = {9.0, 3.5, 24.5}, size = {5.0, 7.0, 2.0}, color = wood_dark},
   }
   engine.mesh("turun_linna", castle_parts)
 
@@ -278,6 +308,59 @@ function P.build()
     {mesh = "cube", pos = {0, 3.4, 0}, size = {6.8, 0.35, 8.5}, color = f_zinc},
   }
   engine.mesh("funicular_station", station_parts)
+
+  -- s/s Bore (Historic 1960 passenger steamship at Forum Marinum / Turku Harbor)
+  local bore_white, bore_blue, bore_teak = {0.95, 0.95, 0.96}, {0.15, 0.28, 0.55}, {0.55, 0.42, 0.30}
+  local bore_parts = {
+    -- Lower dark blue hull
+    {mesh = "cube", pos = {0, 1.2, 0}, size = {11.0, 3.2, 78.0}, color = bore_blue},
+    -- Upper white hull & passenger decks
+    {mesh = "cube", pos = {0, 3.5, 0}, size = {10.6, 2.4, 76.0}, color = bore_white},
+    -- Promenade & boat deck
+    {mesh = "cube", pos = {0, 5.5, -4.0}, size = {9.8, 2.2, 60.0}, color = bore_white},
+    -- Teak top observation deck
+    {mesh = "cube", pos = {0, 6.7, -4.0}, size = {9.2, 0.2, 58.0}, color = bore_teak},
+    -- Bridge / wheelhouse forward
+    {mesh = "cube", pos = {0, 7.6, 18.0}, size = {8.2, 2.0, 8.0}, color = bore_white},
+    -- Distinctive yellow & blue steamship funnel
+    {mesh = "cylinder", pos = {0, 9.5, -2.0}, size = {2.8, 4.8, 4.2}, color = {0.94, 0.78, 0.12}},
+    {mesh = "cylinder", pos = {0, 11.2, -2.0}, size = {2.85, 1.2, 4.25}, color = {0.15, 0.28, 0.55}},
+    -- Fore-mast and radar scanner
+    {mesh = "cylinder", pos = {0, 11.0, 24.0}, size = {0.35, 9.0, 0.35}, color = {0.88, 0.88, 0.85}},
+  }
+  engine.mesh("ss_bore", bore_parts)
+
+  -- Port of Turku intermodal cargo container stack (40ft shipping containers)
+  local c_blue, c_red, c_yellow, c_green = {0.15, 0.35, 0.62}, {0.72, 0.20, 0.15}, {0.90, 0.74, 0.12}, {0.18, 0.48, 0.32}
+  local container_parts = {
+    -- Ground tier containers (two side by side)
+    {mesh = "cube", pos = {-1.3, 1.3, 0}, size = {2.45, 2.6, 12.2}, color = c_blue},
+    {mesh = "cube", pos = {1.3, 1.3, 0}, size = {2.45, 2.6, 12.2}, color = c_red},
+    -- Second tier (offset)
+    {mesh = "cube", pos = {-1.3, 3.9, 0}, size = {2.45, 2.6, 12.2}, color = c_yellow},
+    {mesh = "cube", pos = {1.3, 3.9, 0}, size = {2.45, 2.6, 12.2}, color = c_green},
+    -- Third tier single top container
+    {mesh = "cube", pos = {0, 6.5, 0}, size = {2.45, 2.6, 12.2}, color = c_blue},
+  }
+  engine.mesh("container_stack", container_parts)
+
+  -- Port of Turku quayside container portal crane
+  local crane_yellow, crane_steel = {0.92, 0.72, 0.12}, {0.25, 0.26, 0.28}
+  local crane_parts = {
+    -- Portal legs straddling wharf tracks (left and right A-frames)
+    {mesh = "cube", pos = {-4.5, 7.0, -4.0}, size = {0.8, 14.0, 0.8}, color = crane_yellow},
+    {mesh = "cube", pos = {-4.5, 7.0, 4.0}, size = {0.8, 14.0, 0.8}, color = crane_yellow},
+    {mesh = "cube", pos = {4.5, 7.0, -4.0}, size = {0.8, 14.0, 0.8}, color = crane_yellow},
+    {mesh = "cube", pos = {4.5, 7.0, 4.0}, size = {0.8, 14.0, 0.8}, color = crane_yellow},
+    -- Upper portal crossbeam table
+    {mesh = "cube", pos = {0, 14.2, 0}, size = {10.5, 1.5, 9.5}, color = crane_yellow},
+    -- Operator machinery cab & counterweight
+    {mesh = "cube", pos = {0, 17.5, -3.0}, size = {5.0, 5.0, 6.0}, color = crane_yellow},
+    {mesh = "cube", pos = {0, 16.5, -6.5}, size = {4.0, 3.0, 2.5}, color = crane_steel},
+    -- Horizontal jib truss cantilever extending out over the water
+    {mesh = "cube", pos = {0, 20.0, 12.0}, size = {2.2, 2.5, 32.0}, color = crane_yellow},
+  }
+  engine.mesh("port_crane", crane_parts)
 end
 
 return P

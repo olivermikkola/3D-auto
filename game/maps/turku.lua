@@ -91,8 +91,8 @@ return {
   looks = {
     -- Turun tuomiokirkko (National Cathedral): red brick nave and copper details
     {380, -90, 60, {color = {0.65, 0.28, 0.20}, floors = 8}},
-    -- Turun linna (Turku Castle): medieval grey limestone keep
-    {-2140, 1720, 80, {color = {0.72, 0.70, 0.68}, floors = 5}},
+    -- Turun linna grounds (historic castle park)
+    {-2140, 1720, 80, {color = {0.74, 0.72, 0.68}, floors = 2}},
     -- Mikaelinkirkko (St. Michael's Church, Portsa): red brick Gothic revival
     {-1185, 218, 50, {color = {0.70, 0.25, 0.18}, floors = 7}},
     -- Turun taidemuseo (Puolalanmäki): granite palace
