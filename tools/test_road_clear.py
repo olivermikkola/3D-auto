@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto")
 
 # map: obstacles a lane ray may still hit (deck edges, see above)
-MAX_OBSTACLES = {"raisio": 21, "turku": 22}
+MAX_OBSTACLES = {"raisio": 6, "turku": 21}
 
 
 class RoadClearTests(unittest.TestCase):
