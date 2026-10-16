@@ -6,6 +6,27 @@ local U = require "lib.util"
 local M = {}
 M.MAX_SPEED, M.REVERSE, M.ACCEL, M.BRAKE, M.DRAG = 38, 10, 18, 30, 0.12
 
+-- How each kind of vehicle pulls, by tag. With drag, a car levels off at
+-- about 109 km/h; the bus at about 75 and Pasi at about 84, and both get
+-- there slowly and stop late. top is where the pull runs out, not the
+-- speed you reach: that is accel * top / (accel + DRAG * top).
+local CAR = {top = M.MAX_SPEED, accel = M.ACCEL, brake = M.BRAKE, reverse = M.REVERSE}
+M.CLASSES = {
+  car = CAR, cop = CAR, boat = CAR,
+  bus = {top = 42, accel = 5, brake = 16, reverse = 6},
+  pasi = {top = 44, accel = 6, brake = 18, reverse = 7},
+}
+
+function M.class(id)
+  return M.CLASSES[engine.tag(id) or ""] or CAR
+end
+
+-- The speed (m/s) a vehicle of this class levels off at on the flat.
+function M.top_speed(id)
+  local c = M.class(id)
+  return c.accel * c.top / (c.accel + M.DRAG * c.top)
+end
+
 -- Anything tagged "car" or "cop" or "pasi" or "bus" or "boat" can be driven.
 M.tags = {car = true, cop = true, pasi = true, bus = true, boat = true}
 
@@ -67,11 +88,12 @@ function M.drive(id, dt, input)
   local side = vx * rx + vy * ry + vz * rz
   local lift = vx * ux + vy * uy + vz * uz
 
+  local c = M.class(id)
   local t = input.throttle or 0
   if t > 0 then
-    v = v + (v < 0 and M.BRAKE or M.ACCEL * (1 - v / M.MAX_SPEED)) * t * dt
+    v = v + (v < 0 and c.brake or c.accel * (1 - v / c.top)) * t * dt
   elseif t < 0 then
-    v = v + (v > 0 and -M.BRAKE or -M.ACCEL * (1 + v / M.REVERSE)) * -t * dt
+    v = v + (v > 0 and -c.brake or -c.accel * (1 + v / c.reverse)) * -t * dt
   end
   v = v - v * M.DRAG * dt - (input.handbrake and v * 2.5 * dt or 0)
   if t == 0 and math.abs(v) < 0.3 then v = 0 end
