@@ -660,13 +660,16 @@ def main():
         # Up on a bridge, not on the ground. A layer alone isn't one: Nesteentie
         # at Raisiontie is layer 1 only to sit over a tunnel being dug under it.
         deck = t.get("bridge") not in (None, "no")
+        # Through a hill, not over it: a tunnel runs straight between its
+        # ends, and the ground is cut down to it (the game has no overhangs).
+        bored = not deck and t.get("tunnel") not in (None, "no")
         start = 0
         for k in range(1, len(run)):
             if run[k][0] in is_j or k == len(run) - 1:
                 seg = run[start:k + 1]
                 lit = (t.get("lit") not in ("no", "none")) if "lit" in t else None
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "deck": deck, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway})
+                              "name": name, "bridge": bridge, "deck": deck, "bored": bored, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -956,7 +959,7 @@ def main():
                     ss.append(ss[-1] + L_ / n)
             total = ss[-1] or 1.0
             ha, hb = jh[ed_["a"]], jh[ed_["b"]]
-            if ed_["deck"]:
+            if ed_["deck"] or ed_.get("bored"):
                 hs = [ha + (hb - ha) * s_ / total for s_ in ss]
             else:
                 raw = [ground(*p) for p in xs]

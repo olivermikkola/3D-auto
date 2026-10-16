@@ -64,8 +64,8 @@ jobs:
         run: python tools/headless_tests.py --output headless-results --seeds 1337
       # After the others, which create headless-results.
       # Turku, the real city, at the default seed. Its CITY check is left out
-      # until the importer grades Unioninkatu's hill without a kink (22% in
-      # 2 m where the check allows 15%).
+      # until terrain grading meets bridge heads without a kink (Aurakatu at
+      # Auransilta: 19% in 2 m where the check allows 15%).
       - name: Headless tests (Turku, default seed)
         if: runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/turku --maps turku --seeds 1337 --skip CITY
