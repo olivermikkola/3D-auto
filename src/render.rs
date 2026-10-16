@@ -183,6 +183,7 @@ struct GpuMesh {
     bind: Bindings,
     count: i32,
     radius: f32,
+    center: Vec3,
     rev: u32,
 }
 
@@ -225,6 +226,42 @@ fn v4(v: Vec3, w: f32) -> [f32; 4] {
 
 fn c4(c: [f32; 3], w: f32) -> [f32; 4] {
     [c[0], c[1], c[2], w]
+}
+
+fn mesh_bounds(mesh: &crate::mesh::Mesh) -> (Vec3, f32) {
+    let Some(first) = mesh.verts.first() else { return (Vec3::ZERO, 0.0) };
+    let (mut lo, mut hi) = (first.pos(), first.pos());
+    for v in &mesh.verts {
+        let p = v.pos();
+        lo = v3(lo.x.min(p.x), lo.y.min(p.y), lo.z.min(p.z));
+        hi = v3(hi.x.max(p.x), hi.y.max(p.y), hi.z.max(p.z));
+    }
+    let center = (lo + hi) * 0.5;
+    let radius = mesh.verts.iter().map(|v| (v.pos() - center).len()).fold(0.0, f32::max);
+    (center, radius)
+}
+
+fn world_bounds(center: Vec3, radius: f32, pos: Vec3, rotation: crate::math::Quat, scale: Vec3) -> (Vec3, f32) {
+    (pos + rotation.rotate(center.mul(scale)), radius * scale.x.abs().max(scale.y.abs()).max(scale.z.abs()))
+}
+
+/// Conservative sphere test against all six OpenGL clip planes. Radius is
+/// world-space; unnormalized plane normals avoid six divisions per entity.
+fn sphere_visible(vp: &Mat4, eye: Vec3, center: Vec3, radius: f32, fog_end: f32) -> bool {
+    if (center - eye).len() - radius > fog_end {
+        return false;
+    }
+    let m = &vp.0;
+    for axis in 0..3 {
+        for sign in [-1.0, 1.0] {
+            let normal = v3(m[3] + sign * m[axis], m[7] + sign * m[4 + axis], m[11] + sign * m[8 + axis]);
+            let offset = m[15] + sign * m[12 + axis];
+            if normal.dot(center) + offset < -radius * normal.len() - 1e-3 {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 impl Renderer {
@@ -360,11 +397,12 @@ impl Renderer {
             }
             let vb = self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.verts));
             let ib = self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.indices));
-            let radius = m.verts.iter().map(|v| (v.pos[0].powi(2) + v.pos[1].powi(2) + v.pos[2].powi(2)).sqrt()).fold(0.0, f32::max);
+            let (center, radius) = mesh_bounds(m);
             self.meshes[i] = Some(GpuMesh {
                 bind: Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![self.shadow_tex] },
                 count: m.indices.len() as i32,
                 radius,
+                center,
                 rev,
             });
             self.uploaded.push(i);
@@ -419,16 +457,16 @@ impl Renderer {
         for e in eng.ents.iter().flatten() {
             let (Some(mi), true) = (e.mesh, e.visible) else { continue };
             let Some(Some(g)) = self.meshes.get(mi) else { continue };
-            let r = g.radius * e.scale.x.abs().max(e.scale.y.abs()).max(e.scale.z.abs());
-            let to = e.pos - cam.eye;
+            let (center, r) = world_bounds(g.center, g.radius, e.pos, e.rot, e.scale);
+            let to = center - cam.eye;
             let dist = to.len();
             if shadows && e.color[3] >= 1.0 && Some(mi) != plane {
-                let d = e.pos - focus;
+                let d = center - focus;
                 if (d.x * d.x + d.z * d.z).sqrt() - r < SHADOW_SIZE * 0.75 {
                     casters.push((e, mi));
                 }
             }
-            if dist - r > env.fog_end || to.dot(fwd) < -r {
+            if !sphere_visible(&vp, cam.eye, center, r, env.fog_end) {
                 continue;
             }
             if e.color[3] < 1.0 { alpha.push((dist, e, mi)) } else { opaque.push((dist, e, mi)) }
@@ -604,6 +642,33 @@ mod tests {
             m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13],
             m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14],
         )
+    }
+
+    #[test]
+    fn bounds_center_tracks_world_coordinate_terrain_and_rotated_scale() {
+        let mut mesh = crate::mesh::Mesh::default();
+        mesh.verts = vec![
+            crate::mesh::Vertex::new(v3(100., 0., 200.), Vec3::UP, Vec3::ONE, 0.),
+            crate::mesh::Vertex::new(v3(120., 10., 220.), Vec3::UP, Vec3::ONE, 0.),
+        ];
+        let (center, radius) = mesh_bounds(&mesh);
+        assert_eq!(center, v3(110., 5., 210.));
+        assert!((radius - v3(10., 5., 10.).len()).abs() < 1e-4);
+        let rotation = crate::math::Quat::axis_angle(Vec3::UP, std::f32::consts::FRAC_PI_2);
+        let (world, scaled) = world_bounds(center, radius, v3(7., 2., 3.), rotation, v3(-2., 3., 1.));
+        assert!((world - (v3(7., 2., 3.) + rotation.rotate(center.mul(v3(-2., 3., 1.))))).len() < 1e-4);
+        assert!((scaled - radius * 3.).abs() < 1e-4);
+    }
+
+    #[test]
+    fn view_rejects_spheres_outside_each_clip_plane() {
+        let vp = Mat4::perspective(std::f32::consts::FRAC_PI_2, 1.0, 1.0, 100.0);
+        assert!(sphere_visible(&vp, Vec3::ZERO, v3(0., 0., -10.), 0.5, 200.));
+        for center in [v3(-20., 0., -10.), v3(20., 0., -10.), v3(0., -20., -10.), v3(0., 20., -10.), v3(0., 0., 2.), v3(0., 0., -110.)] {
+            assert!(!sphere_visible(&vp, Vec3::ZERO, center, 0.5, 200.), "outside: {center:?}");
+        }
+        assert!(sphere_visible(&vp, Vec3::ZERO, v3(10.2, 0., -10.), 0.5, 200.), "intersecting side plane must remain");
+        assert!(sphere_visible(&vp, Vec3::ZERO, Vec3::ZERO, 2., 200.), "sphere enclosing camera must remain");
     }
 
     #[test]
