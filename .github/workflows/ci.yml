@@ -59,15 +59,16 @@ jobs:
       - name: Headless tests (the starter map people copy for their own city)
         if: github.event_name != 'pull_request' && runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/starter --maps starter --seeds 1337
+      - name: "Headless tests (fast PR smoke test, default seed)"
+        if: github.event_name == 'pull_request' || runner.os == 'macOS'
+        run: python tools/headless_tests.py --output headless-results --seeds 1337
+      # After the others, which create headless-results.
       # Turku, the real city, at the default seed. Its CITY check is left out
       # until the importer grades Unioninkatu's hill without a kink (22% in
       # 2 m where the check allows 15%).
       - name: Headless tests (Turku, default seed)
         if: runner.os == 'Linux'
         run: python tools/headless_tests.py --output headless-results/turku --maps turku --seeds 1337 --skip CITY
-      - name: "Headless tests (fast PR smoke test, default seed)"
-        if: github.event_name == 'pull_request' || runner.os == 'macOS'
-        run: python tools/headless_tests.py --output headless-results --seeds 1337
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
