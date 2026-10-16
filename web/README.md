@@ -79,6 +79,16 @@ MAP=raisio SEED=1337 MESH_REPORT=1 /usr/bin/time -v target/release/auto game --h
 `MESH_REPORT` uses decimal MB; Linux `/usr/bin/time -v` maximum RSS is KiB.
 Headless mode does not exercise GPU uploads or rendered frame pacing.
 
+## Install and offline
+
+The page is a web app: `manifest.webmanifest` (name, landscape, full screen, icons from the
+cover art) and `sw.js`, a service worker that keeps the game's files on the device so an
+installed game starts without a connection. `build.sh` stamps the worker with the module's hash,
+so each build replaces the stored copy and nobody is left on an old one. Browsers allow this only
+over https or on localhost. Checked in headless Chrome: the manifest has no errors, all seven
+files are stored, and the game starts again with the network off. Not yet installed on a real
+phone, and not deployed anywhere.
+
 ## Not yet
 
 - Sound (WebAudio), gamepads (the Gamepad API), and saves (localStorage). Saves last until the
