@@ -25,7 +25,7 @@ Replace rear-half-space-only view rejection with conservative six-plane sphere/f
 - Actual WebGL draw methods counted before/after at animation callback 30, seed 1337, hour 12, 1280x720, isolated Chromium SwiftShader. All draw variants (elements/instanced/arrays) counted, including shadows/HUD. Raisio: 3398→752 submissions; Turku: 7470→1507. These are sample draw counts, not hardware FPS, CPU timing or resident-memory savings. Wall-clock simulation timing differs; not pixel-identical deterministic scenes.
 - An initial instrumentation attempt counted only drawElements and used RAF polling after stopping RAF; discarded zero counts/timeout as invalid evidence. Corrected harness counts all variants and polls with timers.
 - Actual after images show scene/ground/buildings/HUD; no obvious blank terrain or severe clipping in sampled spawn views. Not enough to prove every landmark/camera angle.
-- Raw comparison JSON and reproducible browser harness preserved with this PR. Screenshots remain in Forge scratch; no screenshot-only acceptance claim.
+- Raw comparison JSON preserved with this PR. The exploratory harness and screenshots remain in Forge scratch (`web-baseline-sdk/compare_frustum.py` and `frustum-*.png`); the harness currently contains absolute worktree paths and is not a portable test. No screenshot-only acceptance claim.
 
 ## Remaining acceptance
 - Independent review pending under no-subagents constraint; user trust is not independent acceptance. No merge or ready-state changes made to #96.
