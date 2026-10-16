@@ -1,0 +1,30 @@
+[
+  {
+    "frame": 30,
+    "draws": 3398,
+    "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+    "label": "before",
+    "map": "raisio"
+  },
+  {
+    "frame": 30,
+    "draws": 7470,
+    "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+    "label": "before",
+    "map": "turku"
+  },
+  {
+    "frame": 30,
+    "draws": 752,
+    "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+    "label": "after",
+    "map": "raisio"
+  },
+  {
+    "frame": 30,
+    "draws": 1507,
+    "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+    "label": "after",
+    "map": "turku"
+  }
+]
