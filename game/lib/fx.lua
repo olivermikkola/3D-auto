@@ -48,28 +48,48 @@ function FX.flash(x, y, z, size)
   add{light = l, die = engine.time() + 0.06}
 end
 
+-- A fireball: flashes white-hot, swells, cools through orange to a dark
+-- red and shrinks away in about half a second. Smoke stays behind.
+local HOT, WARM, COOL = {1, 0.95, 0.75}, {1, 0.5, 0.1}, {0.3, 0.08, 0.04}
+local function mix(a, b, t) return a + (b - a) * t end
+local function fire_color(p)
+  local a, b, t = HOT, WARM, p / 0.35
+  if p > 0.35 then a, b, t = WARM, COOL, (p - 0.35) / 0.65 end
+  return mix(a[1], b[1], t), mix(a[2], b[2], t), mix(a[3], b[3], t)
+end
+
 function FX.explosion(x, y, z)
-  for k = 1, 7 do
-    local s = 2 + math.random() * 2
-    local id = engine.spawn{mesh = "sphere", pos = {x + (math.random() - 0.5) * 3, y + math.random() * 2, z + (math.random() - 0.5) * 3},
-                            size = s, color = {1, 0.45 + math.random() * 0.3, 0.1, 0.85}, glow = 2.5}
-    add{id = id, vx = 0, vy = 2 + k * 0.3, vz = 0, g = 0, die = engine.time() + 0.5 + math.random() * 0.4, grow = 3, s = s}
+  local now = engine.time()
+  for k = 1, 5 do
+    local s = 1.2 + math.random() * 1.0
+    local px, py, pz = x + (math.random() - 0.5) * 2.4, y + 0.3 + math.random() * 1.2, z + (math.random() - 0.5) * 2.4
+    local id = engine.spawn{mesh = "sphere", pos = {px, py, pz}, size = s, color = {HOT[1], HOT[2], HOT[3], 0.95}, glow = 1.6}
+    add{id = id, vx = 0, vy = 1 + k * 0.3, vz = 0, g = 0, born = now, life = 0.4 + math.random() * 0.2, fire = s}
   end
-  FX.burst(x, y + 1, z, 24, {0.15, 0.13, 0.12}, 14, 1.6, 0.25)
-  FX.burst(x, y + 1, z, 16, {1, 0.6, 0.2}, 10, 0.8, 0.15, 2)
-  for _ = 1, 8 do FX.puff(x + (math.random() - 0.5) * 4, y + 1, z + (math.random() - 0.5) * 4, {0.2, 0.2, 0.2, 0.7}, 1.5, 3, 3) end
-  local l = engine.light{pos = {x, y + 2, z}, radius = 30, intensity = 6, color = {1, 0.6, 0.25}}
-  add{light = l, die = engine.time() + 0.6}
+  FX.burst(x, y + 1, z, 20, {0.12, 0.11, 0.1}, 12, 1.4, 0.22)
+  FX.burst(x, y + 1, z, 14, {1, 0.6, 0.2}, 10, 0.5, 0.12, 2)
+  for _ = 1, 7 do
+    local id = engine.spawn{mesh = "sphere", pos = {x + (math.random() - 0.5) * 3, y + 0.8, z + (math.random() - 0.5) * 3},
+                            size = 1.2, color = {0.13, 0.12, 0.12, 0.6}}
+    add{id = id, vx = (math.random() - 0.5), vy = 1.6 + math.random(), vz = (math.random() - 0.5), g = 0,
+        born = now, life = 2 + math.random(), smoke = 1.2, delay = 0.15}
+  end
+  local l = engine.light{pos = {x, y + 2, z}, radius = 24, intensity = 4, color = {1, 0.6, 0.25}}
+  add{light = l, born = now, life = 0.45, flash = 4, die = now + 0.45}
 end
 
 engine.on("frame", function(dt)
   local now = engine.time()
   local keep = {}
   for _, e in ipairs(FX.live) do
+    if e.life and not e.die then e.die = e.born + e.life end
     if now >= e.die then
       if e.id then engine.despawn(e.id) end
       if e.light then engine.remove_light(e.light) end
     else
+      if e.flash then
+        engine.set_light(e.light, {intensity = e.flash * (1 - (now - e.born) / e.life)})
+      end
       if e.id then
         e.vy = e.vy + e.g * dt
         local x, y, z = engine.pos(e.id)
@@ -81,6 +101,17 @@ engine.on("frame", function(dt)
           if e.grow then
             e.s = math.max(0.05, e.s + e.grow * dt)
             engine.set_scale(e.id, e.s)
+          end
+          local p = e.life and (now - e.born) / e.life
+          if e.fire then
+            -- Swell to 1.8x in the first quarter, then shrink to a third.
+            engine.set_scale(e.id, e.fire * (p < 0.25 and 1 + 3.2 * p or 1.8 - 1.6 * (p - 0.25)))
+            local r, g, b = fire_color(p)
+            engine.set_color(e.id, r, g, b, 0.95 * (1 - p * p))
+            engine.set_glow(e.id, 1.6 * (1 - p))
+          elseif e.smoke then
+            engine.set_scale(e.id, e.smoke * (1 + 1.5 * p))
+            engine.set_color(e.id, 0.13, 0.12, 0.12, 0.6 * math.min(1, (now - e.born) / e.delay) * (1 - p))
           end
         end
       end
