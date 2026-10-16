@@ -169,20 +169,26 @@ function net.turn(p)
 end
 
 function net.spawn(near_x, near_z, min_d, max_d)
-  -- Only roads that come within reach are worth trying.
-  local E, near = edges(), {}
+  -- Only stretches of pavement that cross the ring are worth trying: in a
+  -- sparse district most roads in reach run wholly inside or outside it.
+  local E, segs = edges(), {}
+  local o = 20 -- the pavement is off the centreline; leave room for it
   for ei, e in ipairs(E) do
     if roadnet.walkable(ei) then
-      for _, q in ipairs(e.pts) do
-        if U.dist2d(q[1], q[2], near_x, near_z) < max_d + 60 then near[#near + 1] = ei break end
+      local pts = e.pts
+      for i = 2, #pts do
+        local a, b = pts[i - 1], pts[i]
+        local da, db = U.dist2d(a[1], a[2], near_x, near_z), U.dist2d(b[1], b[2], near_x, near_z)
+        local len = U.dist2d(a[1], a[2], b[1], b[2])
+        -- The nearest a segment gets is at least max(da, db) - len.
+        if math.max(da, db) >= min_d - o and math.max(da, db) - len <= max_d + o then segs[#segs + 1] = {ei, i} end
       end
     end
   end
-  if #near == 0 then return end
+  if #segs == 0 then return end
   for _ = 1, 30 do
-    local ei = near[math.random(#near)]
-    local pts = E[ei].pts
-    local i = math.random(2, #pts)
+    local seg = segs[math.random(#segs)]
+    local ei, i = seg[1], seg[2]
     do
       local p = {e = ei, dir = math.random() < 0.5 and 1 or -1, hand = math.random() < 0.5 and 1 or -1}
       clear_side(p)
@@ -488,7 +494,11 @@ engine.on("tick", function(dt)
         break
       end
     end
-    if Ped.count() < COUNT then spawn_ped(px, pz, 70, 140) end
+    -- A few at a time, so the street fills up soon after you arrive somewhere new.
+    for _ = 1, 3 do
+      if Ped.count() >= COUNT then break end
+      spawn_ped(px, pz, 70, 140)
+    end
   end
 end)
 
