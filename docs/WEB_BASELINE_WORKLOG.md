@@ -37,6 +37,14 @@ Oliver approved the first PR: establish reproducible post-merge memory/performan
 - No browser FPS, browser memory or phone-readiness figure is published. Draft PR only; independent review and real browser integration validation pending. No gameplay/rendering code changed.
 - Native raw logs are preserved under `docs/baselines/2026-10-16/` for reproducibility. SDK and build outputs remain local/untracked.
 
+## Checkpoint 4 — graphics initialization isolated
+
+- Full local Python discovery completed: 68 tests, OK, one skipped. Existing PR commit `7f73a83` passed all three GitHub CI jobs (Linux, Windows, macOS). This does not include browser automation acceptance.
+- Tight repro: installed Chrome can load a data URL, but evaluating `document.createElement('canvas').getContext('webgl2')` on a minimal page stalls. Same symptom with bundled Playwright Chromium and explicit SwiftShader; in-process software GPU also stalls. No additional graphics workaround attempted after these bounded probes.
+- A temporary HTTP response wrapper (no source edit) traced real game imports: `now` returns, `web_query` returns, execution enters `init_webgl` and does not return. Literal `web/gl.js::init_webgl` calls `canvas.getContext('webgl2')` at that boundary. Thus the current Chrome blocker is reproducible without Lua, WASM game logic or map loading. Exact OS/driver/sandbox root cause remains unverified. Firefox session creation is a separate unresolved symptom.
+- These measurements do NOT prove the browser port is broken on Oliver's desktop. Next requires checking WebGL2 on his actual Beelink browser/desktop or diagnosing the graphics environment with permission; do not rewrite Lua or the WASM execution model to work around this evidence.
+- Added a regression rejecting a ready marker with zero wasm allocation: observed FAIL, fixed, then focused suite passed. The draft remains blocked on real browser integration and independent review; no merge.
+
 ## Remaining acceptance work
 
 1. Resolve headless browser navigation/session timeout without launching duplicate jobs or altering Oliver's interactive desktop.

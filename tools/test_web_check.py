@@ -36,6 +36,12 @@ class WebCheckTests(unittest.TestCase):
         ])
         self.assertFalse(report["ok"])
 
+    def test_ready_marker_without_wasm_memory_is_not_success(self):
+        report = web_check.make_report([
+            {"elapsed_s": 1, "wasm_bytes": 0, "log": "map=starter seed=1337", "ready": True}
+        ])
+        self.assertFalse(report["ok"])
+
     def test_missing_build_fails_before_driver_start(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as tmp:
             result = subprocess.run(

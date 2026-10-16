@@ -52,7 +52,7 @@ def make_report(samples):
     """Wasm allocation is a high-water mark, not JS heap or total browser RSS."""
     errors = [s["log"] for s in samples if re.search(r"error:|panic|RuntimeError|unreachable", s["log"], re.I)]
     return {
-        "ok": bool(samples) and bool(samples[-1]["ready"]) and not errors,
+        "ok": bool(samples) and bool(samples[-1]["ready"]) and samples[-1]["wasm_bytes"] > 0 and not errors,
         "errors": errors,
         "wasm_peak_bytes": max((s["wasm_bytes"] for s in samples), default=0),
         "samples": samples,
