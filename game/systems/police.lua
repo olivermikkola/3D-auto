@@ -334,8 +334,10 @@ local function drive_cop(c, dt)
 
   -- Wedged against something: back up with opposite lock for a second.
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
+  c.wedged = math.max(0, (c.wedged or 0) - dt / 8) -- recent jams, fading
   if c.stuck > 1.2 then
     c.reverse, c.stuck = 1.0, 0
+    c.wedged = c.wedged + 1
     -- Repeated direct approaches into a fence or quay need a road detour.
     if direct then
       c.direct_jams = (c.direct_jams or 0) + 1
@@ -367,7 +369,8 @@ local function drive_cop(c, dt)
 end
 
 -- ---- officers on foot ----------------------------------------------------------
--- From two stars up, cops that catch up with you get out and shoot.
+-- From two stars up, cops that catch up with you get out and shoot. At any
+-- level, one jammed short of you gets out and walks over to arrest you.
 
 local function deploy(c)
   c.deployed = true
@@ -382,7 +385,7 @@ local function deploy(c)
 end
 
 local function recall(c)
-  c.deployed = false
+  c.deployed, c.arrest = false, nil
   for id, o in pairs(P.officers) do
     if o.car == c.id then
       engine.despawn(id)
@@ -423,7 +426,8 @@ local function run_officers(dt, px, pz)
       local _, vy = engine.vel(id)
       local dx, dz = px - x, pz - z
       engine.set_yaw(id, math.atan(dx, dz))
-      if sees and d < SHOOT_RANGE and d > 6 then
+      -- Below two stars they've only come to arrest you: no shooting.
+      if sees and d < SHOOT_RANGE and d > 6 and wanted.stars() >= DEPLOY_STARS then
         -- Stand and shoot.
         engine.set_vel(id, 0, vy, 0)
         o.cool = o.cool - dt
@@ -548,7 +552,7 @@ engine.on("tick", function(dt)
       for oid, o in pairs(P.officers) do
         if o.car == id and engine.exists(oid) then crew = true break end
       end
-      if d > 60 or wanted.stars() < DEPLOY_STARS then recall(c)
+      if d > 60 or wanted.stars() == 0 or (wanted.stars() < DEPLOY_STARS and not c.arrest) then recall(c)
       elseif crew then c.redeploy = nil
       elseif not c.redeploy then c.redeploy = engine.time() + 5 -- its officers are down: a fresh pair soon
       elseif engine.time() >= c.redeploy and c.sees and d < DEPLOY_RANGE then
@@ -557,7 +561,13 @@ engine.on("tick", function(dt)
       end
     else
       drive_cop(c, dt)
-      if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c) end
+      if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c)
+      -- Jammed again and again just short of you (round a corner, against a
+      -- wall): at any level they get out and walk over to arrest you.
+      elseif (c.wedged or 0) >= 1.5 and d < 30 and slow_player then
+        c.arrest, c.wedged = true, 0
+        deploy(c)
+      end
       if d < 7 and math.abs(vehicle.speed(id)) < 6 then close = true end
     end
   end
