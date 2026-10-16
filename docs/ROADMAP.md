@@ -39,10 +39,10 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 ### 1. See every landmark in CI
 
-`tools/test_landmark_renders.py` renders Turku's landmarks and checks the pixels: a landmark
-that is black, buried or in the wrong place fails. Extend it to every slice (Portsa, harbour,
-Koroistenniemi, Raisio's centre) as each one is touched. A slice isn't done until it has a
-camera here.
+`tools/test_landmark_renders.py` renders the landmarks and checks the pixels: a landmark
+that is black, buried or in the wrong place fails. It has cameras on Kakola, Kauppatori, Turun
+linna, Tuomiokirkko, Portsa, Forum Marinum (Suomen Joutsen), the Föri, Koroistenniemi and
+Raisio's centre. A new slice isn't done until it has a camera here.
 
 ### 2. Halve the memory
 
