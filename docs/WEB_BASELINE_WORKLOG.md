@@ -45,12 +45,21 @@ Oliver approved the first PR: establish reproducible post-merge memory/performan
 - These measurements do NOT prove the browser port is broken on Oliver's desktop. Next requires checking WebGL2 on his actual Beelink browser/desktop or diagnosing the graphics environment with permission; do not rewrite Lua or the WASM execution model to work around this evidence.
 - Added a regression rejecting a ready marker with zero wasm allocation: observed FAIL, fixed, then focused suite passed. The draft remains blocked on real browser integration and independent review; no merge.
 
+## Checkpoint 5 — working software-rendered browser baseline
+
+- Oliver explicitly requested returning #96 to draft, fixing it and shipping afterward. Converted and read back `isDraft=true` before further edits. No subagent restriction was lifted; independent review remains a separate gate.
+- Minimal WebGL2 repro now passes with bundled Chromium using explicit SwiftShader/hardware-GPU-disabled and a child environment without DISPLAY/WAYLAND_DISPLAY/DBUS_SESSION_BUS_ADDRESS. The combination is verified; no claim about the individual variable or driver root cause. Host settings unchanged.
+- Added optional `--browser chromium` to the actual checker with this isolated software route. The CLI option test was observed failing first, then passing. Firefox remains available as default but its environment-specific automation failure is not claimed fixed.
+- Real changed CLI executed sequentially on starter/Raisio/Turku, each with 1280x720, seed 1337, hour 12, 12-second window. All returned 0, `ok=true`, empty sampled-log errors and empty page exceptions. Observed wasm allocation: 25559040 / 470417408 / 539426816 bytes respectively (24.38 / 448.62 / 514.44 MiB rounded). JSON evidence retained; screenshots in Forge scratch. These are single-run linear-memory high-water observations, not full load peaks or FPS.
+- Earlier exploratory Chrome runs emitted pointer-lock user-gesture warnings; backend discloses exact warnings and tolerates only that precise known limitation. Changed checker runs had no such exceptions.
+- Actual Raisio/Turku screenshots contain rendered scene, player, roads/buildings and HUD, not a blank canvas. Image inspection cannot prove movement/input, all landmarks or phone usability.
+- Real-browser intentional JS exception integration test returned nonzero with exception preserved in JSON. All seven focused tests passed with WEB_CHECK_INTEGRATION=1. This fixture is explicitly synthetic test input, not game measurement data.
+- Historic browser memory paragraph updated only from real current reports. No geometry/runtime changes, no deployment or merge. Remaining gates below are not erased by successful smoke runs.
+
 ## Remaining acceptance work
 
-1. Resolve headless browser navigation/session timeout without launching duplicate jobs or altering Oliver's interactive desktop.
-2. Exercise the changed checker through a real game session and a real runtime-failure case; unit tests alone do not validate WebDriver integration.
-3. Add complete load/steady-state frame tracing separately; current checker deliberately reports only sampled allocation, not FPS or full load peak.
-4. Collect post-merge Raisio/Turku browser evidence and device/settings metadata, then obtain independent review via an approved route.
-5. Run remaining relevant suites, inspect frames, update historical memory documentation only from actual measurements, and keep the PR draft until those gates are satisfied.
+1. Obtain fresh independent review via an approved route; no subagents are currently authorized. Jack owns final acceptance. Keep draft until resolved.
+2. Run CI on the final revision. Firefox-specific WebDriver environment trouble remains a documented optional-path limitation, not a verified cross-browser result.
+3. Full load/steady-state frame tracing, repeated route tests and physical-device input/PWA tests belong to follow-up performance work; current PR delivers explicitly scoped sampled allocation evidence, not those results.
 
 If inference fails, inspect git status and this log before restarting. Never replace missing measurements with plausible numbers.

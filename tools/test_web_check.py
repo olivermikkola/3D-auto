@@ -42,6 +42,30 @@ class WebCheckTests(unittest.TestCase):
         ])
         self.assertFalse(report["ok"])
 
+    def test_chromium_backend_is_exposed_by_cli(self):
+        result = subprocess.run([sys.executable, str(ROOT / "tools/web_check.py"), "--help"], capture_output=True, text=True)
+        self.assertIn("--browser", result.stdout)
+        self.assertIn("chromium", result.stdout)
+
+    @unittest.skipUnless(os.environ.get("WEB_CHECK_INTEGRATION") == "1", "requires Playwright Chromium")
+    def test_real_browser_runtime_error_returns_failure_report(self):
+        import json
+        with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as tmp:
+            dist = Path(tmp)
+            (dist / "index.html").write_text('''<div id="log">map=starter seed=1337</div>
+<script>var wasm_memory = new WebAssembly.Memory({initial:1});
+setTimeout(() => {throw new Error("baseline-runtime-regression")}, 20);</script>''')
+            (dist / "gl.js").write_text("")
+            (dist / "auto.wasm").write_bytes(b"\\0asm\\1\\0\\0\\0")
+            result = subprocess.run([
+                sys.executable, str(ROOT / "tools/web_check.py"), "--browser", "chromium",
+                "--dist", str(dist), "--wait", "1", "--report", str(dist / "report.json")
+            ], capture_output=True, text=True, timeout=30)
+            report = json.loads((dist / "report.json").read_text())
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("baseline-runtime-regression" in e for e in report["page_errors"]))
+
     def test_missing_build_fails_before_driver_start(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as tmp:
             result = subprocess.run(

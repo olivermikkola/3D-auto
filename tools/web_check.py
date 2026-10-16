@@ -59,8 +59,58 @@ def make_report(samples):
     }
 
 
+def run_chromium(a, url):
+    """Optional software-rendered baseline; never a hardware FPS benchmark."""
+    from playwright.sync_api import sync_playwright
+
+    env: dict[str, str | float | bool] = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS")}
+    with sync_playwright() as p:
+        with p.chromium.launch(headless=True, env=env, args=[
+            "--disable-gpu", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-dev-shm-usage"
+        ]) as browser:
+            w, h = (int(v) for v in a.size.split("x"))
+            page = browser.new_page(viewport={"width": w, "height": h})
+            errors = []
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            def dismiss_dialog(dialog):
+                errors.append(dialog.message)
+                dialog.dismiss()
+            page.on("dialog", dismiss_dialog)
+            t0 = time.monotonic()
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            samples = []
+            while True:
+                sample = page.evaluate("""() => {
+                    const log = document.getElementById('log')?.textContent || '';
+                    return {log, ready: /map=\\S+ seed=\\d+/.test(log),
+                        wasm_bytes: typeof wasm_memory !== 'undefined' && wasm_memory ? wasm_memory.buffer.byteLength : 0};
+                }""")
+                sample["elapsed_s"] = round(time.monotonic() - t0, 3)
+                samples.append(sample)
+                if time.monotonic() - t0 >= a.wait:
+                    break
+                page.wait_for_timeout(250)
+            report = make_report(samples)
+            report.update({"query": a.query, "size": a.size, "browser": browser.version,
+                           "renderer": "headless Chromium SwiftShader (software)", "page_errors": errors,
+                           "memory_metric": "WebAssembly linear allocation; excludes JS heap/GPU; sampled after navigation"})
+            # Pointer lock requires a user gesture; disclose this known startup limitation,
+            # but do not hide other exceptions from the success criterion.
+            unexpected = [e for e in errors if e != "A user gesture is required to request Pointer Lock."]
+            report["ok"] = report["ok"] and not unexpected
+            if a.report:
+                a.report.parent.mkdir(parents=True, exist_ok=True)
+                a.report.write_text(json.dumps(report, indent=2) + "\n")
+            if a.shot:
+                a.shot.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(a.shot))
+            print(json.dumps({k: v for k, v in report.items() if k != "samples"}, indent=2))
+            return 0 if report["ok"] else 1
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--browser", choices=("firefox", "chromium"), default="firefox", help="chromium uses optional Playwright and isolated software rendering")
     ap.add_argument("--dist", type=Path, default=ROOT / "web" / "dist")
     ap.add_argument("--query", default="", help="the page's query string, e.g. map=raisio&hour=12")
     ap.add_argument("--wait", type=float, default=20, help="measurement window in seconds from navigation start (maximum 300)")
@@ -86,6 +136,8 @@ def main():
     dport = free_port()
     driver = None
     try:
+        if a.browser == "chromium":
+            return run_chromium(a, f"http://127.0.0.1:{port}/index.html?log=1&{a.query}")
         driver = subprocess.Popen([a.geckodriver, "--port", str(dport)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         base = f"http://127.0.0.1:{dport}"
         for _ in range(100):

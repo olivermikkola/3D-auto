@@ -46,6 +46,22 @@ The command fails if the game never logs its map/seed or the sampled log contain
 a runtime error/panic. Missing build files fail before a driver is started.
 `--firefox /path/to/firefox` selects a binary explicitly when needed.
 
+For isolated headless software rendering, the optional Chromium backend needs
+`python3 -m pip install playwright` and `python3 -m playwright install chromium`:
+
+```sh
+python3 tools/web_check.py --browser chromium --query 'map=raisio&seed=1337&hour=12' \
+  --wait 12 --report baseline/raisio.json --shot baseline/raisio.png
+WEB_CHECK_INTEGRATION=1 python3 -m unittest tools.test_web_check -v
+```
+
+It removes desktop display/session variables **only from the child browser** and
+uses SwiftShader with hardware GPU disabled. This avoided the reproduced local
+WebGL2 initialization stall; the precise driver/session interaction is not proven.
+It does not change host settings or validate hardware FPS. Page exceptions are
+reported and fail the check except the exact known pointer-lock user-gesture
+startup warning, which remains disclosed in `page_errors`.
+
 Values are bytes (console display: **MiB**), not total browser RSS, GPU memory or
 JavaScript heap. Samples start after WebDriver navigation returns; this does not
 capture the complete startup timeline. Wasm allocation does not shrink when Lua
@@ -68,6 +84,9 @@ Headless mode does not exercise GPU uploads or rendered frame pacing.
 - Sound (WebAudio), gamepads (the Gamepad API), and saves (localStorage). Saves last until the
   page closes.
 - Touch controls.
-- Memory: wasm memory grows to its peak and stays there. Peaks are about 24 MB for the starter
-  map, 740 MB for Raisio and 890 MB for Turku. That is fine on a desktop but too much for an
-  iPhone, so a lighter mobile profile is next.
+- Memory: wasm memory grows to its peak and stays there. Post-#95 sampled
+  allocations on headless Chromium 151 / SwiftShader at 1280×720, seed 1337,
+  hour 12 and a 12-second window: starter **24.38 MiB**, Raisio **448.62 MiB**,
+  Turku **514.44 MiB**. Raw JSON is in `docs/baselines/2026-10-16/`.
+  These are single-run observed linear allocations, not total browser memory,
+  full load traces, hardware performance or proof of iPhone suitability.

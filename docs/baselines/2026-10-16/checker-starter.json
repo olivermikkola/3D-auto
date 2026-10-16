@@ -1,0 +1,235 @@
+{
+  "ok": true,
+  "errors": [],
+  "wasm_peak_bytes": 25559040,
+  "samples": [
+    {
+      "log": "Loading\u2026",
+      "ready": false,
+      "wasm_bytes": 0,
+      "elapsed_s": 0.025
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 0.294
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 0.553
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 0.941
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 1.216
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 1.587
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 1.84
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 2.096
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 2.367
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 2.728
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 3.088
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 3.463
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 3.828
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 4.183
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 4.543
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 4.907
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 5.162
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 5.512
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 5.879
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 6.134
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 6.389
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 6.745
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 7.094
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 7.354
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 7.706
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 8.059
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 8.427
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 8.802
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 9.176
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 9.546
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 9.926
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 10.304
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 10.666
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 11.03
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 11.388
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 11.747
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=starter seed=1337\nmission 08_pansio_heist is not on this map\nmission 10_archipelago_run is not on this map\nloaded 10 missions",
+      "ready": true,
+      "wasm_bytes": 25559040,
+      "elapsed_s": 12.119
+    }
+  ],
+  "query": "map=starter&seed=1337&hour=12",
+  "size": "1280x720",
+  "browser": "151.0.7922.34",
+  "renderer": "headless Chromium SwiftShader (software)",
+  "page_errors": [],
+  "memory_metric": "WebAssembly linear allocation; excludes JS heap/GPU; sampled after navigation"
+}
