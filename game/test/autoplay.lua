@@ -294,7 +294,30 @@ after(0.5, function()
 end)
 until_(function() return police.count() == 1 end, 6, "a cop is dispatched for 1 star")
 until_(function() return nearest_cop() < 25 end, 40, "cops chased the player down the grid")
-until_(function() return busts == 1 end, 30, "busted when caught standing next to a cop", function()
+-- Every 3 s while waiting, where the police are: a chase that goes wrong on
+-- one machine only can be read from CI's log.
+local next_report = 0
+local function police_report()
+  if engine.time() < next_report then return end
+  next_report = engine.time() + 3
+  local px, _, pz = engine.pos(G.vehicle or G.player)
+  local parts = {}
+  for id, c in pairs(police.cops) do
+    if engine.exists(id) then
+      local x, _, z = engine.pos(id)
+      parts[#parts + 1] = string.format("car %.1f m %.1f m/s%s", math.sqrt((x - px) ^ 2 + (z - pz) ^ 2),
+                                        require("lib.vehicle").speed(id), c.deployed and " (out)" or "")
+    end
+  end
+  for id in pairs(police.officers) do
+    if engine.exists(id) then
+      local x, _, z = engine.pos(id)
+      parts[#parts + 1] = string.format("officer %.1f m", math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+    end
+  end
+  print(string.format("  ..  %d star(s), %s", wanted.stars(), #parts > 0 and table.concat(parts, ", ") or "no police"))
+end
+until_(function() police_report() return busts == 1 end, 30, "busted when caught standing next to a cop", function()
   check(wanted.stars() == 0 and police.count() == 0, "busting clears the wanted level and the cops")
   check(G.cash < cash_before, string.format("fined $%d", cash_before - G.cash))
   local px, _, pz = engine.pos(G.player)
