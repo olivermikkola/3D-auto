@@ -78,15 +78,20 @@ void main() {
     vec3 base = v_color * tint.rgb;
     float ndl = max(dot(n, sun.xyz), 0.0);
     vec3 light = mix(ground.rgb, ambient.rgb, 0.5 + 0.5 * n.y) + sun_color.rgb * ndl * shadow(ndl);
+    vec3 lamps = vec3(0.0);
     for (int i = 0; i < 16; i++) {
         if (float(i) >= params.y) break;
         vec3 l = lpos[i].xyz - v_world;
         float d = length(l);
         l /= max(d, 0.001);
         float att = clamp(1.0 - d / lpos[i].w, 0.0, 1.0);
-        float spot = ldir[i].w < -0.5 ? 1.0 : smoothstep(ldir[i].w, ldir[i].w + 0.08, dot(-l, ldir[i].xyz));
-        light += lcol[i].rgb * (lcol[i].w * att * att * spot * (0.25 + 0.75 * max(dot(n, l), 0.0)));
+        // A spot fades from its axis out to the cone's edge, not just at it.
+        float c = ldir[i].w;
+        float spot = c < -0.5 ? 1.0 : smoothstep(c, c + (1.0 - c) * 0.7, dot(-l, ldir[i].xyz));
+        lamps += lcol[i].rgb * (lcol[i].w * att * att * spot * (0.25 + 0.75 * max(dot(n, l), 0.0)));
     }
+    // Overlapping pools add up, but toward a ceiling instead of to white.
+    light += lamps / (1.0 + 0.4 * lamps);
     float glow = v_emissive * params.x + extra.x;
     vec3 col = base * light + base * glow * 1.8;
     float d = length(v_world - eye.xyz);
