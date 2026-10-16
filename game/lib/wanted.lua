@@ -41,6 +41,25 @@ end
 -- Radius of the search area the player must escape, in meters.
 function W.radius() return 40 + 25 * W.level end
 
+-- Seconds out of sight it takes to lose the cops once outside the search
+-- area: 3 at one star, 25 at five. Hidden anywhere, they give up after
+-- 30 s at one star, 70 s at five.
+function W.escape_time() return 3 + 5.5 * (math.max(W.level, 1) - 1) end
+function W.give_up_time() return 30 + 10 * (math.max(W.level, 1) - 1) end
+
+-- One tick in which no cop sees the player at px, pz. True when that was
+-- enough to lose them (the level is cleared).
+function W.unseen(dt, px, pz)
+  W.seen = false
+  W.unseen_for = W.unseen_for + dt
+  local outside = U.dist2d(px, pz, W.center[1], W.center[2]) > W.radius()
+  if (outside and W.unseen_for > W.escape_time()) or W.unseen_for > W.give_up_time() then
+    W.clear()
+    return true
+  end
+  return false
+end
+
 -- ---- crimes ------------------------------------------------------------
 
 engine.on("carjacked", function() if W.level < 1 then W.set(1) end end)

@@ -142,6 +142,7 @@ if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
 if os.getenv("PED_EVASION_TEST") then require "test.ped_evasion_probe" end
 if os.getenv("PED_PASS_TEST") then require "test.ped_pass_probe" end
 if os.getenv("SPEED_TEST") then require "test.speed_probe" end
+if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end

@@ -496,7 +496,9 @@ changes**, which is the point of the kernel:
 - **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
-  Get out of it and stay unseen for 3 s; the stars blink while they can't see you.
+  Get out of it and stay unseen: 3 s at one star, 5.5 s more for each star after (25 s at five).
+  Hidden inside it, they give up after 30 s (70 s at five). The stars blink while they can't see
+  you, and being seen starts the clock over.
 
 ## Shops
 
