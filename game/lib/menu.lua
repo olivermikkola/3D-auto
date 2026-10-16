@@ -74,7 +74,7 @@ function M.close()
   if not M.open then return end
   M.open = false
   engine.pause(false)
-  engine.grab_mouse(true)
+  if not require("lib.touch").active then engine.grab_mouse(true) end -- no mouse to grab on a phone
   click()
 end
 

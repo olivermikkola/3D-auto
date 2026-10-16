@@ -515,6 +515,20 @@ impl EventHandler for App {
         self.eng.borrow_mut().cursor = (x, y);
     }
 
+    /// Touches go to the scripts as they are (lib/touch.lua draws the
+    /// controls), not as mouse clicks: a tap would fire the gun.
+    fn touch_event(&mut self, phase: miniquad::TouchPhase, id: u64, x: f32, y: f32) {
+        let phase = match phase {
+            miniquad::TouchPhase::Started => "start",
+            miniquad::TouchPhase::Moved => "move",
+            miniquad::TouchPhase::Ended => "end",
+            miniquad::TouchPhase::Cancelled => "cancel",
+        };
+        if let Some(s) = &self.script {
+            s.emit(&self.eng, "touch", (phase, id, x, y));
+        }
+    }
+
     fn window_minimized_event(&mut self) {
         if let Some(s) = &self.script {
             s.emit(&self.eng, "minimized", ());
