@@ -562,18 +562,13 @@ engine.on("tick", function(dt)
     end
   end
 
-  -- Evasion: unseen and outside the search circle for a few seconds.
+  -- Evasion: out of sight and outside the search circle for a while, longer
+  -- the more stars (see wanted.escape_time).
   if seen then
     wanted.seen, wanted.unseen_for, wanted.center = true, 0, {px, pz, py}
-  else
-    wanted.seen = false
-    wanted.unseen_for = wanted.unseen_for + dt
-    local outside = U.dist2d(px, pz, wanted.center[1], wanted.center[2]) > wanted.radius()
-    if (outside and wanted.unseen_for > 3) or wanted.unseen_for > 30 then
-      wanted.clear()
-      U.message("LOST THE COPS", 3)
-      return
-    end
+  elseif wanted.unseen(dt, px, pz) then
+    U.message("LOST THE COPS", 3)
+    return
   end
 
   -- Busted: stopped (or on foot) right next to a cop.
