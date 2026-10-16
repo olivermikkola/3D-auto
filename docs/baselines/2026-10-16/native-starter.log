@@ -1,0 +1,42 @@
+[debug_tools]	press F3 for the debug overlay
+mods: debug_tools, taxi
+map=starter seed=1337
+mission 08_pansio_heist is not on this map
+mission 10_archipelago_run is not on this map
+loaded 10 missions
+mesh street                      0.6 MB in 8
+mesh avenue                      0.6 MB in 6
+mesh car                         0.2 MB in 8
+mesh brick                       0.2 MB in 13
+mesh deco                        0.1 MB in 4
+mesh ped                         0.1 MB in 12
+mesh pasi                        0.0 MB in 1
+mesh glass                       0.0 MB in 6
+mesh lot_4_6_127_2n              0.0 MB in 1
+mesh lot_3_5_49_2s               0.0 MB in 1
+mesh cop                         0.0 MB in 1
+mesh taxi                        0.0 MB in 1
+headless: 15 ticks in 9.4 ms, 674 entities, 116 meshes (3 MB)
+	Command being timed: "target/release/auto game --headless 15"
+	User time (seconds): 0.04
+	System time (seconds): 0.00
+	Percent of CPU this job got: 100%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.04
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 12248
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2172
+	Voluntary context switches: 1
+	Involuntary context switches: 2
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 8
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

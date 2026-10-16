@@ -31,6 +31,38 @@ The page's address sets the game's environment: `index.html?map=raisio&hour=22` 
   Rust side reads the same pack through `src/vfs.rs`.
 - **Graphics.** WebGL 2. The shaders were already GLSL 100.
 
+## Measuring without mixing metrics
+
+Use a fresh build and keep the map, seed, hour, viewport and browser version fixed:
+
+```sh
+python3 tools/web_check.py --query 'map=raisio&seed=1337&hour=12' --wait 40 \
+  --report baseline/raisio.json --shot baseline/raisio.png
+```
+
+Repeat for `starter` and `turku`, sequentially. The JSON retains timestamped
+samples, page logs, browser version and the largest observed wasm allocation.
+The command fails if the game never logs its map/seed or the sampled log contains
+a runtime error/panic. Missing build files fail before a driver is started.
+`--firefox /path/to/firefox` selects a binary explicitly when needed.
+
+Values are bytes (console display: **MiB**), not total browser RSS, GPU memory or
+JavaScript heap. Samples start after WebDriver navigation returns; this does not
+capture the complete startup timeline. Wasm allocation does not shrink when Lua
+or Rust frees memory. This checker does not measure rendered FPS or prove visual
+correctness. Capture Chrome DevTools traces and inspect screenshots separately.
+Readiness here means the map/seed initialization marker, not an independently
+verified playable frame. Keep generated reports/screenshots outside version control.
+
+For a separate native CPU baseline, build `cargo build --release` first, then:
+
+```sh
+MAP=raisio SEED=1337 MESH_REPORT=1 /usr/bin/time -v target/release/auto game --headless 15
+```
+
+`MESH_REPORT` uses decimal MB; Linux `/usr/bin/time -v` maximum RSS is KiB.
+Headless mode does not exercise GPU uploads or rendered frame pacing.
+
 ## Not yet
 
 - Sound (WebAudio), gamepads (the Gamepad API), and saves (localStorage). Saves last until the
