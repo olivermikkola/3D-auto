@@ -67,12 +67,21 @@ local function fixtures()
     return out
   end
   local starts = spread(junctions, 60)
+  -- Roads can be one-way (real Turku has hundreds), so the distance that
+  -- counts is from each junction to the goal: search back along the links.
+  local into = {}
+  for _, n in ipairs(junctions) do
+    for _, nb in ipairs(city.links(n)) do
+      into[nb] = into[nb] or {}
+      table.insert(into[nb], n)
+    end
+  end
   for _, goal in ipairs(spread(junctions, 300 > #junctions and #junctions or 40)) do
     local distance, queue = {[goal] = 0}, {goal}
     local i = 1
     while i <= #queue do
       local n = queue[i]; i = i + 1
-      for _, nb in ipairs(city.links(n)) do
+      for _, nb in ipairs(into[n] or {}) do
         if distance[nb] == nil then
           distance[nb] = distance[n] + 1
           queue[#queue + 1] = nb
@@ -82,7 +91,9 @@ local function fixtures()
     for _, n in ipairs(#junctions <= 300 and junctions or starts) do
       local nxt = city.step_toward(n, goal)
       local d = distance[n]
-      if d > 0 then
+      if d == nil then
+        assert(nxt == n, "pursuit stays put when the goal can't be reached")
+      elseif d > 0 then
         assert(linked(n, nxt) and distance[nxt] == d - 1, "pursuit step must reduce shortest road distance")
       else assert(nxt == n) end
     end

@@ -65,7 +65,7 @@ return {
   specials = {
     lot = {-300, -20},     -- starting lot in Puolalanpuisto park clear of roads
     plaza = {1000, 640},   -- Kupittaanpuisto open plaza
-    stunt = {1200, 500},   -- Kupittaanpuisto sports grounds
+    stunt = {1480, 600},   -- Kupittaa sports park, off Lemminkäisenkatu: flat, with pavements near for pedestrians
   },
 
   places = {
@@ -80,7 +80,7 @@ return {
       "Aurakatu / Eerikinkatu",
     }},
     bank = {junction = "Aurakatu / Linnankatu"},                    -- Aurakatu banking quarter
-    getaway_start = {junction = "Aurakatu / Eerikinkatu"},
+    getaway_start = {junction = "Brahenkatu / Eerikinkatu"},
     cargo_pickup = {junction = "Linnankatu / Satamakatu"},          -- Turku harbor dock
     cargo_drop = {junction = "Aninkaistenkatu / Linnankatu"},
     takedown_start = {junction = "Aninkaistenkatu / Eerikinkatu"},
@@ -89,8 +89,7 @@ return {
       "Linnankatu / Satamakatu", "Linnankatu / Sairashuoneenkatu",
       "Aurakatu / Linnankatu", "Aninkaistenkatu / Linnankatu",
     }},
-    smuggle_drop = {junction = "Aninkaistenkatu / Eerikinkatu"},
-    stunt = {junction = "Aninkaistenkatu / Eerikinkatu"},
+    smuggle_drop = {junction = "Eerikinkatu / Kristiinankatu"},
     castle = {junction = "Linnankatu / Satamakatu"},
     speedboat_dock = {junction = "Aurakatu / Auransilta"},
     archipelago_drop = {junction = "Linnankatu / Satamakatu"},

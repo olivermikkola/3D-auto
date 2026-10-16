@@ -35,7 +35,7 @@ end
 -- Stand (or park the car you're in) at x, z, stopped.
 local function go(x, z)
   local id = G.vehicle or G.player
-  engine.set_pos(id, x, G.vehicle and 0.8 or 1.2, z)
+  engine.set_pos(id, x, (G.vehicle and 0.8 or 1.2) + U.ground(x, z), z)
   engine.set_vel(id, 0, 0, 0)
   engine.set_angvel(id, 0, 0, 0)
 end
@@ -62,6 +62,16 @@ local function script()
     check(def_of(id) and def_of(id).marker == nil, id .. " is locked in a new game")
   end
   check(def_of("01_joyride").marker ~= nil, "the first missions are open")
+  -- Stepping into a marker starts the first mission listed there, so two
+  -- starts on one spot would leave the later one impossible to play.
+  local defs = mission.defs
+  for i = 1, #defs do
+    for j = i + 1, #defs do
+      local a, b = defs[i].start, defs[j].start
+      local d = U.dist2d(a[1], a[2], b[1], b[2])
+      check(d >= 8, string.format("%s and %s start %.0f m apart", defs[i].title, defs[j].title, d))
+    end
+  end
   pass("04_getaway")
   check(def_of("05_cargo").marker ~= nil and def_of("06_takedown").marker == nil,
         "passing Getaway unlocks Fragile Cargo, and only that")

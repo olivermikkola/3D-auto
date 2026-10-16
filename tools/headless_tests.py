@@ -45,6 +45,8 @@ def main():
     parser.add_argument("--jobs", type=int, default=3, help="bounded concurrent seed runs (1-4)")
     parser.add_argument("--suite", choices=["full", "autoplay", "reliability"], default="full")
     parser.add_argument("--soak", action="store_true", help="include 300 simulated seconds per map")
+    parser.add_argument("--skip", nargs="+", default=[], choices=["CITY", "PAD", "MISSION", "TERRAIN"],
+                        help="per-map checks to leave out (say why where you call it)")
     parser.add_argument("--timeout", type=int, default=300, help="seconds before one run counts as hung")
     args = parser.parse_args()
     if not 1 <= args.jobs <= 4:
@@ -106,6 +108,8 @@ def main():
                                     ("PAD", 3000, "PAD TEST PASSED"),
                                     ("MISSION", 6000, "MISSION TEST PASSED"),
                                     ("TERRAIN", 2400, "TERRAIN TEST PASSED")]:
+            if kind in args.skip:
+                continue
             run(f"{map_name}-{kind.lower()}", dict(env, **{kind + "_TEST": "1"}), ticks, [marker])
         if args.soak:
             run(f"{map_name}-soak", dict(env, SOAK="1"), 18000, ["SOAK PASSED: 300 simulated seconds"])
