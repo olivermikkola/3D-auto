@@ -270,11 +270,19 @@ local function drive_cop(c, dt)
   local tx, tz, want
 
   local direct = P.direct_pursuit(c.sees, dist) and engine.time() >= (c.roads_until or 0)
+  local lx, lz = wanted.center[1], wanted.center[2]
+  local last = U.dist2d(x, z, lx, lz)
   if direct then
-    -- Direct pursuit, leading the target a little.
+    -- Direct pursuit, leading the target a little, and slowing in time to
+    -- stop beside them rather than overshoot.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
-    want = dist < 12 and math.max(0, dist - 4) or 30
+    want = math.min(30, math.max(0, dist - 4) * 1.5)
+  elseif not c.sees and last < 30 and engine.time() >= (c.roads_until or 0) then
+    -- Lost sight just short of them (behind a parked car, round a corner):
+    -- creep up to where they were last seen, not off round the block.
+    tx, tz = lx, lz
+    want = math.min(10, math.max(0, last - 4) * 1.5)
   else
     -- Follow the roads one junction at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
@@ -334,8 +342,10 @@ local function drive_cop(c, dt)
 
   -- Wedged against something: back up with opposite lock for a second.
   c.stuck = (throttle > 0 and math.abs(speed) < 1.5) and c.stuck + dt or 0
+  c.wedged = math.max(0, (c.wedged or 0) - dt / 8) -- recent jams, fading
   if c.stuck > 1.2 then
     c.reverse, c.stuck = 1.0, 0
+    c.wedged = c.wedged + 1
     -- Repeated direct approaches into a fence or quay need a road detour.
     if direct then
       c.direct_jams = (c.direct_jams or 0) + 1
@@ -367,7 +377,8 @@ local function drive_cop(c, dt)
 end
 
 -- ---- officers on foot ----------------------------------------------------------
--- From two stars up, cops that catch up with you get out and shoot.
+-- From two stars up, cops that catch up with you get out and shoot. At any
+-- level, one stuck short of you gets out and walks over to arrest you.
 
 local function deploy(c)
   c.deployed = true
@@ -382,7 +393,7 @@ local function deploy(c)
 end
 
 local function recall(c)
-  c.deployed = false
+  c.deployed, c.arrest = false, nil
   for id, o in pairs(P.officers) do
     if o.car == c.id then
       engine.despawn(id)
@@ -423,7 +434,8 @@ local function run_officers(dt, px, pz)
       local _, vy = engine.vel(id)
       local dx, dz = px - x, pz - z
       engine.set_yaw(id, math.atan(dx, dz))
-      if sees and d < SHOOT_RANGE and d > 6 then
+      -- Below two stars they've only come to arrest you: no shooting.
+      if sees and d < SHOOT_RANGE and d > 6 and wanted.stars() >= DEPLOY_STARS then
         -- Stand and shoot.
         engine.set_vel(id, 0, vy, 0)
         o.cool = o.cool - dt
@@ -548,7 +560,7 @@ engine.on("tick", function(dt)
       for oid, o in pairs(P.officers) do
         if o.car == id and engine.exists(oid) then crew = true break end
       end
-      if d > 60 or wanted.stars() < DEPLOY_STARS then recall(c)
+      if d > 60 or wanted.stars() == 0 or (wanted.stars() < DEPLOY_STARS and not c.arrest) then recall(c)
       elseif crew then c.redeploy = nil
       elseif not c.redeploy then c.redeploy = engine.time() + 5 -- its officers are down: a fresh pair soon
       elseif engine.time() >= c.redeploy and c.sees and d < DEPLOY_RANGE then
@@ -557,7 +569,16 @@ engine.on("tick", function(dt)
       end
     else
       drive_cop(c, dt)
-      if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c) end
+      if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c)
+      -- Jammed again and again just short of you (round a corner, against a
+      -- wall), or close for seconds without getting to you: at any level
+      -- they get out and walk over to arrest you.
+      elseif ((c.wedged or 0) >= 1.5 and d < 30 or (c.near_for or 0) > 4) and slow_player then
+        c.arrest, c.wedged, c.near_for = true, 0, 0
+        deploy(c)
+      end
+      -- How long it has been close to you without getting to you.
+      c.near_for = (d < 22 and slow_player) and (c.near_for or 0) + dt or 0
       if d < 7 and math.abs(vehicle.speed(id)) < 6 then close = true end
     end
   end
