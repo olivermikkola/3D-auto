@@ -72,6 +72,9 @@ The world stays fixed. What happens in it is picked from hand-written material:
 - **Scorer** (Lua, deterministic): scores the fragments that fit the current state and picks
   the best (same state and seed give the same pick), so tests stay stable. It costs no
   noticeable memory.
+- **Started:** `lib/story.lua` (catalogue and scorer) and `game/story/radio.lua`, eleven city
+  radio lines that answer stunts, busts, lost cops, missions, carjackings, explosions, the
+  hospital and night drives, by place and hour. Next: more lines, and mission branches.
 - Only once the catalogue is big enough to need it: swap the scorer for a small classifier
   behind the same interface (ONNX through `tract`). A 400 M-parameter model is 0.4–1.7 GB,
   more than the whole game today. Keep it out of the open world, and load it only for story
