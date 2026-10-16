@@ -370,7 +370,7 @@ end
 
 -- ---- officers on foot ----------------------------------------------------------
 -- From two stars up, cops that catch up with you get out and shoot. At any
--- level, one jammed short of you gets out and walks over to arrest you.
+-- level, one stuck short of you gets out and walks over to arrest you.
 
 local function deploy(c)
   c.deployed = true
@@ -563,11 +563,14 @@ engine.on("tick", function(dt)
       drive_cop(c, dt)
       if wanted.stars() >= DEPLOY_STARS and c.sees and d < DEPLOY_RANGE and slow_player then deploy(c)
       -- Jammed again and again just short of you (round a corner, against a
-      -- wall): at any level they get out and walk over to arrest you.
-      elseif (c.wedged or 0) >= 1.5 and d < 30 and slow_player then
-        c.arrest, c.wedged = true, 0
+      -- wall), or close for seconds without getting to you: at any level
+      -- they get out and walk over to arrest you.
+      elseif ((c.wedged or 0) >= 1.5 and d < 30 or (c.near_for or 0) > 4) and slow_player then
+        c.arrest, c.wedged, c.near_for = true, 0, 0
         deploy(c)
       end
+      -- How long it has been close to you without getting to you.
+      c.near_for = (d < 22 and slow_player) and (c.near_for or 0) + dt or 0
       if d < 7 and math.abs(vehicle.speed(id)) < 6 then close = true end
     end
   end
