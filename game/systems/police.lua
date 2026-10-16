@@ -270,11 +270,19 @@ local function drive_cop(c, dt)
   local tx, tz, want
 
   local direct = P.direct_pursuit(c.sees, dist) and engine.time() >= (c.roads_until or 0)
+  local lx, lz = wanted.center[1], wanted.center[2]
+  local last = U.dist2d(x, z, lx, lz)
   if direct then
-    -- Direct pursuit, leading the target a little.
+    -- Direct pursuit, leading the target a little, and slowing in time to
+    -- stop beside them rather than overshoot.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
-    want = dist < 12 and math.max(0, dist - 4) or 30
+    want = math.min(30, math.max(0, dist - 4) * 1.5)
+  elseif not c.sees and last < 30 and engine.time() >= (c.roads_until or 0) then
+    -- Lost sight just short of them (behind a parked car, round a corner):
+    -- creep up to where they were last seen, not off round the block.
+    tx, tz = lx, lz
+    want = math.min(10, math.max(0, last - 4) * 1.5)
   else
     -- Follow the roads one junction at a time toward the player if seen,
     -- otherwise toward the last sighting; once there, search nearby streets.
