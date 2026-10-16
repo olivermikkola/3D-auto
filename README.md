@@ -694,6 +694,11 @@ a reconciled results matrix are uploaded as CI artifacts even when a check fails
 `MAP=raisio MESH_REPORT=1 auto game --headless 2` shows terrain at 93 MB, roads at 38 and paved
 areas at 26.
 
+`PROFILE=1` prints where the frames' time goes every two seconds: frames per second, ticks per
+frame (Lua and physics), the Lua `frame` event, drawing (CPU side, with draw calls and
+triangles), and the rest of the frame, waiting for the GPU and the display. If the wait is large
+and everything else is small, the GPU is the limit.
+
 `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
 pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
