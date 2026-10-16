@@ -1,0 +1,85 @@
+{
+  "ok": true,
+  "errors": [],
+  "wasm_peak_bytes": 539426816,
+  "samples": [
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 5.417
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 5.961
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 6.668
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 7.311
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 7.953
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 8.636
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 9.332
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 10.041
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 10.735
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 11.331
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 11.875
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=turku seed=1337\nmission 08_pansio_heist is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 539426816,
+      "elapsed_s": 12.513
+    }
+  ],
+  "query": "map=turku&seed=1337&hour=12",
+  "size": "1280x720",
+  "browser": "151.0.7922.34",
+  "renderer": "headless Chromium SwiftShader (software)",
+  "page_errors": [],
+  "memory_metric": "WebAssembly linear allocation; excludes JS heap/GPU; sampled after navigation"
+}

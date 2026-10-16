@@ -1,0 +1,41 @@
+[debug_tools]	press F3 for the debug overlay
+mods: debug_tools, taxi
+map=raisio seed=1337
+mission 10_archipelago_run is not on this map
+loaded 11 missions
+mesh terrain                    93.3 MB in 182
+mesh road                       38.3 MB in 3382
+mesh paved                      25.8 MB in 550
+mesh corner_kerbs               16.7 MB in 394
+mesh outline                    14.1 MB in 308
+mesh rail                        3.0 MB in 104
+mesh string_lights               2.2 MB in 1
+mesh cover_water                 1.9 MB in 98
+mesh boats                       1.2 MB in 18
+mesh lines                       0.4 MB in 34
+mesh car                         0.2 MB in 8
+mesh balconies                   0.2 MB in 9
+headless: 15 ticks in 51.3 ms, 45450 entities, 5224 meshes (198 MB)
+	Command being timed: "target/release/auto game --headless 15"
+	User time (seconds): 2.77
+	System time (seconds): 0.07
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:02.84
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 430144
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 114770
+	Voluntary context switches: 1
+	Involuntary context switches: 11
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 8
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

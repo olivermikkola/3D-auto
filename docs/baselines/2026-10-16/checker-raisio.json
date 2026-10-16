@@ -1,0 +1,133 @@
+{
+  "ok": true,
+  "errors": [],
+  "wasm_peak_bytes": 470417408,
+  "samples": [
+    {
+      "log": "Loading\u2026",
+      "ready": false,
+      "wasm_bytes": 0,
+      "elapsed_s": 0.02
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 3.932
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 4.347
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 4.837
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 5.278
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 5.695
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 6.053
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 6.49
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 6.949
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 7.427
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 7.875
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 8.315
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 8.728
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 9.172
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 9.65
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 10.153
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 10.61
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 11.079
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 11.588
+    },
+    {
+      "log": "[debug_tools]\tpress F3 for the debug overlay\nmods: debug_tools, taxi\nmap=raisio seed=1337\nmission 10_archipelago_run is not on this map\nloaded 11 missions",
+      "ready": true,
+      "wasm_bytes": 470417408,
+      "elapsed_s": 12.02
+    }
+  ],
+  "query": "map=raisio&seed=1337&hour=12",
+  "size": "1280x720",
+  "browser": "151.0.7922.34",
+  "renderer": "headless Chromium SwiftShader (software)",
+  "page_errors": [],
+  "memory_metric": "WebAssembly linear allocation; excludes JS heap/GPU; sampled after navigation"
+}
