@@ -85,8 +85,6 @@ with a render check (see 1).
 ### Later
 
 - Laser-scan roof shapes and heights (MML, CC BY 4.0) matched to OSM footprints.
-- In-game credits screen for OSM and MML (attribution is in `game/maps/LICENSE` and the
-  generated files today).
 - Helsinki, then 1:1 Manhattan.
 
 ## Data sources
