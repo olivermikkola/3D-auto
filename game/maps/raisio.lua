@@ -22,6 +22,7 @@ return {
   cover = osm.cover,
   terrain = osm.terrain, -- real heights (Maanmittauslaitos), roads graded in
   pitches = osm.pitches,
+  pools = osm.pools,
   footbridges = osm.footbridges,
   railways = osm.railways,
   outlines = osm.outlines,

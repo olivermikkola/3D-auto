@@ -30,6 +30,7 @@ return {
   cover = osm.cover,
   terrain = osm.terrain, -- real 2m LiDAR heights (MML), roads graded in
   pitches = osm.pitches,
+  pools = osm.pools,
   footbridges = osm.footbridges,
   railways = osm.railways,
   outlines = osm.outlines,
@@ -124,10 +125,6 @@ return {
     {-1185, 218, 50, {color = {0.70, 0.25, 0.18}, floors = 7}},
     -- Turun taidemuseo (Puolalanmäki): granite palace
     {-640, -150, 45, {color = {0.75, 0.73, 0.70}, floors = 4}},
-    -- Kupittaan urheiluhalli: arched white sports hall
-    {850, 490, 60, {dome = 16, color = {0.92, 0.92, 0.95}}},
-    -- Verkkari Stadion & Rajupaja Areena: sports arenas
-    {1100, 600, 70, {style = "glass", color = {0.35, 0.55, 0.65}, floors = 4}},
     -- Vicklund & Hamburger Börs (Kauppatori commercial core)
     {-160, 70, 45, {style = "glass", color = {0.88, 0.90, 0.92}, floors = 5}},
     {-60, 20, 45, {style = "balconies", color = {0.95, 0.92, 0.88}, floors = 6}},
@@ -145,9 +142,6 @@ return {
     {-1490, 640, 110, {style = "wooden", color = {0.55, 0.65, 0.52}, floors = 2}},
     -- Aboa Vetus Ars Nova: riverside museum mansion
     {138, 254, 40, {color = {0.85, 0.82, 0.75}, floors = 3}},
-    -- EduCity & Medisiina D: modern Kupittaa university campus
-    {980, 420, 60, {style = "glass", color = {0.82, 0.86, 0.90}, floors = 7}},
-    {1050, 360, 50, {color = {0.70, 0.35, 0.25}, floors = 6}},
   },
 
   gunshop = {120, -80},

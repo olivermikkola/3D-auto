@@ -42,6 +42,10 @@ SHOTS = {
     "fori": ((-1192, 5, 1118), (-1212, 1, 1145), [((68, 34, 4), 14, 0.012)]),
     # Koroinen's stone cross, lit side and shaded side.
     "koroistenniemi": ((1214, 17, -1856), (1222, 16, -1865), [((188, 180, 172), 16, 0.006), ((108, 100, 92), 12, 0.02)]),
+    # Kupittaa: Veritas Stadion's blue stands round the pitch, and the
+    # outdoor pool's water at Kupittaan maauimala.
+    "veritas": ((1150, 60, 1060), (1250, 5, 950), [((76, 108, 188), 20, 0.012)]),
+    "kupittaa_maauimala": ((1105, 22, 745), (1150, 3, 690), [((88, 176, 224), 20, 0.09)]),
     # Raisio's centre: the orange-red panels of the flats on Raisiontie.
     "raisio_center": ((870, 45, -1680), (850, 5, -1760), [((116, 52, 28), 14, 0.018)], "raisio"),
 }
