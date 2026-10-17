@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>GTÅ: Grand Tour Åbo</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#111111">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; }
     canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
@@ -50,6 +56,9 @@
       },
     });
     load("auto.wasm");
+    // Installable, and playable offline once installed (sw.js). Browsers only
+    // allow this over https or on localhost.
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => show("offline cache: " + e.message));
   </script>
 </body>
 </html>

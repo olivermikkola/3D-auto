@@ -31,6 +31,16 @@ The page's address sets the game's environment: `index.html?map=raisio&hour=22` 
   Rust side reads the same pack through `src/vfs.rs`.
 - **Graphics.** WebGL 2. The shaders were already GLSL 100.
 
+## Install and offline
+
+The page is a web app: `manifest.webmanifest` (name, landscape, full screen, icons from the
+cover art) and `sw.js`, a service worker that keeps the game's files on the device so an
+installed game starts without a connection. `build.sh` stamps the worker with the module's hash,
+so each build replaces the stored copy and nobody is left on an old one. Browsers allow this only
+over https or on localhost. Checked in headless Chrome: the manifest has no errors, all seven
+files are stored, and the game starts again with the network off. Not yet installed on a real
+phone, and not deployed anywhere.
+
 ## Measuring without mixing metrics
 
 Use a fresh build and keep the map, seed, hour, viewport and browser version fixed:
