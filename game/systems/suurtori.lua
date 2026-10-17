@@ -54,16 +54,20 @@ function S.build(map)
     }
   end
 
-  -- 3. Turun Tuomiokirkko (Cathedral) on Tuomiokirkontori
-  local cx, cz = 405.0, -100.0
-  local cy = U.ground(cx, cz)
+  -- 3. Turun Tuomiokirkko (Cathedral), on the map data's footprint: the
+  -- tower at the west end over the square, the choir to the east.
+  local kx, kz = 450.8, -105.5
   S.cathedral_id = engine.spawn{
     mesh = "tuomiokirkko_cathedral",
-    pos = {cx, cy, cz},
-    yaw = 1.52,
+    pos = {kx, U.ground(kx, kz), kz},
+    yaw = -0.055,
     tag = "landmark",
     body = "static",
   }
+
+  -- The terrace and steps on Tuomiokirkkotori, west of the tower
+  local cx, cz = 424.0, -100.0
+  local cy = U.ground(cx, cz)
 
   -- Tuomiokirkontori paved cathedral terrace
   engine.spawn{

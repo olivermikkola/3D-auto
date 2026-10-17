@@ -380,13 +380,55 @@ COLOURS = {"red": (0.6, 0.22, 0.17), "darkred": (0.45, 0.15, 0.12), "brown": (0.
            "silver": (0.7, 0.7, 0.72), "white": (0.88, 0.88, 0.86), "green": (0.25, 0.4, 0.28), "blue": (0.25, 0.32, 0.45)}
 
 
-def roof_colour(t):
-    """A roof:colour as r, g, b: a name or #rrggbb; None if untagged."""
-    c = t.get("roof:colour", "").strip().lower()
+# The rest of the CSS colour names, which OSM's colour tags use ("yellow" on
+# 273 of Turku's buildings, "beige" on the university's). Taken as they are,
+# they'd be paint-box bright, so they're muted the way the names above are:
+# half way to their own grey, and not quite white.
+CSS = dict(
+    aliceblue="f0f8ff", antiquewhite="faebd7", aqua="00ffff", aquamarine="7fffd4", azure="f0ffff", beige="f5f5dc",
+    bisque="ffe4c4", blanchedalmond="ffebcd", blueviolet="8a2be2", burlywood="deb887", cadetblue="5f9ea0",
+    chartreuse="7fff00", chocolate="d2691e", coral="ff7f50", cornflowerblue="6495ed", cornsilk="fff8dc",
+    crimson="dc143c", cyan="00ffff", darkblue="00008b", darkcyan="008b8b", darkgoldenrod="b8860b",
+    darkgreen="006400", darkkhaki="bdb76b", darkmagenta="8b008b", darkolivegreen="556b2f", darkorange="ff8c00",
+    darkorchid="9932cc", darkseagreen="8fbc8f", darkslateblue="483d8b", darkslategray="2f4f4f",
+    darkslategrey="2f4f4f", darkturquoise="00ced1", darkviolet="9400d3", deeppink="ff1493", deepskyblue="00bfff",
+    dodgerblue="1e90ff", firebrick="b22222", floralwhite="fffaf0", forestgreen="228b22", fuchsia="ff00ff",
+    gainsboro="dcdcdc", ghostwhite="f8f8ff", gold="ffd700", goldenrod="daa520", greenyellow="adff2f",
+    honeydew="f0fff0", hotpink="ff69b4", indianred="cd5c5c", indigo="4b0082", ivory="fffff0", khaki="f0e68c",
+    lavender="e6e6fa", lavenderblush="fff0f5", lawngreen="7cfc00", lemonchiffon="fffacd", lightblue="add8e6",
+    lightcoral="f08080", lightcyan="e0ffff", lightgoldenrodyellow="fafad2", lightgray="d3d3d3",
+    lightgreen="90ee90", lightgrey="d3d3d3", lightpink="ffb6c1", lightsalmon="ffa07a", lightseagreen="20b2aa",
+    lightskyblue="87cefa", lightslategray="778899", lightslategrey="778899", lightsteelblue="b0c4de",
+    lightyellow="ffffe0", lime="00ff00", limegreen="32cd32", linen="faf0e6", magenta="ff00ff", maroon="800000",
+    mediumaquamarine="66cdaa", mediumblue="0000cd", mediumorchid="ba55d3", mediumpurple="9370db",
+    mediumseagreen="3cb371", mediumslateblue="7b68ee", mediumspringgreen="00fa9a", mediumturquoise="48d1cc",
+    mediumvioletred="c71585", midnightblue="191970", mintcream="f5fffa", mistyrose="ffe4e1", moccasin="ffe4b5",
+    navajowhite="ffdead", navy="000080", oldlace="fdf5e6", olive="808000", olivedrab="6b8e23", orangered="ff4500",
+    orchid="da70d6", palegoldenrod="eee8aa", palegreen="98fb98", paleturquoise="afeeee", palevioletred="db7093",
+    papayawhip="ffefd5", peachpuff="ffdab9", peru="cd853f", pink="ffc0cb", plum="dda0dd", powderblue="b0e0e6",
+    purple="800080", rebeccapurple="663399", rosybrown="bc8f8f", royalblue="4169e1", saddlebrown="8b4513",
+    salmon="fa8072", sandybrown="f4a460", seagreen="2e8b57", seashell="fff5ee", sienna="a0522d", skyblue="87ceeb",
+    slateblue="6a5acd", slategray="708090", slategrey="708090", snow="fffafa", springgreen="00ff7f",
+    steelblue="4682b4", tan="d2b48c", teal="008080", thistle="d8bfd8", tomato="ff6347", turquoise="40e0d0",
+    violet="ee82ee", wheat="f5deb3", whitesmoke="f5f5f5", yellow="ffff00", yellowgreen="9acd32",
+)
+
+
+def named_colour(c):
+    """A colour tag's value as r, g, b: one of the names above, a CSS name or
+    #rrggbb; None if it's none of those."""
+    c = c.strip().lower()
     if c in COLOURS: return COLOURS[c]
-    if len(c) == 7 and c[0] == "#":
-        try: return tuple(round(int(c[i:i + 2], 16) / 255, 2) for i in (1, 3, 5))
-        except ValueError: return None
+    if re.fullmatch(r"#[0-9a-f]{6}", c): return tuple(round(int(c[i:i + 2], 16) / 255, 2) for i in (1, 3, 5))
+    if c in CSS:
+        rgb = [int(CSS[c][i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        grey = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+        return tuple(round(0.88 * (v + grey) / 2, 2) for v in rgb)
+
+
+def roof_colour(t):
+    """A roof:colour as r, g, b; None if untagged."""
+    return named_colour(t.get("roof:colour", ""))
 
 
 def height_of(t, kind, A):
@@ -455,10 +497,7 @@ MATERIALS = {"brick": (0.55, 0.27, 0.2), "concrete": (0.7, 0.69, 0.66), "plaster
 
 def wall_colour(t):
     """building:colour (a name or #rrggbb), else building:material's usual colour; None if neither."""
-    c = t.get("building:colour", "").strip().lower()
-    if c in COLOURS: return COLOURS[c]
-    if re.fullmatch(r"#[0-9a-f]{6}", c): return tuple(int(c[i:i + 2], 16) / 255 for i in (1, 3, 5))
-    return MATERIALS.get(t.get("building:material", "").strip().lower())
+    return named_colour(t.get("building:colour", "")) or MATERIALS.get(t.get("building:material", "").strip().lower())
 
 
 def outlines_of(els, P, inside):
