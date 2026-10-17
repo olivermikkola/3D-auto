@@ -329,6 +329,20 @@ end
 -- The junctions one road away from `id`.
 function C.links(id) return graph().links[id] end
 
+-- The junctions with a road to `id` (on a one-way street, not the same
+-- as the ones it leads to).
+function C.links_in(id)
+  local g = graph()
+  if not g.links_in then
+    g.links_in = {}
+    for i = 1, #g.pos do g.links_in[i] = {} end
+    for a, list in pairs(g.links) do
+      for _, b in ipairs(list) do table.insert(g.links_in[b], a) end
+    end
+  end
+  return g.links_in[id]
+end
+
 -- Every junction id, and every road once, as {a, b}.
 function C.junctions()
   local out = {}
