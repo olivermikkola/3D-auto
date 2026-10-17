@@ -28,7 +28,9 @@ function K.build(map)
   -- 0. Main Kauppatori paved granite plaza (replaces bare grass ground plane).
   -- The square slopes about 2.5 m, so the slab is tilted to the ground's
   -- slope instead of lying flat with the hillside showing through half of it.
-  local px, pz, pyaw, pw, pd = -175.0, -15.0, 0.602, 135.0, 115.0
+  -- Its west edge stops short of Aurakatu's kerb: further out, its corner
+  -- stood up out of the carriageway and cars driving up Aurakatu jammed on it.
+  local px, pz, pyaw, pw, pd = -172.3, -16.8, 0.602, 128.5, 115.0
   local c, s = math.cos(pyaw), math.sin(pyaw)
   local function at(u, v) return U.ground(px + c * pw * u + s * pd * v, pz - s * pw * u + c * pd * v) end
   local gu = (at(0.5, 0) - at(-0.5, 0)) / pw
