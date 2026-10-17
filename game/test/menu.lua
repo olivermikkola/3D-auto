@@ -123,6 +123,20 @@ elseif phase == 2 then
     select("RESUME")
     key("enter")
     check(not engine.paused(), "RESUME resumes")
+    -- The data's licences ask for credit: OpenStreetMap and the land survey.
+    key("escape")
+    select("CREDITS")
+    key("enter")
+    local text = {}
+    for _, item in ipairs(menu.items()) do text[#text + 1] = item.label end
+    text = table.concat(text, " ")
+    check(menu.page == "credits" and text:find("OPENSTREETMAP", 1, true) and text:find("MAANMITTAUSLAITOS", 1, true)
+          and text:find("ODBL", 1, true) and text:find("CC BY 4.0", 1, true), "CREDITS names OpenStreetMap (ODbL) and MML (CC BY 4.0)")
+    select("BACK")
+    key("enter")
+    check(menu.page == "main", "BACK returns from the credits")
+    select("RESUME")
+    key("enter")
     -- Another city, picked in the menu: the game starts afresh there.
     local city = require "lib.city"
     local want = city.map().id == "harbor" and "manhattan" or "harbor"
