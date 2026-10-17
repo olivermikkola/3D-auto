@@ -285,6 +285,8 @@ end)
 -- through (or closed them), then only while the HELP OVERLAY setting is on.
 -- Every start says "F1 HELP" for a few seconds, so they can be found again.
 local HINT, help_until = 8, engine.load("help_seen") and 0 or 30
+-- Pinned-camera shots (SHOT_CAM) are pictures, not a first run: no help box over them.
+if os.getenv("SHOT_CAM") then help_until = 0 end
 local function seen()
   help_until = 0
   engine.save("help_seen", true)
