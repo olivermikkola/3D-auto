@@ -118,6 +118,11 @@ def sidewalks(t):
 
 ROW = 4.0  # ground cover is rasterized in strips this tall
 STEP = 10.0  # terrain heights every this many meters
+# A tunnel's cutting (the game roofs it over) is flat out to 6 m past the
+# road's edge, then climbs back to the ground over TUNNEL_BLEND meters; the
+# hill over it is measured ROOF_REACH meters out from the road's edge.
+TUNNEL_BLEND = 8.0
+ROOF_REACH = 6 + TUNNEL_BLEND + 2
 # Cover classes in the order the game draws them (lib/roadnet.lua's COVER):
 # a terrain point takes the last one it's in; 0 is plain land.
 DRAW_ORDER = ["field", "forest", "park", "cemetery", "works", "parking", "track", "sand", "court", "pitch", "water"]
@@ -666,13 +671,16 @@ def main():
         # Through a hill, not over it: a tunnel runs straight between its
         # ends, and the ground is cut down to it (the game has no overhangs).
         bored = not deck and t.get("tunnel") not in (None, "no")
+        # Of those, a tunnel proper (not a passage through a building) is
+        # roofed over in the game.
+        roofed = bored and t.get("tunnel") == "yes"
         start = 0
         for k in range(1, len(run)):
             if run[k][0] in is_j or k == len(run) - 1:
                 seg = run[start:k + 1]
                 lit = (t.get("lit") not in ("no", "none")) if "lit" in t else None
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "deck": deck, "bored": bored, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway})
+                              "name": name, "bridge": bridge, "deck": deck, "bored": bored, "roofed": roofed, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -1021,6 +1029,22 @@ def main():
                 while k < len(ss) - 2 and ss[k + 1] < s_: k += 1
                 f_ = (s_ - ss[k]) / ((ss[k + 1] - ss[k]) or 1)
                 ed_["heights"].append(hs[k] + (hs[k + 1] - hs[k]) * min(1.0, max(0.0, f_)) if len(hs) > 1 else hs[0])
+            if ed_.get("roofed"):
+                # The hill over a tunnel, for the game's roof: the ground
+                # either side of its cutting at each of those heights,
+                # left then right (looking from a to b).
+                ed_["roof"] = []
+                k = 0
+                for m in range(n + 1):
+                    s_ = total * m / n
+                    while k < len(ss) - 2 and ss[k + 1] < s_: k += 1
+                    (ax_, az_), (bx_, bz_) = xs[k], xs[min(k + 1, len(xs) - 1)]
+                    L_ = math.hypot(bx_ - ax_, bz_ - az_) or 1.0
+                    f_ = min(1.0, max(0.0, (s_ - ss[k]) / ((ss[k + 1] - ss[k]) or 1)))
+                    cx, cz = ax_ + (bx_ - ax_) * f_, az_ + (bz_ - az_) * f_
+                    nx, nz = (bz_ - az_) / L_, -(bx_ - ax_) / L_
+                    off = ed_["width"] / 2 + ROOF_REACH
+                    ed_["roof"] += [ground(cx - nx * off, cz - nz * off), ground(cx + nx * off, cz + nz * off)]
             if not ed_["deck"]:
                 for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
                     prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
@@ -1036,7 +1060,9 @@ def main():
                 x, z = X0 + i * STEP, Z0 + j * STEP
                 h = ground(x, z)
                 # Graded to the nearest road: flat across it out to its
-                # pavements and a few meters more, blending back over 20 m.
+                # pavements and a few meters more, blending back over 20 m
+                # (a tunnel's cutting over TUNNEL_BLEND: steep sides, under
+                # a roof no wider than it has to be).
                 best = None
                 for ed_, a, b, ya, yb in prof_grid.near(x, z, x, z):
                     dx, dz = b[0] - a[0], b[1] - a[1]
@@ -1044,9 +1070,9 @@ def main():
                     t_ = max(0.0, min(1.0, ((x - a[0]) * dx + (z - a[1]) * dz) / l2))
                     d = math.hypot(x - a[0] - dx * t_, z - a[1] - dz * t_) - ed_["width"] / 2 - 6
                     if best is None or d < best[0]:
-                        best = (d, ya + (yb - ya) * t_)
-                if best and best[0] < 20:
-                    w_ = 1.0 if best[0] <= 0 else 1 - best[0] / 20
+                        best = (d, ya + (yb - ya) * t_, TUNNEL_BLEND if ed_.get("bored") else 20)
+                if best and best[0] < best[2]:
+                    w_ = 1.0 if best[0] <= 0 else 1 - best[0] / best[2]
                     h = h + (best[1] - h) * w_
                 k = cover_at(x, z)
                 if k == water_k:
@@ -1087,6 +1113,8 @@ def main():
         if ed.get("deck") and terrain: attrs += ", deck = true"
         if ed.get("heights") and not ed.get("deck"):
             attrs += ", heights = {" + ", ".join(f"{h:.2f}".rstrip("0").rstrip(".") for h in ed["heights"]) + "}"
+        if ed.get("roof"):
+            attrs += ", tunnel = true, roof = {" + ", ".join(f"{h:.1f}".rstrip("0").rstrip(".") for h in ed["roof"]) + "}"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")
     L.append("  },")
     L.append("  -- {width, service road?, points..., path = a foot or cycle path?, sidewalk = a street's pavement?,")
