@@ -432,6 +432,9 @@ def railways_of(els, P, inside):
     return railways, platforms
 
 
+# Real brands on buildings go by the game's parody names (as in the missions).
+PARODY = {"Hesburger": "Häsburger", "Sokos Wiklund": "Vicklund"}
+
 MATERIALS = {"brick": (0.55, 0.27, 0.2), "concrete": (0.7, 0.69, 0.66), "plaster": (0.86, 0.83, 0.76),
              "glass": (0.55, 0.65, 0.7), "metal": (0.6, 0.62, 0.64), "wood": (0.62, 0.45, 0.3), "stone": (0.62, 0.6, 0.56)}
 
@@ -778,6 +781,7 @@ def main():
             kind = building_kind(t, A)
             h = height_of(t, kind, A)
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
+            name = PARODY.get(name, name)
             roof_col = roof_colour(t)
             roof_sh = t.get("roof:shape")
             # Store roof info: [r, g, b, shape] if tagged
@@ -941,12 +945,48 @@ def main():
         Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
         def ground(x, z):
             return Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
-        # Each junction's height, then each road's profile: the ground along
-        # it smoothed over 40 m (80 m for main roads and highways, built
-        # gentler) and bent to meet its junctions. A road on a bridge runs
-        # straight between its ends instead.
-        jh = {j: sum(ground(pos[j][0] + dx, pos[j][1] + dz) for dx, dz in ((0, 0), (5, 0), (-5, 0), (0, 5), (0, -5))) / 5
-              for j in {ed_["a"] for ed_ in edges} | {ed_["b"] for ed_ in edges}}
+        # Cover classes, for colors and water.
+        cls_grid = {c: Grid(50) for c in DRAW_ORDER}
+        for c in DRAW_ORDER:
+            for st in strips.get(c, []):
+                cls_grid[c].add(st, (st[0], st[1]), (st[2], st[3]))
+        def cover_at(x, z):
+            for k in range(len(DRAW_ORDER) - 1, -1, -1):
+                for st in cls_grid[DRAW_ORDER[k]].near(x, z, x, z):
+                    if st[0] <= x <= st[2] and st[1] <= z <= st[3]:
+                        return k + 1
+            return 0
+        water_k = DRAW_ORDER.index("water") + 1
+        # Each junction's height: the middle one of the ground there and 5 m
+        # round it (one sample down a cutting's side doesn't drag it down),
+        # and not the water beside a bridge head (that would sink the end of
+        # the street on the quay towards the river).
+        def junction_height(x, z):
+            hs = sorted(ground(x + dx, z + dz) for dx, dz in ((0, 0), (5, 0), (-5, 0), (0, 5), (0, -5))
+                        if cover_at(x + dx, z + dz) != water_k)
+            if not hs: return ground(x, z)
+            n_ = len(hs)
+            return hs[n_ // 2] if n_ % 2 else (hs[n_ // 2 - 1] + hs[n_ // 2]) / 2
+        # Then each road's profile: the ground along it smoothed over 40 m
+        # (80 m for main roads and highways, built gentler) and bent to meet
+        # its junctions. A road on a bridge runs straight between its ends
+        # instead.
+        jh = {j: junction_height(*pos[j]) for j in {ed_["a"] for ed_ in edges} | {ed_["b"] for ed_ in edges}}
+        # A bridge's end stands on its abutment, which the ground model (bare
+        # earth: no bridges, no embankments) has dug away: there the ground
+        # falls to the river or the road below. Raise it to the streets that
+        # lead onto the bridge, 10 and 20 m back from it (straight on the way
+        # they leave it: a street there is often several short pieces).
+        heads = {j for ed_ in edges if ed_["deck"] for j in (ed_["a"], ed_["b"])}
+        for ed_ in edges:
+            if ed_["deck"] or ed_.get("bored"): continue
+            for j, pts in ((ed_["a"], ed_["pts"]), (ed_["b"], ed_["pts"][::-1])):
+                if j not in heads: continue
+                (ax, az), (bx, bz) = pts[0], pts[1]
+                L_ = math.hypot(bx - ax, bz - az) or 1.0
+                for s_ in (10, 20):
+                    p = (ax + (bx - ax) * s_ / L_, az + (bz - az) * s_ / L_)
+                    if cover_at(*p) != water_k: jh[j] = max(jh[j], ground(*p))
         prof_grid = Grid(50)
         for ed_ in edges:
             pts = ed_["pts"]
@@ -984,17 +1024,6 @@ def main():
             if not ed_["deck"]:
                 for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
                     prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
-        # Cover classes, for colors and water.
-        cls_grid = {c: Grid(50) for c in DRAW_ORDER}
-        for c in DRAW_ORDER:
-            for st in strips.get(c, []):
-                cls_grid[c].add(st, (st[0], st[1]), (st[2], st[3]))
-        def cover_at(x, z):
-            for k in range(len(DRAW_ORDER) - 1, -1, -1):
-                for st in cls_grid[DRAW_ORDER[k]].near(x, z, x, z):
-                    if st[0] <= x <= st[2] and st[1] <= z <= st[3]:
-                        return k + 1
-            return 0
         # Water lies flat at its own level (the sea at 0, a reservoir higher):
         # each strip at the ground model's height there, the bed below it.
         levels = []
@@ -1002,7 +1031,6 @@ def main():
             levels.append(round(max(0.0, ground((st[0] + st[2]) / 2, (st[1] + st[3]) / 2)), 1))
         tw, td = int(math.ceil((X1 - X0) / STEP)) + 1, int(math.ceil((Z1 - Z0) / STEP)) + 1
         hgt, cls = [], []
-        water_k = DRAW_ORDER.index("water") + 1
         for j in range(td):
             for i in range(tw):
                 x, z = X0 + i * STEP, Z0 + j * STEP
@@ -1116,7 +1144,7 @@ def main():
     L.append("}")
     dest.write_text("\n".join(L) + "\n")
     njs = len(used)
-    print(f"{dest.relative_to(ROOT)}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
+    print(f"{dest.relative_to(ROOT) if dest.is_relative_to(ROOT) else dest}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
           + f", {len(pitches)} pitches, {len(railways)} railway tracks, {len(platforms)} platforms, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"

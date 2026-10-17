@@ -1291,10 +1291,9 @@ build = function(map, kit)
   -- the deck is well above the ground.
   for _, r in ipairs(rails) do
     local x, z, ei = r[1], r[3], r[7]
-    -- Where a deck the map didn't mark (is_deck) is still down at the
-    -- ground, a road forking off beside it is driven over its edge: no
-    -- railing across that.
-    local reach = NET.edges[ei].inferred and r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
+    -- Where a deck is still down at the ground, a road forking off beside
+    -- it is driven over its edge: no railing across that.
+    local reach = r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
     local on_road = H.near(x, z, 40, function(it)
       return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
                  and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
