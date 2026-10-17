@@ -7,6 +7,10 @@ local tunnel = require "lib.tunnel"
 local R = {}
 
 local SIDEWALK = 3          -- meters of pavement each side of a non-highway road
+-- A tunnel's roof (from the importer's `roof`): the hill is measured this far out from
+-- the road's edge (tools/osm_import.py ROOF_REACH); the slab is between these
+-- thick, and leaves at least this much headroom over the road, or it isn't built.
+local ROOF_REACH, ROOF_SLAB, ROOF_CLEAR = 16, {0.8, 2.5}, 5
 local WIDTH = {highway = 18, main = 13, street = 10}
 local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
@@ -138,7 +142,7 @@ function R.load(map)
           n.edge_of[b .. ">" .. a] = #n.edges + 1
         end
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
-                                 deck = road.deck or is_deck(map, road, seg), inferred = not road.deck and is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, over = road.over,
+                                 deck = road.deck or is_deck(map, road, seg), inferred = not road.deck and is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, roofed = road.roof ~= nil, over = road.over,
                                  sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway}
         start = i
       end
@@ -1321,7 +1325,7 @@ build = function(map, kit)
   -- asphalt.
   for ei, e in ipairs(NET.edges) do
     local walk = e.kind ~= "highway"
-    if walk and e.lit ~= false then
+    if walk and e.lit ~= false and not e.roofed then -- a roofed tunnel has its lights in the roof
       local side = 1
       for i = 2, #e.pts do
         local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
@@ -2506,6 +2510,132 @@ build = function(map, kit)
     end
     bake("tunnel" .. ti, parts, 0, "roof")
   end
+
+  -- Tunnels from the map data (the importer's `roof`): the terrain is cut
+  -- down to the road, as it can't overhang, and a slab puts the hill back
+  -- over the cutting, tilted to the ground either side of it, wherever
+  -- that leaves the road room underneath. A portal wall stands over each
+  -- end, lights run along the slab's underside.
+  local lights, nroof = {}, 0
+  -- On any road's asphalt near height y, tunnels' included.
+  local function in_lane(x, z, clear, y)
+    local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+    for i = ci - 1, ci + 1 do
+      for j = cj - 1, cj + 1 do
+        for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+          local e = NET.edges[it[1]]
+          local a, b = e.pts[it[2] - 1], e.pts[it[2]]
+          local d, cx, cz = dist_seg(x, z, a[1], a[2], b[1], b[2])
+          if d < e.width / 2 + clear and math.abs((e.height or GROUND)(cx, cz) - y) < 3 then return true end
+        end
+      end
+    end
+    return false
+  end
+  for _, road in ipairs(map.roads) do
+    if road.tunnel and road.roof and road.heights and #road.heights >= 2 then
+      local pts, cum = {}, {0}
+      for k = 1, #road do
+        local p = road[k]
+        pts[k] = type(p) == "string" and map.junctions[p] or p
+        if k > 1 then cum[k] = cum[k - 1] + math.sqrt((pts[k][1] - pts[k - 1][1]) ^ 2 + (pts[k][2] - pts[k - 1][2]) ^ 2) end
+      end
+      local hs, n, total = road.heights, #road.heights, cum[#cum]
+      local reach = (road.width or 10) / 2 + ROOF_REACH
+      local function at(s) -- position and heading s meters along
+        local k = 2
+        while k < #pts and cum[k] < s do k = k + 1 end
+        local f = math.max(0, math.min(1, (s - cum[k - 1]) / math.max(cum[k] - cum[k - 1], 1e-6)))
+        local a, b = pts[k - 1], pts[k]
+        return a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, math.atan(b[1] - a[1], b[2] - a[2])
+      end
+      -- Each 10 m piece: its slab's left and right top heights, if the
+      -- road fits under it.
+      local pieces = {}
+      for m = 1, n - 1 do
+        local l = (road.roof[2 * m - 1] + road.roof[2 * m + 1]) / 2
+        local rt = (road.roof[2 * m] + road.roof[2 * m + 2]) / 2
+        local y = (hs[m] + hs[m + 1]) / 2
+        -- Under the slab, over the road's edges: room for a bus and the slab.
+        -- Tilted to the hill if that clears the road, else level at the
+        -- hill's higher side (over a cutting the ground model has left open:
+        -- a deck it took away, a twin tunnel's cutting beside it).
+        local edge = (road.width or 10) / 2 + 1
+        local function low() return (l + rt) / 2 - math.abs(l - rt) / 2 * edge / reach end
+        local room = function() return low() - 0.3 - y - ROOF_CLEAR end -- for the slab
+        if room() < ROOF_SLAB[1] then l, rt = math.max(l, rt), math.max(l, rt) end
+        -- (Not on a steep side slope: there a slab tilted to it stands out of
+        -- the hill like a tent, and the cutting is left open instead.)
+        if room() >= ROOF_SLAB[1] and math.abs(l - rt) < 0.4 * 2 * reach then
+          pieces[m] = {l, rt, y, math.min(ROOF_SLAB[2], room())}
+        end
+      end
+      if os.getenv("ROOF_DEBUG") then
+        local c = 0
+        for m = 1, n - 1 do if pieces[m] then c = c + 1 end end
+        print(string.format("ROOF %s: %d of %d pieces", road.name or "?", c, n - 1))
+      end
+      for m = 1, n - 1 do
+        local pc = pieces[m]
+        if pc then
+          nroof = nroof + 1
+          local s0, s1 = total * (m - 1) / (n - 1), total * m / (n - 1)
+          local x0, z0 = at(s0)
+          local x1, z1 = at(s1)
+          local mx, mz, len = (x0 + x1) / 2, (z0 + z1) / 2, math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
+          local yaw = math.atan(x1 - x0, z1 - z0)
+          local nb = pieces[m + 1] or pc
+          local pv = pieces[m - 1] or pc
+          local top0, top1 = (pv[1] + pv[2] + pc[1] + pc[2]) / 4, (pc[1] + pc[2] + nb[1] + nb[2]) / 4
+          local top = (pc[1] + pc[2]) / 2
+          -- (A little into the ground, the colour of it, overlapping the next
+          -- piece so no light shows between them where the hill turns.)
+          local th = math.min(pc[4], (pieces[m - 1] or pc)[4], (pieces[m + 1] or pc)[4])
+          kit.static{mesh = "cube", pos = {mx, top - 0.3 - th / 2, mz}, yaw = yaw, pitch = -math.atan(top1 - top0, len),
+                     roll = math.atan(pc[2] - pc[1], 2 * reach), size = {2 * reach, th, len + 2},
+                     color = LAND, tag = "roof", abs = true}
+          local rx, rz = math.cos(yaw), -math.sin(yaw)
+          -- Down each side, a skirt from the slab's edge to below the road:
+          -- the 10 m terrain grid sags between its points, and would show
+          -- a slot into the tunnel there (none across a twin tunnel's lanes).
+          for side, h in pairs{[-1] = pc[1], [1] = pc[2]} do
+            local off = side * (reach - 0.25)
+            local sx, sz = mx + rx * off, mz + rz * off
+            local clear = true
+            for _, f in ipairs{-0.5, 0, 0.5} do
+              if in_lane(sx + math.sin(yaw) * len * f, sz + math.cos(yaw) * len * f, 1, pc[3]) then clear = false end
+            end
+            local lo = pc[3] - 1
+            if clear and h - 0.3 > lo + 1 then
+              kit.static{mesh = "cube", pos = {sx, (lo + h - 0.3) / 2, sz}, yaw = yaw, size = {0.5, h - 0.3 - lo, len + 2},
+                         color = LAND, tag = "wall", abs = true}
+            end
+          end
+          lights[#lights + 1] = {mesh = "cube", pos = {mx, top - 0.3 - th - 0.06, mz}, yaw = yaw, size = {0.4, 0.1, 3},
+                                 color = {1, 0.95, 0.8}, emissive = 1, abs = true}
+          -- A portal over an open end: concrete from the road's headroom up
+          -- to the slab, across the cutting.
+          for _, e in ipairs{{not pieces[m - 1], x0, z0}, {not pieces[m + 1], x1, z1}} do
+            if e[1] then
+              local lo = pc[3] + ROOF_CLEAR - 0.5
+              kit.static{mesh = "cube", pos = {e[2], (lo + top) / 2, e[3]}, yaw = yaw, size = {2 * reach, top - lo, 0.8},
+                         color = {0.62, 0.62, 0.6}, tag = "wall", abs = true}
+              for _, side in ipairs{-1, 1} do -- its two pillars, at the asphalt's edge
+                local off = side * ((road.width or 10) / 2 + 0.8)
+                local px, pz = e[2] + rx * off, e[3] + rz * off
+                if not in_lane(px, pz, 0.8, pc[3]) then -- not in a twin tunnel's lane beside it
+                  kit.static{mesh = "cube", pos = {px, (pc[3] + lo) / 2, pz}, yaw = yaw,
+                             size = {0.8, lo - pc[3] + 0.2, 0.8}, color = {0.62, 0.62, 0.6}, tag = "wall", abs = true}
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  if #lights > 0 then bake("tunnel_lights", lights, 0, "roof") end
+  L.roofs = nroof
 
   return L
 end
