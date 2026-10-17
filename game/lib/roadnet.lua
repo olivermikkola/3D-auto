@@ -1707,9 +1707,33 @@ build = function(map, kit)
     end
   end
 
+  -- Outdoor swimming pools: blue water a little below a concrete rim.
+  for _, p in ipairs(map.pools or {}) do
+    local px, pz, len, wid, yaw = p[1], p[2], p[3], p[4], p[5]
+    local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
+    -- Level, on ground that may not be: the rim stands down to the lowest
+    -- corner, the water at the highest.
+    local lo, hi = math.huge, -math.huge
+    for _, c in ipairs{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}, {0, 0}} do
+      local g = GROUND and GROUND(px + ux * c[1] * (len / 2 + 0.8) + vx * c[2] * (wid / 2 + 0.8),
+                                  pz + uz * c[1] * (len / 2 + 0.8) + vz * c[2] * (wid / 2 + 0.8)) or 0
+      lo, hi = math.min(lo, g), math.max(hi, g)
+    end
+    local top = hi + 0.3
+    kit.static{mesh = "cube", pos = {px, (lo - 0.3 + top) / 2, pz}, yaw = yaw, size = {len + 1.6, top - lo + 0.3, wid + 1.6},
+               color = {0.82, 0.82, 0.8}, tag = "sidewalk", abs = true}
+    engine.spawn{mesh = "cube", pos = {px, top + 0.01, pz}, yaw = yaw, size = {len, 0.04, wid}, color = {0.28, 0.56, 0.72},
+                 glow = 0.04, abs = true}
+    add_seg(H, px - math.cos(yaw) * len / 2, pz + math.sin(yaw) * len / 2, px + math.cos(yaw) * len / 2,
+            pz - math.sin(yaw) * len / 2, wid / 2 + 1)
+  end
+
   -- Football pitches: white lines, and goals you can hit.
   local lines = chunked()
   for _, p in ipairs(map.pitches or {}) do
+    -- Nothing grows or stands on one (trees, lamps placed later).
+    add_seg(H, p[1] - math.cos(p[5]) * p[3] / 2, p[2] + math.sin(p[5]) * p[3] / 2, p[1] + math.cos(p[5]) * p[3] / 2,
+            p[2] - math.sin(p[5]) * p[3] / 2, p[4] / 2)
     local px, pz, len, wid, yaw = p[1], p[2], p[3], p[4], p[5]
     local ux, uz, vx, vz = math.cos(yaw), -math.sin(yaw), math.sin(yaw), math.cos(yaw)
     local function at(u, v) return px + ux * u + vx * v, pz + uz * u + vz * v end
@@ -2201,6 +2225,40 @@ build = function(map, kit)
       for _, side in ipairs{-1, 1} do -- a low wall round the edge
         kit.static{mesh = "cube", pos = {x + vx * side * d / 2, h2 + 0.5, z + vz * side * d / 2}, yaw = yaw, size = {w, 1, 0.3},
                    color = {0.7, 0.68, 0.62}, tag = "wall"}
+      end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count = count + 1
+    elseif ok and kind == "stand" then
+      -- A grandstand: rows of seats stepping up away from the pitch it
+      -- faces (the nearest one), the top rows under a roof.
+      local ux, uz, vx, vz = fx, fz, -fz, fx -- along w, along d
+      local best, bx, bz = math.huge
+      for _, p in ipairs(map.pitches or {}) do
+        local dd = (p[1] - x) ^ 2 + (p[2] - z) ^ 2
+        if dd < best then best, bx, bz = dd, p[1], p[2] end
+      end
+      local tx, tz = (bx or x) - x, (bz or z) - z
+      local du, dv = tx * ux + tz * uz, tx * vx + tz * vz
+      local len, depth, ax, az, s = w, d, vx, vz, dv > 0 and -1 or 1 -- rows along w, rising across d
+      if math.abs(du) > math.abs(dv) * (d / w) then len, depth, ax, az, s = d, w, ux, uz, du > 0 and -1 or 1 end
+      local rows = math.max(3, math.min(14, math.floor(depth / 1.6)))
+      local step = depth / rows
+      for k = 0, rows - 1 do
+        local o = s * (-depth / 2 + (k + 0.5) * step) -- k = 0 at the pitch's side
+        local rh = h * (k + 1) / rows
+        kit.static{mesh = "cube", pos = {x + ax * o, (BASE or 0) + rh / 2, z + az * o}, yaw = math.atan(ax, az),
+                   size = {len, rh, step + 0.02}, color = k % 2 == 0 and {0.24, 0.36, 0.62} or {0.3, 0.44, 0.7},
+                   tag = "building", abs = true}
+      end
+      local ro = s * depth * 0.2 -- the roof over the back 60 %
+      engine.spawn{mesh = "cube", pos = {x + ax * ro, (BASE or 0) + h + 3, z + az * ro}, yaw = math.atan(ax, az),
+                   size = {len, 0.4, depth * 0.6}, color = {0.36, 0.37, 0.39}, abs = true}
+      for _, e in ipairs{-1, 1} do -- the roof's posts, at the back
+        local lx, lz = az, -ax -- along the rows
+        local px = x + ax * s * (depth / 2 - 0.4) + lx * e * (len / 2 - 1)
+        local pz = z + az * s * (depth / 2 - 0.4) + lz * e * (len / 2 - 1)
+        engine.spawn{mesh = "cube", pos = {px, (BASE or 0) + (h + 3) / 2, pz}, size = {0.5, h + 3, 0.5}, color = {0.36, 0.37, 0.39},
+                     abs = true}
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1

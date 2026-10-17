@@ -10,7 +10,7 @@ local start_pos = is_turku and {-120, 40} or {850, -1700}
 
 local drops = is_turku and {
   {name = "Auransilta Jokiranta", pos = {-25, 300}},
-  {name = "Kupittaan Verkkari Stadion", pos = {880, 540}},
+  {name = "Kupittaankenttä", pos = {880, 540}}, -- the field there (OSM)
   {name = "Tuomiokirkontori", pos = {300, -80}},
 } or {
   {name = "Raisiontori Kioski", pos = {890, -1720}},

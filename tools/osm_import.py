@@ -347,6 +347,15 @@ def round_of(poly):
     return min(d), max(d)
 
 
+def is_stand(t, poly):
+    """A grandstand, or a stadium building shaped like one: long and narrow
+    (a squarer one is a hall, an ice rink or a ball hall)."""
+    if t.get("building") == "grandstand": return True
+    if t.get("building") != "stadium": return False
+    _, _, sw, sd = min_rect(poly)
+    return min(sw, sd) < 35 and max(sw, sd) > 2.5 * min(sw, sd)
+
+
 def building_kind(t, A):
     b = t.get("building", "yes")
     if t.get("amenity") == "police": return "police"
@@ -389,7 +398,7 @@ def height_of(t, kind, A):
     floor = {"house": 2.9, "terrace": 2.9, "shed": 2.6}.get(kind, 3.4)
     if levels is None:
         levels = {"shed": 1, "house": 1 if A < 160 else 2, "terrace": 1, "flats": 3 if A < 900 else 4,
-                  "shop": 2, "civic": 2, "church": 3, "works": 2.5, "police": 3}[kind]
+                  "shop": 2, "civic": 2, "church": 3, "works": 2.5, "police": 3, "stand": 2}[kind]
     return max(2.5, levels * floor)
 
 
@@ -466,8 +475,8 @@ def outlines_of(els, P, inside):
             if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
             A = area(poly)
             if A < 150: continue
-            kind = building_kind(t, A)
-            if kind in ("house", "terrace", "church", "shed"): continue
+            kind = "stand" if is_stand(t, poly) else building_kind(t, A)
+            if kind in ("house", "terrace", "church", "shed", "stand"): continue
             wall = wall_colour(t)
             if len(boxes_of(poly)) < 2 and not wall: continue
             pts = simplify(poly, 0.3)  # open: the closing side is implied
@@ -786,7 +795,7 @@ def main():
             if not all(inside(*p, pad=5) for p in poly): continue
             A = area(poly)
             if A < 15: continue
-            kind = building_kind(t, A)
+            kind = "stand" if is_stand(t, poly) else building_kind(t, A)
             h = height_of(t, kind, A)
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
             name = PARODY.get(name, name)
@@ -887,6 +896,19 @@ def main():
             if pw < pd: ang, pw, pd = ang + math.pi / 2, pd, pw
             if pw >= 40 and pd >= 25 and area(poly) > 0.85 * pw * pd:
                 pitches.append((cx, cz, pw, pd, -ang))
+
+    # ---- outdoor swimming pools ----
+    pools = []
+    for el in els:
+        t = el.get("tags", {})
+        if t.get("leisure") != "swimming_pool" or t.get("indoor") == "yes" or t.get("location") == "indoor" or "building" in t: continue
+        for ring in rings(el):
+            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+            if len(poly) < 3 or not all(inside(*p) for p in poly): continue
+            ang, (cx, cz), pw, pd = min_rect(poly)
+            if pw < pd: ang, pw, pd = ang + math.pi / 2, pd, pw
+            if pw >= 8 and pd >= 4 and area(poly) > 0.7 * pw * pd:
+                pools.append((cx, cz, pw, pd, -ang))
 
     # ---- footbridges: foot and cycle ways that cross a road on a bridge ----
     footbridges = []
@@ -1135,6 +1157,8 @@ def main():
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")
     L.append("  pitches = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pw)}, {f(pd)}, {a:.3f}}}" for x, z, pw, pd, a in pitches) + "},")
+    L.append("  -- outdoor swimming pools: {x, z, length, width, yaw}")
+    L.append("  pools = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pw)}, {f(pd)}, {a:.3f}}}" for x, z, pw, pd, a in pools) + "},")
     L.append("  -- foot and cycle bridges over roads: {width, points...}")
     L.append("  footbridges = {")
     for wd, pts in footbridges:
