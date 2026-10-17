@@ -9,11 +9,14 @@
 --   LB / RB     weapon               Back         progress   Start  pause
 --   D-pad and A/B in menus
 local G = require "lib.state"
+local touch = require "lib.touch"
 
 local M = {}
 M.DEAD = 0.2 -- stick dead zone
 
-local function key(k) return engine.key(k) end
+-- Touch buttons and sticks count as the pad's (lib/touch.lua).
+local function key(k) return engine.key(k) or touch.held(k) end
+local function pad() return touch.merge(engine.pad()) end
 
 -- Stick value with the dead zone removed and the rest rescaled to 0..1.
 local function axis(v)
@@ -29,7 +32,7 @@ local function clamp(v) return math.max(-1, math.min(1, v)) end
 function M.move()
   local f = (key("w") and 1 or 0) - (key("s") and 1 or 0)
   local r = (key("d") and 1 or 0) - (key("a") and 1 or 0)
-  local p = engine.pad()
+  local p = pad()
   if p then f, r = f + axis(p.ly), r + axis(p.lx) end
   return clamp(f), clamp(r)
 end
@@ -41,7 +44,7 @@ function M.jumping() return key("space") or key("pad_a") end
 function M.drive()
   local throttle = (key("w") and 1 or 0) - (key("s") and 1 or 0)
   local steer = (key("a") and 1 or 0) - (key("d") and 1 or 0)
-  local p = engine.pad()
+  local p = pad()
   if p then
     throttle = throttle + (p.rt or 0) - (p.lt or 0)
     steer = steer - axis(p.lx)
@@ -53,7 +56,7 @@ end
 function M.look()
   local x = (key("left") and 1 or 0) - (key("right") and 1 or 0)
   local y = (key("up") and 1 or 0) - (key("down") and 1 or 0)
-  local p = engine.pad()
+  local p = pad()
   if p then x, y = x - axis(p.rx), y - axis(p.ry) end
   return clamp(x), clamp(y)
 end
@@ -92,7 +95,7 @@ end)
 local stick_held = false
 engine.on("frame", function()
   if not engine.paused() then stick_held = false return end
-  local p = engine.pad()
+  local p = pad()
   local y = p and axis(p.ly) or 0
   if math.abs(y) < 0.5 then stick_held = false
   elseif not stick_held then

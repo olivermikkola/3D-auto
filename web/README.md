@@ -79,11 +79,18 @@ MAP=raisio SEED=1337 MESH_REPORT=1 /usr/bin/time -v target/release/auto game --h
 `MESH_REPORT` uses decimal MB; Linux `/usr/bin/time -v` maximum RSS is KiB.
 Headless mode does not exercise GPU uploads or rendered frame pacing.
 
+## Touch
+
+On a phone or tablet the controls appear once the screen is touched (`game/lib/touch.lua`): a
+stick under the left thumb, buttons on the right for what you're doing (on foot, in a car, in
+the menu), a drag elsewhere on the right to look, and pause at the top. They act as a gamepad, so
+nothing else in the game needs to know. Checked with real touch events in headless Chrome as an
+844×390 phone; not yet on a real iPhone or Android phone.
+
 ## Not yet
 
 - Sound (WebAudio), gamepads (the Gamepad API), and saves (localStorage). Saves last until the
   page closes.
-- Touch controls.
 - Memory: wasm memory grows to its peak and stays there. Post-#95 sampled
   allocations on headless Chromium 151 / SwiftShader at 1280×720, seed 1337,
   hour 12 and a 12-second window: starter **24.38 MiB**, Raisio **448.62 MiB**,

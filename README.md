@@ -35,7 +35,7 @@ cargo run --release -- my_game   # any directory with a main.lua
 
 Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress · `R` shops and the garage ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
-A gamepad works too (see [Gamepads](#gamepads)).
+A gamepad works too (see [Gamepads](#gamepads)), and so does a touch screen in the browser build (see `web/README.md`).
 
 ## Design
 
@@ -82,6 +82,7 @@ The engine only ever calls `engine.emit(event, ...)`:
 | `frame` | `dt` | once per rendered frame; build the HUD and camera here. `dt` is 0 while paused |
 | `key` | `name, down` | keys: `a`-`z`, `0`-`9`, `space`, `shift`, `up`, `f1`, `mouse1`, ..., and gamepad buttons `pad_a`, `pad_b`, `pad_x`, `pad_y`, `pad_lb`, `pad_rb`, `pad_lt`, `pad_rt`, `pad_back`, `pad_start`, `pad_l3`, `pad_r3`, `pad_up`/`down`/`left`/`right` |
 | `pad_connected` / `pad_disconnected` | `name` | a gamepad was plugged in or pulled out |
+| `touch` | `phase, id, x, y` | a finger on a touch screen: `phase` is `start`, `move`, `end` or `cancel`, `x, y` in pixels; `lib/touch.lua` turns them into a gamepad |
 | `quit` | | before the game closes, and before a hot reload replaces the scripts; save here |
 | `menu_key` | `name, down` | instead of `key` while the game is paused, so only menus see input |
 | `minimized` | | the window was minimized (the demo pauses) |

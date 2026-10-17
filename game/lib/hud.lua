@@ -15,6 +15,13 @@ local function shadow_text(s, x, y, size, r, g, b)
   engine.text(s, x, y, size, r, g, b, 1)
 end
 
+-- The minimap's corner: bottom right, or top left once touch controls are
+-- on (their buttons take the bottom right, and the help box isn't shown).
+local function map_corner(sw, sh, W, H)
+  if require("lib.touch").active then return 20, 20 end
+  return sw - W - 20, sh - H - 20
+end
+
 local function centered(s, y, size, r, g, b)
   local w = engine.screen()
   shadow_text(s, (w - engine.text_width(s, size)) / 2, y, size, r, g, b)
@@ -125,7 +132,7 @@ local function radar(sw, sh, L)
   local px, _, pz = U.player_pos()
   if not px then return end
   local S = math.floor(math.min(230, sh * 0.3))
-  local x0, y0 = sw - S - 20, sh - S - 20
+  local x0, y0 = map_corner(sw, sh, S, S)
   local k = S / (2 * RADAR)
   -- Anything off the radar is pinned to its edge, so blips still point the way.
   local function map(wx, wz)
@@ -188,7 +195,7 @@ local function minimap(sw, sh)
   -- The island is tall and thin, so the map is too; it scales with the window.
   local H = math.floor(math.min(230, sh * 0.3))
   local W = math.floor(H * L.sx / L.sz)
-  local x0, y0 = sw - W - 20, sh - H - 20
+  local x0, y0 = map_corner(sw, sh, W, H)
   local function map(wx, wz) return x0 + (wx - (L.cx or 0) + L.sx / 2) / L.sx * W, y0 + (wz - (L.cz or 0) + L.sz / 2) / L.sz * H end
   engine.rect(x0 - 4, y0 - 4, W + 8, H + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, W, H, 0.18, 0.32, 0.55, 0.85)
@@ -347,7 +354,11 @@ engine.on("frame", function(dt)
   local W = require "systems.weapons"
   local def = W.defs[G.weapon]
   local label = def.name .. (def.melee and "" or string.format("  %d", G.ammo[G.weapon] or 0))
-  shadow_text(label, w - 20 - engine.text_width(label, 16), h - math.min(230, h * 0.3) - 55, 16, 1, 1, 1)
+  if require("lib.touch").active then
+    shadow_text(label, 20, math.min(230, h * 0.3) + 32, 16, 1, 1, 1) -- under the minimap
+  else
+    shadow_text(label, w - 20 - engine.text_width(label, 16), h - math.min(230, h * 0.3) - 55, 16, 1, 1, 1)
+  end
   if G.player and not def.melee then
     local cx, cy = w / 2, h / 2
     for _, r in ipairs{{-9, -1, 6, 2}, {3, -1, 6, 2}, {-1, -9, 2, 6}, {-1, 3, 2, 6}} do
@@ -386,7 +397,9 @@ engine.on("frame", function(dt)
   minimap(w, h)
   whereabouts(h)
 
-  if help_shown() then
+  if require("lib.touch").active then
+    -- Touch buttons say what they do; the keyboard and pad help doesn't apply.
+  elseif help_shown() then
     local lines = require("lib.input").connected() and
       "L STICK MOVE/STEER  R STICK CAMERA  RT ACCELERATE/FIRE  LT BRAKE\nA JUMP/HANDBRAKE  B RUN/HORN  Y ENTER/EXIT CAR  X SHOPS\nLB/RB WEAPONS  BACK PROGRESS  START PAUSE/SETTINGS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nF1 HIDE HELP" or "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nTAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC PAUSE/SETTINGS"
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
