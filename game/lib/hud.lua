@@ -288,6 +288,9 @@ engine.on("wanted_changed", function(level, old)
   radio = {text = text, till = engine.time() + 5}
 end)
 
+-- The city radio (lib/story.lua) speaks in the same place.
+engine.on("story", function(text) radio = {text = text, till = engine.time() + 6} end)
+
 -- The controls: shown for the first half minute until someone has seen them
 -- through (or closed them), then only while the HELP OVERLAY setting is on.
 -- Every start says "F1 HELP" for a few seconds, so they can be found again.

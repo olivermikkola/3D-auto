@@ -62,6 +62,19 @@ return {
     {pos = {-920, -820}, yaw = -0.85, target_map = "raisio", name = "Pansiontie -> Raisio / Pansio", target_pos = {920, 810}},
   },
 
+  -- The parts of town the HUD and the radio name: the map data's suburbs,
+  -- neighbourhoods and localities (not the city itself, single blocks or farms).
+  areas = (function()
+    local t, seen = {}, {}
+    for _, a in ipairs(osm.areas) do
+      local kind = a[4]
+      if (kind == "suburb" or kind == "neighbourhood" or kind == "locality") and not seen[a[1]] then
+        t[#t + 1], seen[a[1]] = a, true
+      end
+    end
+    return t
+  end)(),
+
   specials = {
     lot = {-300, -20},     -- starting lot in Puolalanpuisto park clear of roads
     plaza = {1000, 640},   -- Kupittaanpuisto open plaza

@@ -27,6 +27,8 @@ local sfx = require "lib.sfx"
 require "lib.stunts"
 require "lib.camera"
 require "lib.hud"
+require "lib.story"
+require "story.radio"
 require "systems.garage"
 require "lib.menu"
 require "lib.shop"
@@ -141,6 +143,7 @@ if os.getenv("KAUPPATORI_TEST") then require "test.kauppatori_probe" end
 if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
 if os.getenv("PED_EVASION_TEST") then require "test.ped_evasion_probe" end
 if os.getenv("PED_PASS_TEST") then require "test.ped_pass_probe" end
+if os.getenv("STORY_TEST") then require "test.story_probe" end
 if os.getenv("SPEED_TEST") then require "test.speed_probe" end
 if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
 if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
