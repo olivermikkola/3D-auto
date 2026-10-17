@@ -29,11 +29,14 @@ end
 local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
 
 -- At a dead end (the shore, the park) turning back is the only way on.
+-- A one-way street that just ends (cut off at the map's edge) has no way
+-- on at all: the car is lost, and gets moved to another street.
 local function pick_next(c)
-  local opts = {}
-  for _, n in ipairs(city.links(c.to)) do
-    if n ~= c.from then opts[#opts + 1] = n end
+  local opts, back = {}, false
+  for _, n in ipairs(city.links(c.to) or {}) do
+    if n ~= c.from then opts[#opts + 1] = n else back = true end
   end
+  if #opts == 0 and not back then c.lost = true; return end
   c.from, c.to = c.to, opts[math.random(#opts)] or c.from
   route(c)
 end
@@ -41,6 +44,7 @@ end
 -- Place car c on a random street segment between `min_dist` and NEAR from
 -- the player (anywhere in town if there's no player).
 local function place(c, min_dist)
+  c.lost = nil
   local roads = city.roads()
   local px, _, pz = U.player_pos()
   for _ = 1, 40 do
@@ -138,6 +142,7 @@ local function update(id, c, dt)
     local tx, tz = lane_target(c)
     if U.dist2d(x, z, tx, tz) < 4 then
       if c.wp < #c.path then c.wp = c.wp + 1 else pick_next(c) end
+      if c.lost then c.speed = 0 end
       tx, tz = lane_target(c)
     end
     local yaw = engine.yaw(id)
@@ -171,7 +176,7 @@ local function update(id, c, dt)
     -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
-    if not c.keep and (c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
+    if not c.keep and (c.lost or c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
       local nx, nz, nyaw2 = place(c, 90)
       if nx then
         engine.set_pos(id, nx, 0.8 + U.ground(nx, nz), nz)
@@ -188,5 +193,7 @@ engine.on("tick", function(dt)
     if engine.exists(id) then update(id, c, dt) else T.cars[id] = nil end
   end
 end)
+
+T._pick_next = pick_next -- for test.dead_end_probe
 
 return T
