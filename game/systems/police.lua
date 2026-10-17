@@ -54,9 +54,10 @@ local function occupied(x, z)
   return false
 end
 
--- How far it is by road from junction `from` to each junction (meters).
-local function road_dist(from)
-  local dist, done = {[from] = 0}, {}
+-- How far it is by road from each junction to junction `to` (meters),
+-- driving the right way down one-way streets.
+local function road_dist(to)
+  local dist, done = {[to] = 0}, {}
   while true do
     local best, u = math.huge
     for j, d in pairs(dist) do
@@ -64,8 +65,8 @@ local function road_dist(from)
     end
     if not u then return dist end
     done[u] = true
-    for _, n in ipairs(city.links(u)) do
-      local p, len = city.path(u, n), 0
+    for _, n in ipairs(city.links_in(u)) do
+      local p, len = city.path(n, u), 0
       for i = 2, #p do len = len + U.dist2d(p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) end
       if not dist[n] or best + len < dist[n] then dist[n] = best + len end
     end
@@ -243,16 +244,16 @@ function P.direct_pursuit(sees, dist) return sees and dist < SIGHT end
 -- straight for the nearest junction (which may be across back gardens).
 local function road_route(x, y, z, goal)
   local roadnet = require "lib.roadnet"
-  local hops, queue = {[goal] = 0}, {goal}
+  local hops, queue = {[goal] = 0}, {goal} -- roads from each junction to the goal
   for _, q in ipairs(queue) do
-    for _, nb in ipairs(city.links(q)) do
+    for _, nb in ipairs(city.links_in(q)) do
       if not hops[nb] then hops[nb] = hops[q] + 1; queue[#queue + 1] = nb end
     end
   end
   local e, i = roadnet.nearest_edge(x, z, nil, y)
   local E = roadnet.net().edges[e]
   local route = {}
-  if (hops[E.b] or math.huge) <= (hops[E.a] or math.huge) then
+  if E.oneway or (hops[E.b] or math.huge) <= (hops[E.a] or math.huge) then -- (a one-way street only on)
     for k = i, #E.pts do route[#route + 1] = E.pts[k] end
   else
     for k = i - 1, 1, -1 do route[#route + 1] = E.pts[k] end
@@ -269,10 +270,17 @@ local function drive_cop(c, dt)
   local dist = U.dist2d(x, z, px, pz)
   local tx, tz, want
 
-  local direct = P.direct_pursuit(c.sees, dist) and engine.time() >= (c.roads_until or 0)
+  local now = engine.time()
+  local dash = (c.dash_until or 0) > now
+  local direct = (P.direct_pursuit(c.sees, dist) or dash) and now >= (c.roads_until or 0)
   local lx, lz = wanted.center[1], wanted.center[2]
   local last = U.dist2d(x, z, lx, lz)
-  if direct then
+  if direct and not c.sees then
+    -- Off the road after them, to where they were last seen (unhurried:
+    -- across a park, a yard, round a block's corner).
+    tx, tz = lx, lz
+    want = math.min(14, math.max(0, last - 4) * 1.5)
+  elseif direct then
     -- Direct pursuit, leading the target a little, and slowing in time to
     -- stop beside them rather than overshoot.
     local vx, _, vz = engine.vel(G.vehicle or G.player)
@@ -290,9 +298,31 @@ local function drive_cop(c, dt)
     -- (Nearest at the same level: not the tunnel under a street, or the
     -- street over it.)
     local at = city.nearest(x, z, y)
-    local goal = city.nearest(wanted.seen and px or wanted.center[1], wanted.seen and pz or wanted.center[2],
-                              wanted.seen and py or wanted.center[3])
-    if c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
+    local gx, gy, gz = wanted.seen and px or wanted.center[1], wanted.seen and py or wanted.center[3],
+                       wanted.seen and pz or wanted.center[2]
+    local goal = city.nearest(gx, gz, gy)
+    -- Off the road: head for the stretch of road nearest them, not just the
+    -- nearest junction (which may be a block away), and on it, for the spot
+    -- closest to them; from there, off the road after them (given up, as a
+    -- direct chase is, after two jams).
+    local on_it = false
+    if city.network() then
+      local roadnet = require "lib.roadnet"
+      local net = roadnet.net()
+      local te, _, sx, sz, off = roadnet.nearest_edge(gx, gz, nil, gy)
+      if te and off > 12 then
+        local E = net.edges[te]
+        goal = (E.oneway or U.dist2d(x, z, city.pos(E.a)) <= U.dist2d(x, z, city.pos(E.b))) and E.a or E.b
+        if roadnet.nearest_edge(x, z, nil, y) == te then
+          on_it = true
+          c.goal, c.route, c.ri = {sx, sz}, {{sx, sz}}, 1
+          if U.dist2d(x, z, sx, sz) < 12 and now >= (c.roads_until or 0) then c.dash_until = now + 10 end
+        end
+      end
+    end
+    if on_it then
+      -- (Along this stretch to the spot nearest them.)
+    elseif c.goal and U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 and c.ri < #c.route then
       c.ri = c.ri + 1 -- round the next bend of this road
       c.goal = c.route[c.ri]
     elseif city.network() and (not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9)
@@ -349,7 +379,7 @@ local function drive_cop(c, dt)
     -- Repeated direct approaches into a fence or quay need a road detour.
     if direct then
       c.direct_jams = (c.direct_jams or 0) + 1
-      if c.direct_jams >= 2 then c.roads_until, c.direct_jams, c.goal = engine.time() + 6, 0, nil end
+      if c.direct_jams >= 2 then c.roads_until, c.direct_jams, c.goal, c.dash_until = engine.time() + 6, 0, nil, nil end
     end
     -- Wedged again and again on a road map (a U-turn on a narrow street):
     -- back up further, a proper three-point turn, and think again about
