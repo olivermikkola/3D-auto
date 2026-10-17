@@ -33,7 +33,11 @@ SHOTS = {
     "kakola": ((-1250, 90, 750), (-1450, 25, 950), []),
     "kauppatori": ((-175, 140, -150), (-175, 0, -15), [((226, 215, 203), 20, 0.30)]),
     "turun_linna": ((-2330, 45, 1900), (-2265, 10, 1785), [((114, 108, 100), 16, 0.10)]),
-    "tuomiokirkko": ((250, 60, -250), (385, 15, -100), [((100, 41, 28), 20, 0.025)]),
+    "tuomiokirkko": ((380, 40, -190), (455, 20, -105), [((100, 41, 28), 20, 0.022)]),
+    # From above: the cathedral's copper roofs on its own site, east of the square.
+    "tuomiokirkko_site": ((485, 160, -40), (485, 0, -105), [((76, 148, 116), 14, 0.06)]),
+    # Yliopistonmäki: Rosetta and Signum in their mapped yellow, the main building behind.
+    "yliopistonmaki": ((760, 40, -210), (807, 12, -300), [((164, 164, 76), 14, 0.09)]),
     # Portsa's wooden houses: ochre and red.
     "portsa": ((-1300, 70, 520), (-1430, 10, 660), [((160, 136, 56), 20, 0.03), ((120, 40, 8), 20, 0.04)]),
     # Suomen Joutsen's white hull at Forum Marinum.

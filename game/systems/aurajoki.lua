@@ -258,7 +258,7 @@ function A.tick(dt)
 end
 
 -- The cathedral's bells ring noon over the river.
-local CATHEDRAL = {380, -90}
+local CATHEDRAL = {428, -104} -- the tower
 local last_hour
 engine.on("tick", function(dt)
   A.tick(dt or (1/60))
