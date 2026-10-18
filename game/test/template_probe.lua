@@ -1,7 +1,10 @@
 -- Mission template probe: the example story of docs/MISSION_TEMPLATES.md
 -- cast at 50 seeds. Every version must keep its conditions, the same seed
 -- must give the same places, and the count of different versions is printed.
+local G = require "lib.state"
+local U = require "lib.util"
 local city = require "lib.city"
+local mission = require "lib.mission"
 local template = require "lib.template"
 
 local SEEDS = 50
@@ -68,5 +71,55 @@ engine.on("init", function()
   if first then print("TEMPLATE_PROBE " .. map .. ": " .. first) end
   if #fails > 0 then print("TEMPLATE_PROBE " .. map .. ": first failure: " .. fails[1]) end
   print(string.format("TEMPLATE_PROBE %s: %.0f ms", map, (os.clock() - t0) * 1000))
-  print("TEMPLATE_PROBE: PASSED")
+
+  -- Häsburger Express: how many of 50 seeds give a playable run, and one played.
+  local hes
+  for _, d in ipairs(mission.defs) do if d.id == "11_hesburger_express" then hes = d end end
+  assert(hes and hes.cast, "Häsburger Express is on a map with a Hesburger")
+  local playable, runs, shortest, longest = 0, {}, math.huge, 0
+  for seed = 1, SEEDS do
+    local drops, seconds = hes.cast(seed)
+    if drops then
+      assert(#drops == 3 and drops[1].name and drops[2].name and drops[3].name, "three named customers")
+      for _, p in ipairs(drops) do assert(p.road and p.drive < math.huge, "a customer cars can reach") end
+      playable = playable + 1
+      runs[drops[1].name .. "|" .. drops[2].name .. "|" .. drops[3].name] = true
+      shortest, longest = math.min(shortest, seconds), math.max(longest, seconds)
+    end
+  end
+  local different = 0
+  for _ in pairs(runs) do different = different + 1 end
+  print(string.format("TEMPLATE_PROBE %s: Häsburger Express: %d/%d seeds playable, %d different runs, timer %d-%d s",
+    map, playable, SEEDS, different, shortest, longest))
+  assert(playable == SEEDS, "every seed gives a playable run")
+
+  -- Play it: unlock, walk into the start marker, then onto each red marker.
+  G.passed["02_checkpoints"] = true
+  for _, d in ipairs(mission.defs) do if d.id == "02_checkpoints" then d.passed = true end end
+  mission.show_start_markers()
+  local passed, cash0, delivered, step = false, G.cash, 0, 0
+  engine.on("mission_passed", function(def) if def == hes then passed = true end end)
+  local function put(x, z)
+    engine.set_pos(G.player, x, 1.2 + U.ground(x, z), z)
+    engine.set_vel(G.player, 0, 0, 0)
+  end
+  engine.on("tick", function()
+    step = step + 1
+    if passed then
+      assert(G.cash == cash0 + hes.reward, "the reward is paid")
+      print(string.format("TEMPLATE_PROBE %s: Häsburger Express played, %d customers, passed", map, delivered))
+      print("TEMPLATE_PROBE: PASSED")
+      engine.quit()
+      return
+    end
+    assert(step < 2000, "Häsburger Express didn't finish")
+    if not G.mission then put(hes.start[1], hes.start[2]); return end
+    assert(G.mission.def == hes, "another mission started")
+    local mk = G.markers[#G.markers]
+    if mk and engine.exists(mk.id) and step % 10 == 0 then
+      local x, _, z = engine.pos(mk.id)
+      put(x, z)
+      delivered = delivered + 1
+    end
+  end)
 end)

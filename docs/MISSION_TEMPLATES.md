@@ -1,6 +1,6 @@
 # Mission templates: one story, played in many places
 
-Status: 2026-10-18. Step 1 (POIs in the map data) and step 2 (`lib/template.lua`) are done.
+Status: 2026-10-18. Steps 1-3 done for one mission (Häsburger Express); more missions to port.
 
 ## The idea
 
@@ -88,6 +88,15 @@ Step 2, the example story above (`TEMPLATE_TEST=1`, seeds 1-50, from the
 start lot): Turku 50/50 seeds cast into 50 different versions, Raisio
 50/50 into 50; no relax step was needed. Seed 1 in Turku: Turun synagoga ->
 Kuhilaspuiston kenttä -> Lidl, 5.4 km by road. 100 casts take 0.35 s.
+
+Step 3, Häsburger Express on templates: the restaurant is the real Hesburger
+nearest the start lot; three customers (school or library, sports ground,
+hotel or museum) are cast per run from a seed saved with progress
+(`stats.mission_runs`), so each play is another version. Seeds 1-50: Turku
+50/50 playable, 50 different runs, timer 160-310 s; Raisio 50/50, 39
+different, 180-300 s. One run is played through by the probe on each map.
+Maps without a Hesburger (the grid maps) no longer get the mission (they
+used Raisio's coordinates before).
 
 Names alone would mislead: Turku has charging stations called "Helen
 Hesburger ...". Tags tell them apart (`amenity=fast_food`).
