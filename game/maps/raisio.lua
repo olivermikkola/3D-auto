@@ -121,6 +121,7 @@ return {
   string_lights = {{610, -1755.5, 940, -1755.5, 13}},
   cranes = osm.cranes,
   piers = osm.piers,
+  pois = osm.pois, -- for missions (lib/pois)
   fog = {170, 700}, -- see across the bay to the shipyard
   trees = 6000,
   lamp_every = 60,

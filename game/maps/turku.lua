@@ -37,6 +37,7 @@ return {
   platforms = osm.platforms,
   cranes = osm.cranes,
   piers = osm.piers,
+  pois = osm.pois, -- for missions (lib/pois)
   fog = {180, 800},
   trees = 8000,
   lamp_every = 50,
