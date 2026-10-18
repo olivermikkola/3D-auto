@@ -656,34 +656,133 @@ local function dashes(parts, pts, top, hf)
   end
 end
 
--- A bridge deck's height along its edge: straight from one end's ground to
--- the other's, whatever is below; a street over a tunnel keeps its own
--- surveyed heights.
-local CLEARANCE = 2.5
+-- A road's own graded height at (x, z) on it (what is drawn and driven),
+-- from the importer's profile; nil for a road without one.
+local function profile_at(e, x, z)
+  if not e.prof then return nil end
+  local best, bs, s = math.huge, 0, 0
+  for i = 2, #e.pts do
+    local l = math.sqrt((e.pts[i][1] - e.pts[i - 1][1]) ^ 2 + (e.pts[i][2] - e.pts[i - 1][2]) ^ 2)
+    local d, _, _, t = dist_seg(x, z, e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2])
+    if d < best then best, bs = d, s + l * t end
+    s = s + l
+  end
+  local hs, u = e.prof.hs, math.max(0, (e.s0 + bs) / e.prof.step)
+  local k = math.min(math.floor(u), #hs - 2)
+  return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
+end
+
+-- The roads that meet at each junction, built once per map.
+local function meeting()
+  if not NET.meeting then
+    local m = {}
+    for _, e in ipairs(NET.edges) do
+      for _, id in ipairs{e.a, e.b} do
+        m[id] = m[id] or {}
+        table.insert(m[id], e)
+      end
+    end
+    NET.meeting = m
+  end
+  return NET.meeting
+end
+
+-- A bridge deck's height along its edge: from one end's height to the
+-- other's, whatever is below, lifted in a gentle arch where it crosses
+-- water or another road or a railway; a street over a tunnel keeps its own
+-- surveyed heights. An end is at the ground's height, or where the ground
+-- there is the river's (a quay the terrain grid rounds off), as high as the
+-- graded road it meets.
+local CLEARANCE = 2.5 -- over water
+local ROAD_ROOM, RAIL_ROOM = 4.8, 6.0 -- under the slab, over a road, a railway
+local SLAB = 1.3 -- the deck's underside below its surface
+local MAX_GRADE = 0.12 -- how steep an arch over land may make a deck
+-- An arch over land: a ridge with a rounded top, 1 in the middle and 0 at
+-- the ends. Steepest at the ends, at 2 * RIDGE * lift / length: a parabola
+-- (RIDGE 2) rises half as high for the same grade.
+local RIDGE = 1.25
+local function ridge(t) return 1 - math.abs(2 * t - 1) ^ RIDGE end
 local function deck_height(e)
   local cum = {0}
   for i = 2, #e.pts do
     cum[i] = cum[i - 1] + math.sqrt((e.pts[i][1] - e.pts[i - 1][1]) ^ 2 + (e.pts[i][2] - e.pts[i - 1][2]) ^ 2)
   end
   local total = math.max(cum[#cum], 1e-3)
-  local ha, hb = GROUND(e.pts[1][1], e.pts[1][2]), GROUND(e.pts[#e.pts][1], e.pts[#e.pts][2])
+  local function end_height(id, p)
+    if not R.water_level(p[1], p[2]) then return GROUND(p[1], p[2]) end
+    -- In the water: the graded road it meets there, the lowest if several.
+    local best
+    for _, o in ipairs(meeting()[id] or {}) do
+      if o ~= e and not (o.deck or o.over or o.tunnel) and o.prof then
+        local h = profile_at(o, p[1], p[2])
+        if h and (not best or h < best) then best = h end
+      end
+    end
+    return best or GROUND(p[1], p[2])
+  end
+  local ha, hb = end_height(e.a, e.pts[1]), end_height(e.b, e.pts[#e.pts])
   local own = e.over and e.prof
   -- Over water the deck clears it by CLEARANCE in its middle half, rising
   -- in a gentle arch from its ends (the terrain's 10 m grid rounds the quays
   -- off almost to the water, so straight end to end it would lie on it).
-  local lift = 0
+  -- Over a road or railway below its underside, it clears that by
+  -- ROAD_ROOM or RAIL_ROOM, as far as MAX_GRADE allows. (Something at or
+  -- over the underside isn't passing under: a ramp joining, or ground the
+  -- elevation model filled in under a bridge.)
+  local lift, land, keep = 0, 0, math.huge
   if not own then
+    -- Railway stretches near this deck, once.
+    local x0, z0, x1, z1 = math.huge, math.huge, -math.huge, -math.huge
+    for _, p in ipairs(e.pts) do
+      x0, z0, x1, z1 = math.min(x0, p[1] - 5), math.min(z0, p[2] - 5), math.max(x1, p[1] + 5), math.max(z1, p[2] + 5)
+    end
+    local rails = {}
+    for _, r in ipairs(NET.map.railways or {}) do
+      for j = 4, #r do
+        local a, b = r[j - 1], r[j]
+        if math.max(a[1], b[1]) >= x0 and math.min(a[1], b[1]) <= x1 and math.max(a[2], b[2]) >= z0 and math.min(a[2], b[2]) <= z1 then
+          rails[#rails + 1] = {a, b}
+        end
+      end
+    end
     for i = 2, #e.pts do
       local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
       local n = math.max(1, math.ceil((cum[i] - cum[i - 1]) / 3))
       for k = 0, n do
         local s = cum[i - 1] + (cum[i] - cum[i - 1]) * k / n
         local t = s / total
-        local w = t >= 0.25 and t <= 0.75 and R.water_level(ax + (bx - ax) * k / n, az + (bz - az) * k / n)
-        if w then lift = math.max(lift, (w + CLEARANCE - (ha + (hb - ha) * t)) / (4 * t * (1 - t))) end
+        local x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
+        local base = ha + (hb - ha) * t
+        local w = t >= 0.25 and t <= 0.75 and R.water_level(x, z)
+        if w then lift = math.max(lift, (w + CLEARANCE - base) / (4 * t * (1 - t))) end
+        if t > 0.05 and t < 0.95 then
+          local function need(low, room)
+            if base - SLAB > low and base - SLAB - low < room then
+              land = math.max(land, (low + SLAB + room - base) / ridge(t))
+            elseif low >= base - SLAB and low <= base + 0.5 then
+              -- A road level with the slab (where the deck comes down to the
+              -- streets at its end): lifted, the slab would be a low ceiling
+              -- over it; keep it a step a car climbs.
+              keep = math.min(keep, math.max(0, (low + SLAB - base) / ridge(t)))
+            end
+          end
+          for _, it in ipairs(NET.grid[cell_key(math.floor(x / CELL), math.floor(z / CELL))] or {}) do
+            local o = NET.edges[it[1]]
+            if o ~= e and not (o.deck or o.over or o.tunnel) and o.a ~= e.a and o.a ~= e.b and o.b ~= e.a and o.b ~= e.b then
+              local p, q = o.pts[it[2] - 1], o.pts[it[2]]
+              if dist_seg(x, z, p[1], p[2], q[1], q[2]) < o.width / 2 + 1 then
+                need(profile_at(o, x, z) or GROUND(x, z), ROAD_ROOM)
+              end
+            end
+          end
+          for _, r in ipairs(rails) do
+            if dist_seg(x, z, r[1][1], r[1][2], r[2][1], r[2][2]) < 2.5 then need(GROUND(x, z), RAIL_ROOM) end
+          end
+        end
       end
     end
     lift = math.min(lift, 6)
+    land = math.min(land, keep, 8, math.max(0, (MAX_GRADE * total - math.abs(hb - ha)) / (2 * RIDGE)))
   end
   return function(x, z)
     local best, bs = math.huge, 0
@@ -697,7 +796,7 @@ local function deck_height(e)
       return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
     end
     local t = bs / total
-    return ha + (hb - ha) * t + lift * 4 * t * (1 - t)
+    return ha + (hb - ha) * t + math.max(lift * 4 * t * (1 - t), land * ridge(t))
   end
 end
 
