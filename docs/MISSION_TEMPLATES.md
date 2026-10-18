@@ -1,6 +1,6 @@
 # Mission templates: one story, played in many places
 
-Status: plan, 2026-10-18. Step 1 (POIs in the map data) is done.
+Status: 2026-10-18. Step 1 (POIs in the map data) and step 2 (`lib/template.lua`) are done.
 
 ## The idea
 
@@ -57,6 +57,12 @@ from OSM, so the text says "Pick up the bag at Mikaelinkirkko".
    6 x 6 km, so "a supermarket over 5 km away" finds none there from the
    start lot (Raisio: one). A role says how far a condition may be relaxed
    ("5 km, or as far as there is").
+   Done in `lib/template.lua`: `template.cast{seed, from, roles}` with tag
+   conditions, straight-line and by-road distances between roles (Dijkstra
+   over the junctions, one-way streets the right way; a place cars can't
+   reach is never picked), relax steps, weights, places to avoid, and no
+   place in two roles. Not yet: "across the river" (needs the water as a
+   line to test against).
 3. **Port 2-3 missions** (Häsburger Express first: `amenity=fast_food,
    brand=Hesburger`) and add a seed test: each template at N seeds on Turku
    and Raisio, reporting how many versions have every role filled, a
@@ -77,6 +83,11 @@ it only ever chooses among things that exist.
 | supermarkets 1-3 km away | 8 | 0 |
 | supermarkets over 5 km away | 0 | 1 |
 | basketball courts | 14 | 8 |
+
+Step 2, the example story above (`TEMPLATE_TEST=1`, seeds 1-50, from the
+start lot): Turku 50/50 seeds cast into 50 different versions, Raisio
+50/50 into 50; no relax step was needed. Seed 1 in Turku: Turun synagoga ->
+Kuhilaspuiston kenttä -> Lidl, 5.4 km by road. 100 casts take 0.35 s.
 
 Names alone would mislead: Turku has charging stations called "Helen
 Hesburger ...". Tags tell them apart (`amenity=fast_food`).
