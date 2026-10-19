@@ -12,7 +12,7 @@ local KEY, DELAY, RESET_HOLD = "progress", 2, 3
 local AMMO = {pistol = 36, smg = 0} -- what a new game starts with
 
 local function blank()
-  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0},
+  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0, mission_runs = 0},
           ammo = {pistol = AMMO.pistol, smg = AMMO.smg}, car = nil}
 end
 

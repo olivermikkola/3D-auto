@@ -18,8 +18,8 @@ class TemplateTests(unittest.TestCase):
         env = dict(os.environ, MAP=map_name, SEED="1337", TEMPLATE_TEST="1")
         with tempfile.TemporaryDirectory() as d:
             env["XDG_DATA_HOME"] = d
-            res = subprocess.run([str(BINARY), "game", "--headless", "5"], cwd=ROOT, env=env,
-                                 capture_output=True, text=True, timeout=600)
+            res = subprocess.run([str(BINARY), "game", "--headless", "3000"], cwd=ROOT, env=env,
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("TEMPLATE_PROBE: PASSED", res.stdout, res.stdout + res.stderr)
         return res.stdout
@@ -35,6 +35,16 @@ class TemplateTests(unittest.TestCase):
                 cast, seeds, versions = self.versions(self.probe(name))
                 self.assertEqual(cast, seeds)
                 self.assertGreaterEqual(versions, seeds * 0.8)
+
+    def test_hesburger_express_is_played_on_both_maps(self):
+        for name in ("turku", "raisio"):
+            with self.subTest(map=name):
+                out = self.probe(name)
+                m = re.search(r"Häsburger Express: (\d+)/(\d+) seeds playable, (\d+) different runs", out)
+                self.assertTrue(m, out)
+                self.assertEqual(m[1], m[2])
+                self.assertGreaterEqual(int(m[3]), int(m[2]) * 0.6)
+                self.assertIn("Häsburger Express played, 3 customers, passed", out)
 
     def test_a_grid_map_casts_nothing(self):
         self.assertIn("grid map, nothing to cast", self.probe("starter"))

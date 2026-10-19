@@ -198,6 +198,16 @@ local function cast_once(t, rand)
   return cast, relaxed
 end
 
+-- A new seed for each templated mission played, kept with the progress
+-- save, so the next run is another version of the story (and a new game
+-- starts from the same ones again).
+function T.next_seed()
+  local G = require "lib.state"
+  G.stats.mission_runs = (G.stats.mission_runs or 0) + 1
+  require("lib.progress").touch()
+  return G.stats.mission_runs
+end
+
 -- Fill every role (see the top of the file). Returns the cast and, per
 -- role that needed it, how many relax steps it took; or nil and why.
 function T.cast(t)
