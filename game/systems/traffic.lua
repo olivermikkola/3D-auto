@@ -8,12 +8,12 @@ local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 
 local T = {cars = {}}
-local LANE, CRUISE = 3.2, 11
+local LANE, CRUISE = 3.2, 11 -- LANE: how far before a bend a car aims (and its lane on a grid)
 
 -- A car drives the bends of its road from c.from to c.to, aiming at bend
 -- c.wp (a grid street has no bends: just its two ends).
 local function route(c)
-  c.path, c.wp = city.path(c.from, c.to), 2
+  c.path, c.wp, c.lane = city.path(c.from, c.to), 2, city.lane(c.from, c.to)
 end
 
 local function lane_target(c)
@@ -23,7 +23,8 @@ local function lane_target(c)
   local rx, rz = U.right(yaw)
   -- Aim a little before the junction (or bend) so turns cut the corner.
   local fx, fz = U.forward(yaw)
-  return bx + rx * LANE - fx * LANE, bz + rz * LANE - fz * LANE
+  local lane = c.lane or LANE
+  return bx + rx * lane - fx * LANE, bz + rz * lane - fz * LANE
 end
 
 local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
@@ -74,7 +75,7 @@ local function place(c, min_dist)
     local ax, az, bx, bz = a[1], a[2], b[1], b[2]
     local yaw = math.atan(bx - ax, bz - az)
     local rx, rz = U.right(yaw)
-    local x, z = ax + (bx - ax) * t + rx * LANE, az + (bz - az) * t + rz * LANE
+    local x, z = ax + (bx - ax) * t + rx * c.lane, az + (bz - az) * t + rz * c.lane
     local d = px and U.dist2d(x, z, px, pz)
     if not px or (d >= min_dist and d <= NEAR) then
       c.speed, c.stuck = 0, 0
@@ -177,9 +178,10 @@ local function update(id, c, dt)
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
     if not c.keep and (c.lost or c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
-      local nx, nz, nyaw2 = place(c, 90)
+      local nx, nz, nyaw2, ny = place(c, 90)
       if nx then
-        engine.set_pos(id, nx, 0.8 + U.ground(nx, nz), nz)
+        -- On the road it was put on: a bridge's deck, not the river under it.
+        engine.set_pos(id, nx, 0.8 + (ny or U.ground(nx, nz)), nz)
         engine.orient(id, nyaw2)
         engine.set_vel(id, 0, 0, 0)
         engine.set_angvel(id, 0, 0, 0)
