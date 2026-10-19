@@ -64,7 +64,7 @@ local function extend()
   end
 end
 
-local t, stuck, backing, stucks, km, px, pz = 0, 0, 0, {}, 0, nil, nil
+local t, stuck, backing, stucks, km, px, pz, cops = 0, 0, 0, {}, 0, nil, nil, 0
 local function aim(x, z)
   -- Move on past the points already reached (or passed).
   while at < #pts and U.dist2d(x, z, pts[at][1], pts[at][2]) < AHEAD do at = at + 1 end
@@ -100,7 +100,7 @@ end
 engine.on("tick", function(dt)
   t = t + dt
   if t > SECS then
-    print(string.format("PROFILE_DRIVE: drove %.1f km in %.0f s, %d stuck spot(s)", km, SECS, #stucks))
+    print(string.format("PROFILE_DRIVE: drove %.1f km in %.0f s, %d stuck spot(s), up to %d police cars", km, SECS, #stucks, cops))
     for _, s in ipairs(stucks) do print(string.format("  stuck at %.0f, %.0f (%.0f s in)", s[1], s[2], s[3])) end
     engine.quit()
     return
@@ -119,6 +119,7 @@ engine.on("tick", function(dt)
     print("PROFILE_DRIVE: driving from " .. string.format("%.0f, %.0f", p[1], p[2]))
   end
   if WANTED > 0 and t > WANTED and t - dt <= WANTED then require("lib.wanted").set(2) end
+  cops = math.max(cops, require("systems.police").count())
   local car = G.vehicle
   if not car then return end
   -- Stuck (nose in a wall, a bus in the way): back off a second, and

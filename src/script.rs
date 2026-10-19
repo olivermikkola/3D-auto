@@ -52,7 +52,8 @@ local function name_of(fn)
   local n = where[fn]
   if not n then
     local i = debug.getinfo(fn, "S")
-    local src = i.source:sub(1, #game_dir) == game_dir and i.source:sub(#game_dir + 1) or i.short_src
+    local src = i.source:gsub("\\", "/") -- (Windows paths, as __ROOT is written)
+    src = src:sub(1, #game_dir) == game_dir and src:sub(#game_dir + 1) or i.short_src
     n = src .. ":" .. i.linedefined
     where[fn] = n
   end
