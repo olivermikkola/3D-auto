@@ -192,7 +192,8 @@ fn now() -> f64 {
     miniquad::date::now()
 }
 
-/// PROFILE=1: every two seconds, print where the frames' time went.
+/// PROFILE=1: every two seconds, print where the frames' time went: the
+/// average frame, the worst one, and the Lua handlers slowest in one call.
 #[derive(Default)]
 struct Profile {
     on: bool,
@@ -203,15 +204,34 @@ struct Profile {
     physics: f64,
     frame_lua: f64,
     draw: f64,
+    /// The totals above as they were when the last frame ended.
+    last: Option<(f64, f64, f64, f64, f64, u32)>,
+    /// The longest frame: its seconds, its share of each total, its ticks.
+    worst: (f64, [f64; 4], u32),
+    /// Frames longer than LONG_FRAME.
+    long: u32,
 }
 
+/// A frame this long (two frames missed at 60 fps) is a visible stutter.
+const LONG_FRAME: f64 = 0.050;
+
 impl Profile {
-    fn frame_done(&mut self, draw_calls: usize, triangles: usize) {
+    fn frame_done(&mut self, draw_calls: usize, triangles: usize, script: Option<&Script>) {
         if !self.on {
             return;
         }
+        let t = now();
         self.frames += 1;
-        let secs = now() - *self.since.get_or_insert_with(now);
+        let (end, lua, physics, frame_lua, draw, ticks) =
+            self.last.unwrap_or((*self.since.get_or_insert(t), self.tick_lua, self.physics, self.frame_lua, self.draw, self.ticks));
+        let took = t - end;
+        let parts = [self.tick_lua - lua, self.physics - physics, self.frame_lua - frame_lua, self.draw - draw];
+        if took > self.worst.0 {
+            self.worst = (took, parts, self.ticks - ticks);
+        }
+        self.long += (took > LONG_FRAME) as u32;
+        self.last = Some((t, self.tick_lua, self.physics, self.frame_lua, self.draw, self.ticks));
+        let secs = t - *self.since.get_or_insert(t);
         if secs < 2.0 {
             return;
         }
@@ -230,7 +250,24 @@ impl Profile {
             // low elsewhere means the GPU is the limit.
             (secs - self.tick_lua - self.physics - self.frame_lua - self.draw) * 1e3 / f
         );
-        *self = Profile { on: true, ..Default::default() };
+        let (took, [lua, physics, frame_lua, draw], ticks) = self.worst;
+        let ms = |s: f64| s * 1e3;
+        println!(
+            "profile:   worst frame {:.1} ms: {ticks} ticks Lua {:.1} + physics {:.1}, frame Lua {:.1}, draw {:.1}, \
+             waiting {:.1} | {} frames over {:.0} ms",
+            ms(took),
+            ms(lua),
+            ms(physics),
+            ms(frame_lua),
+            ms(draw),
+            ms(took - lua - physics - frame_lua - draw),
+            self.long,
+            ms(LONG_FRAME)
+        );
+        for line in script.map(|s| s.slowest(3)).unwrap_or_default() {
+            println!("profile:   slowest Lua: {line}");
+        }
+        *self = Profile { on: true, since: Some(t), ..Default::default() };
     }
 }
 
@@ -257,6 +294,8 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
     let mut script = load(&eng);
     let t0 = std::time::Instant::now();
     let mut n = 0;
+    // PROFILE=1: each tick is a frame (no drawing), timed the same way.
+    let mut profile = Profile { on: script::profiling(), ..Default::default() };
     while let Some(s) = &script {
         if n >= ticks {
             s.emit(&eng, "quit", ());
@@ -264,10 +303,16 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
         }
         n += 1;
         if !eng.borrow().paused {
-            let _ = tick(&eng, s);
+            let (lua, physics) = tick(&eng, s);
+            profile.ticks += 1;
+            profile.tick_lua += lua;
+            profile.physics += physics;
         }
         eng.borrow_mut().hud.clear();
+        let t = now();
         s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
+        profile.frame_lua += now() - t;
+        profile.frame_done(0, 0, Some(s));
         eng.borrow_mut().update_audio();
         mixer.lock().unwrap().mix(&mut sink);
         if eng.borrow().quit {
@@ -470,7 +515,7 @@ impl EventHandler for App {
             window::order_quit();
         }
         self.gfx.commit();
-        self.profile.frame_done(self.gfx.draw_calls, self.gfx.triangles);
+        self.profile.frame_done(self.gfx.draw_calls, self.gfx.triangles, self.script.as_ref());
         if let Some(target) = self.target_frame {
             let elapsed = miniquad::date::now() - self.frame_start;
             if elapsed < target {
@@ -713,7 +758,7 @@ fn main() {
             pads: pad::Pads::new(),
             target_frame,
             frame_start: miniquad::date::now(),
-            profile: Profile { on: std::env::var("PROFILE").is_ok_and(|v| v == "1"), ..Default::default() },
+            profile: Profile { on: script::profiling(), ..Default::default() },
             failed,
         })
     });
