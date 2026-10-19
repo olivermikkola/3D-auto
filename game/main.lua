@@ -139,6 +139,7 @@ if os.getenv("DIRECTION_TEST") then require "test.direction_probe" end
 if os.getenv("DEAD_END_TEST") then require "test.dead_end_probe" end
 if os.getenv("POI_TEST") then require "test.poi_probe" end
 if os.getenv("TEMPLATE_TEST") then require "test.template_probe" end
+if os.getenv("BRIDGE_AUDIT") then require "test.bridge_audit" end
 if os.getenv("HEIST_TEST") then require "test.heist_probe" end
 if os.getenv("KAKOLA_TEST") then require "test.kakola_probe" end
 if os.getenv("HARBOR_TEST") then require "test.harbor_probe" end
