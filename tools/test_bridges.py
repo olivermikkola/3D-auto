@@ -11,13 +11,12 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto")
 
-# Bridges a bus still can't pass under, per map. Turku: Aninkaistensilta's
-# end over Virusmäenramppi (the ramp passes ~17 m from where the deck lands,
-# too close to climb over it), and Hämeensilta's two decks; Raisio:
-# Kuninkojantie's two. At those three the road below is graded up into the
-# deck: the elevation model fills in the ground under a bridge. Lower these
-# as they're fixed; never raise them.
-BLOCKED_MAX = {"turku": 3, "raisio": 2}
+# Bridges a bus still can't pass under (at one spot each), per map: Turku's
+# Aninkaistensilta, whose south end lands ~17 m past Virusmäenramppi, too
+# close to climb over it; Raisio's Raisionlahdentie / Naantalintie over
+# Upalingontie, 44 m end to end, too short to. (Before: Turku 5, Raisio 9.)
+# Lower these as they're fixed; never raise them.
+BLOCKED_MAX = {"turku": 1, "raisio": 1}
 STEP_MAX = 1.0  # meters between a deck's end and the street it meets
 
 

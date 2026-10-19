@@ -687,6 +687,80 @@ local function meeting()
   return NET.meeting
 end
 
+-- Is junction id up in the air: only decks meet there (the map data often
+-- splits a bridge at a node in its middle, or a ramp leaves it there)?
+local function floating(id)
+  for _, o in ipairs(meeting()[id] or {}) do
+    if not o.deck or o.over then return false end
+  end
+  return true
+end
+
+-- The deck e is part of, end to end, as an edge-like table {pts, a, b,
+-- edges} for deck_height: on through junctions in the air, the straightest
+-- way (the same street first), so a bridge split in its middle isn't
+-- stood on the ground under that node (it would dip to the road it
+-- crosses). A ramp leaving it there is its own deck, starting at the
+-- bridge's height. A street over a tunnel keeps its own heights.
+local function deck_chain(e)
+  if e.over then return {pts = e.pts, a = e.a, b = e.b, over = e.over, prof = e.prof, s0 = e.s0, edges = {e}} end
+  local function dir(o, id, out) -- unit heading of o leaving (out) or arriving at junction id
+    local p = o.pts
+    local first = o.a == id
+    local q0, q1
+    if first then q0, q1 = p[1], p[2] else q0, q1 = p[#p], p[#p - 1] end
+    local dx, dz = q1[1] - q0[1], q1[2] - q0[2]
+    local l = math.max(1e-6, math.sqrt(dx * dx + dz * dz))
+    if out then return dx / l, dz / l end
+    return -dx / l, -dz / l
+  end
+  local seen = {[e] = true}
+  local function next_deck(id, from)
+    if not floating(id) then return nil end
+    for _, o in ipairs(meeting()[id]) do -- a bridge built already sets the height here
+      if o.height then return nil end
+    end
+    local ix, iz = dir(from, id, false)
+    local best, bscore
+    for _, o in ipairs(meeting()[id]) do
+      if o ~= from and not seen[o] and not o.height then
+        local ox, oz = dir(o, id, true)
+        local turn = math.deg(math.acos(math.max(-1, math.min(1, ix * ox + iz * oz))))
+        local score = turn - ((o.street and o.street == from.street) and 90 or 0)
+        if turn < 45 and (not bscore or score < bscore) then best, bscore = o, score end
+      end
+    end
+    return best
+  end
+  local pts, edges = {}, {e}
+  for _, p in ipairs(e.pts) do pts[#pts + 1] = p end
+  local a, b = e.a, e.b
+  local cur = e
+  while true do -- on from b
+    local o = next_deck(b, cur)
+    if not o then break end
+    seen[o], cur = true, o
+    local fwd = o.a == b
+    for i = 2, #o.pts do pts[#pts + 1] = o.pts[fwd and i or #o.pts + 1 - i] end
+    b = fwd and o.b or o.a
+    edges[#edges + 1] = o
+  end
+  cur = e
+  while true do -- back from a
+    local o = next_deck(a, cur)
+    if not o then break end
+    seen[o], cur = true, o
+    local fwd = o.b == a
+    local before = {}
+    for i = 1, #o.pts - 1 do before[#before + 1] = o.pts[fwd and i or #o.pts + 1 - i] end
+    table.move(pts, 1, #pts, #before + 1, before)
+    pts = before
+    a = fwd and o.a or o.b
+    edges[#edges + 1] = o
+  end
+  return {pts = pts, a = a, b = b, edges = edges}
+end
+
 -- A bridge deck's height along its edge: from one end's height to the
 -- other's, whatever is below, lifted in a gentle arch where it crosses
 -- water or another road or a railway; a street over a tunnel keeps its own
@@ -709,6 +783,16 @@ local function deck_height(e)
   end
   local total = math.max(cum[#cum], 1e-3)
   local function end_height(id, p)
+    if floating(id) then -- a ramp leaving a bridge: the bridge's height there
+      local best
+      for _, o in ipairs(meeting()[id]) do
+        if o.height and (not best or (o.street ~= nil and best.street == nil)
+                         or ((o.street ~= nil) == (best.street ~= nil) and o.width > best.width)) then
+          best = o
+        end
+      end
+      if best then return best.height(p[1], p[2]) end
+    end
     if not R.water_level(p[1], p[2]) then return GROUND(p[1], p[2]) end
     -- In the water: the graded road it meets there, the lowest if several.
     local best
@@ -1305,7 +1389,21 @@ build = function(map, kit)
   -- terrain a bridge's deck is solid, a ramp from one end to the other,
   -- with railings and a pier under each end and in the middle.
   -- Every deck's height first: a deck is cut back from its neighbours'.
-  for _, e in ipairs(NET.edges) do e.height = GROUND and (e.deck or e.over) and deck_height(e) or nil end
+  -- Named and wide ones first: a bridge before the ramps off it.
+  local order = {}
+  for _, e in ipairs(NET.edges) do if e.deck or e.over then order[#order + 1] = e end end
+  table.sort(order, function(p, q)
+    if (p.street ~= nil) ~= (q.street ~= nil) then return p.street ~= nil end
+    if p.width ~= q.width then return p.width > q.width end
+    return p.a * 100003 + p.b < q.a * 100003 + q.b
+  end)
+  for _, e in ipairs(order) do
+    if GROUND and not e.height then
+      local chain = deck_chain(e)
+      local h = deck_height(chain)
+      for _, c in ipairs(chain.edges) do c.height = h end
+    end
+  end
   -- How far a deck's slab may reach to one side (r: unit vector that way)
   -- from (x, z), at most `reach`: up to another road's asphalt that's at
   -- another height (a twin carriageway's deck, a ramp's road below), where

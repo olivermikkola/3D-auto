@@ -135,6 +135,9 @@ engine.on("init", function()
           if o and o ~= e and not o.tunnel then
             local d = math.abs(own - surface(o, id))
             if d > step then step = d end
+            if d > 0.5 and os.getenv("BRIDGE_DEBUG") == (e.street or e.name) then
+              print(string.format("  step %.1f at junction %d: own %.1f, %s (%d-%d) %.1f", d, id, own, o.street or o.name, o.a, o.b, surface(o, id)))
+            end
           end
         end
         for _, nb in ipairs(city.links(id) or {}) do check(nb) end
