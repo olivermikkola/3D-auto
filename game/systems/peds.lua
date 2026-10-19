@@ -205,17 +205,30 @@ end
 
 -- ---- population ---------------------------------------------------------------
 
+-- How high the pavement of road e is at x, z: on a bridge, the deck's
+-- (not the ground's, metres below it, or the river's).
+function Ped.pavement_y(e, x, z)
+  local ed = edges()[e]
+  return ed and ed.height and ed.height(x, z) or U.ground(x, z)
+end
+
+-- A walker for ped p (on a map drawn as roads: its road, way and side set)
+-- at x, z on its pavement.
+function Ped.add(p, x, z)
+  local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15 + Ped.pavement_y(p.e, x, z), z}, size = {0.7, 1.8, 0.7},
+                          body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
+  H.set(id, 30)
+  p.id, p.speed, p.state, p.stuck = id, WALK * (0.8 + math.random() * 0.4), "walk", 0
+  set_target(p, net.point(p, p.wp))
+  Ped.peds[id] = p
+  return id
+end
+
 local function spawn_ped(near_x, near_z, min_d, max_d)
   if city.network() then
     local p, x, z = net.spawn(near_x, near_z, min_d, max_d)
     if not p then return end
-    local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {x, 1.15 + U.ground(x, z), z}, size = {0.7, 1.8, 0.7},
-                            body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
-    H.set(id, 30)
-    p.id, p.speed, p.state, p.stuck = id, WALK * (0.8 + math.random() * 0.4), "walk", 0
-    set_target(p, net.point(p, p.wp))
-    Ped.peds[id] = p
-    return id
+    return Ped.add(p, x, z)
   end
   local bi, bj = block_of(near_x, near_z)
   for _ = 1, 30 do
@@ -316,7 +329,7 @@ local function someone_ahead(id, x, z, mx, mz)
 end
 
 local function walk(id, p, dt)
-  local x, _, z = engine.pos(id)
+  local x, y, z = engine.pos(id)
   local vx, vy, vz = engine.vel(id)
   -- Read the previous physics result before replacing velocity with AI intent.
   -- Sampling after set_vel always saw commanded walking speed, even at a wall.
@@ -370,6 +383,29 @@ local function walk(id, p, dt)
       local ax, az = p.sx + lx * t - x, p.sz + lz * t - z
       local l = math.sqrt(ax * ax + az * az) + 1e-3
       mx, mz = ax / l, az / l
+    end
+  end
+  -- Up against a street lamp: step round it, a second off to whichever
+  -- side it isn't, rather than turning back.
+  if p.state == "walk" and speed > 0 and actual_speed2 < 0.1 and not p.round then
+    local post = engine.nearest(x, y - 0.9, z, 1.2, "lamp") -- (a lamp's position is its foot)
+    if post then
+      local ox, _, oz = engine.pos(post)
+      local best, turn = -1, 1
+      for _, a in ipairs{1.1, -1.1} do
+        local c, s = math.cos(a), math.sin(a)
+        local d = U.dist2d(x + mx * c - mz * s, z + mx * s + mz * c, ox, oz)
+        if d > best then best, turn = d, a end
+      end
+      p.round, p.stuck = {until_t = engine.time() + 1, turn = turn}, 0
+    end
+  end
+  if p.round then
+    if engine.time() > p.round.until_t or p.state ~= "walk" then
+      p.round = nil
+    else
+      local c, s = math.cos(p.round.turn), math.sin(p.round.turn)
+      mx, mz = mx * c - mz * s, mx * s + mz * c
     end
   end
   engine.set_vel(id, mx * speed, vy, mz * speed)
@@ -482,9 +518,10 @@ engine.on("tick", function(dt)
     end
   end
 
-  -- Keep the crowd near the player: recycle the far ones, top up the count.
+  -- Keep the crowd near the player: recycle the far ones, top up the count
+  -- (unless a test has taken the crowd over: Ped.hold).
   recycle_t = recycle_t - dt
-  if recycle_t <= 0 then
+  if recycle_t <= 0 and not Ped.hold then
     recycle_t = 0.5
     for id in pairs(Ped.peds) do
       local x, _, z = engine.pos(id)
