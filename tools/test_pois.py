@@ -80,7 +80,7 @@ class GameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             env["XDG_DATA_HOME"] = d
             res = subprocess.run([str(BINARY), "game", "--headless", "5"], cwd=ROOT, env=env,
-                                 capture_output=True, text=True, timeout=600)
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("POI_PROBE: PASSED", res.stdout, res.stdout + res.stderr)
         return res.stdout

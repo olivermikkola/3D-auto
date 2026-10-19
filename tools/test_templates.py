@@ -19,7 +19,7 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             env["XDG_DATA_HOME"] = d
             res = subprocess.run([str(BINARY), "game", "--headless", "3000"], cwd=ROOT, env=env,
-                                 capture_output=True, text=True, timeout=600)
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("TEMPLATE_PROBE: PASSED", res.stdout, res.stdout + res.stderr)
         return res.stdout
