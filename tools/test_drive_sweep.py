@@ -14,17 +14,27 @@ BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto
 
 # Cars in trouble out of ~1700 drives per map. With traffic in a fixed 3.2 m
 # lane (wheels on the kerb of a 7.3 m street, off the asphalt of a 6 m one)
-# it was Turku 70, Raisio 46; now 6 and 3. The rest are single cars, some
-# at the map's edge. Lower these as they're fixed; never raise them.
-TROUBLE_MAX = {"turku": 12, "raisio": 12}
+# it was Turku 70, Raisio 46; then 6 and 3; with no street lamps just past
+# sharp bends (where cars swing over the kerb), 5 and 1. The rest are single
+# cars, some at the map's edge. Lower these as they're fixed; never raise them.
+TROUBLE_MAX = {"turku": 10, "raisio": 6}
+# The same with buses (DRIVE_SWEEP_BUS=1): Turku 7, Raisio 10 (lamps hit
+# coming out of bends, buses sent up them); now 5 and 1.
+BUS_TROUBLE_MAX = {"turku": 10, "raisio": 6}
 
 
 @unittest.skipUnless(BINARY.exists(), "needs a release build")
 class DriveSweepTests(unittest.TestCase):
     def test_maps(self):
-        for name, most in TROUBLE_MAX.items():
+        self.sweep(TROUBLE_MAX, {})
+
+    def test_buses(self):
+        self.sweep(BUS_TROUBLE_MAX, {"DRIVE_SWEEP_BUS": "1"})
+
+    def sweep(self, limits, extra):
+        for name, most in limits.items():
             with self.subTest(map=name):
-                env = dict(os.environ, MAP=name, SEED="1337", DRIVE_SWEEP="1", DRIVE_SWEEP_EVERY="4")
+                env = dict(os.environ, MAP=name, SEED="1337", DRIVE_SWEEP="1", DRIVE_SWEEP_EVERY="4", **extra)
                 with tempfile.TemporaryDirectory() as d:
                     env["XDG_DATA_HOME"] = d
                     res = subprocess.run([str(BINARY), "game", "--headless", "2000000"], cwd=ROOT, env=env,
