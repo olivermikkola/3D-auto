@@ -78,6 +78,16 @@ out geom tags;"""
 PLACES_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
 node["place"~"^(town|suburb|neighbourhood)$"];
 out;"""
+# Points of interest for missions (docs/MISSION_TEMPLATES.md), fetched on
+# their own into <area>_pois.json: anything named that is a shop, amenity,
+# leisure, tourism or historic place, as a node or as an area's center, and
+# sports pitches named or not (a basketball court seldom has a name).
+POIS_QUERY = """[out:json][timeout:120][bbox:{s},{w},{n},{e}];
+(nwr["shop"]["name"];nwr["amenity"]["name"];nwr["leisure"]["name"];nwr["tourism"]["name"];
+ nwr["historic"]["name"];nwr["leisure"="pitch"];);
+out center tags;"""
+# The tags a POI keeps: what it is, and what missions ask about it.
+POI_TAGS = ("name", "shop", "amenity", "leisure", "tourism", "historic", "brand", "sport", "cuisine", "religion")
 
 # Drivable classes: the game's kind, and width (two-way, one-way).
 ROADS = {
@@ -543,6 +553,66 @@ def railway_lines(railways, platforms, f):
     return L
 
 
+def pois_of(els, P, inside):
+    """Points of interest inside the map: (x, z, {tag: value}), sorted so the
+    file doesn't change when Overpass returns them in another order."""
+    pois, seen = [], set()
+    for el in els:
+        t = el.get("tags", {})
+        c = el if "lat" in el else el.get("center")
+        if not c: continue
+        x, z = P(c["lat"], c["lon"])
+        if not inside(x, z): continue
+        keep = {k: t[k] for k in POI_TAGS if k in t}
+        key = (round(x), round(z), tuple(sorted(keep.items())))
+        if key in seen: continue  # the same place as a node and as its building
+        seen.add(key)
+        pois.append((x, z, keep))
+    pois.sort(key=lambda p: (p[2].get("name", ""), round(p[0]), round(p[1])))
+    return pois
+
+
+def poi_lines(pois, f, q):
+    L = ["  -- points of interest (OpenStreetMap tags, for missions): {x, z, {tag = value...}}", "  pois = {"]
+    for x, z, t in pois:
+        tags = ", ".join(f"{k} = {q(v)}" for k, v in t.items())
+        L.append(f"    {{{f(x)}, {f(z)}, {{{tags}}}}},")
+    L.append("  },")
+    return L
+
+
+def fetch_pois(cache, cfg, fetch):
+    """<area>_pois.json, downloaded if asked to or not there yet."""
+    path = cache.with_name(cache.stem + "_pois.json")
+    if fetch or not path.exists():
+        s, w, n, e = cfg["bbox"]
+        print("fetching points of interest from Overpass...", file=sys.stderr)
+        path.write_text(json.dumps(overpass(POIS_QUERY.format(s=s, w=w, n=n, e=e), 180)))
+    return json.loads(path.read_text())["elements"]
+
+
+def splice_pois(dest, els, P, f, q):
+    """Put points of interest into an already generated map, inside its
+    bounds, leaving the rest of it as it was."""
+    text = dest.read_text()
+    m = re.search(r"\n  bounds = \{(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\},", text)
+    X0, Z0, X1, Z1 = map(float, m.groups())
+    def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    pois = pois_of(els, P, inside)
+    out, skip = [], False
+    for line in text.split("\n"):
+        if line.startswith("  -- points of interest"): continue
+        if line == "  pois = {": skip = True; continue
+        if skip:
+            if line == "  },": skip = False
+            continue
+        if line.startswith("  -- named parts of town"):
+            out.extend(poi_lines(pois, f, q))
+        out.append(line)
+    dest.write_text("\n".join(out))
+    print(f"{dest}: {len(pois)} points of interest", file=sys.stderr)
+
+
 def splice_railways(dest, els, P, f):
     """Put railways and platforms into an already generated map, inside its
     bounds, leaving the rest of it as it was."""
@@ -577,11 +647,13 @@ def main():
     ap.add_argument("--out", type=Path)
     ap.add_argument("--only-railways", action="store_true",
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
+    ap.add_argument("--only-pois", action="store_true",
+                    help="only put points of interest into the existing map (no terrain or map cache needed)")
     ap.add_argument("--terrain", nargs="+", type=Path,
                     help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
     cfg = AREAS[args.area]
-    if cfg.get("require_terrain") and not args.terrain and not args.only_railways:
+    if cfg.get("require_terrain") and not args.terrain and not args.only_railways and not args.only_pois:
         ap.error(f"{args.area} requires verified 2 m terrain; no flat-map fallback is permitted")
     elevation = None
     if args.terrain:
@@ -609,6 +681,11 @@ def main():
     cache = args.cache or ROOT / "tools" / "osm_cache" / f"{args.area}.json"
     dest = args.out or ROOT / "game" / "maps" / f"{args.area}_osm.lua"
     s, w, n, e = cfg["bbox"]
+    if args.only_pois:
+        P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
+        splice_pois(dest, fetch_pois(cache, cfg, args.fetch), P,
+                    lambda v: f"{v:.1f}".rstrip("0").rstrip("."), lambda v: json.dumps(v, ensure_ascii=False))
+        return
     if args.fetch:
         cache.parent.mkdir(parents=True, exist_ok=True)
         # In tiles: the servers time out on a whole town at once. A way
@@ -1214,6 +1291,7 @@ def main():
     for wd, pts in piers:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
+    L.extend(poi_lines(pois_of(fetch_pois(cache, cfg, args.fetch), P, inside), f, q))
     L.append("  -- named parts of town: {name, x, z, \"town\", \"suburb\" or \"neighbourhood\"}")
     L.append("  areas = {")
     for name, x, z, kind in areas:
