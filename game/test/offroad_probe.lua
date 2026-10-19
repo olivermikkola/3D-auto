@@ -15,24 +15,41 @@ local LIMIT = tonumber(os.getenv("OFFROAD_LIMIT") or "45")
 local ONLY = os.getenv("OFFROAD_ONLY")
 local TRACE = os.getenv("OFFROAD_TRACE")
 
+-- Is there a straight way in from the nearest road, where cops leave it
+-- for someone off the road? A courtyard behind a building isn't: a car only
+-- gets in by squeezing through a gap, if at all; a fair place to hide, and
+-- not what this measures.
+local SOLID = {building = true, wall = true, landmark = true}
+local function open_from_road(x, z, rx, rz)
+  local d = U.dist2d(x, z, rx, rz)
+  local hit, hd = engine.raycast(x, engine.terrain_height(x, z) + 0.8, z, rx - x, 0, rz - z, d)
+  return not (hit and hd < d - 2 and SOLID[engine.tag(hit)])
+end
+
 -- Spots on open ground off the roads, spread over the middle of the map:
 -- every 130 m on a grid, kept if the nearest road of any kind is 20-60 m
--- off and straight down from 60 m up meets the terrain (no roof, no water).
+-- off and straight down from 60 m up meets the terrain (no roof, no water);
+-- an even spread of N of them, less any without a straight way in from
+-- that road (dropped, not replaced, so the rest stay the same spots).
 local function spots()
   local out = {}
   for gz = -1300, 1300, 130 do
     for gx = -1300, 1300, 130 do
-      local _, _, _, _, d = roadnet.nearest_edge(gx, gz)
+      local _, _, rx, rz, d = roadnet.nearest_edge(gx, gz)
       local g = engine.terrain_height(gx, gz)
       if d and d >= 20 and d <= 60 and g and g > 0.5 then
         local hit = engine.raycast(gx, g + 60, gz, 0, -1, 0, 70)
-        if hit and engine.tag(hit) == "terrain" then out[#out + 1] = {gx, gz} end
+        if hit and engine.tag(hit) == "terrain" then out[#out + 1] = {gx, gz, rx, rz} end
       end
     end
   end
   -- An even spread of N of them.
   local pick = {}
-  for k = 1, math.min(N, #out) do pick[k] = out[math.floor((k - 0.5) * #out / math.min(N, #out)) + 1] end
+  for k = 1, math.min(N, #out) do
+    local o = out[math.floor((k - 0.5) * #out / math.min(N, #out)) + 1]
+    if open_from_road(o[1], o[2], o[3], o[4]) then pick[#pick + 1] = o
+    else print(string.format("OFFROAD (%.0f, %.0f) left out: a building between it and the nearest road", o[1], o[2])) end
+  end
   if ONLY then
     local only = {}
     for k in ONLY:gmatch("%d+") do only[#only + 1] = pick[tonumber(k)] end

@@ -326,6 +326,17 @@ function C.pos(id)
   return p[1], p[2]
 end
 
+-- How far right of a road's middle a car driving it from junction a to b
+-- keeps: the middle of the rightmost lane (lanes about 3.5 m wide; a
+-- one-way street's lanes span all of it). A grid's roads are all wide.
+function C.lane(a, b)
+  local e = NET and NET.edges[NET.edge_of[a .. ">" .. b] or 0]
+  if not e then return 3.2 end
+  local half = e.oneway and e.width or e.width / 2
+  local lanes = math.max(1, math.floor(half / 3.5))
+  return (e.oneway and e.width / 2 or half) - half / lanes / 2
+end
+
 -- The junctions one road away from `id`.
 function C.links(id) return graph().links[id] end
 
