@@ -212,8 +212,14 @@ local function nearest_ped(state, mid_block, away_from)
   return assert(bid, "no pedestrian with a clear approach in state " .. state)
 end
 local scared
+-- The most there have been so far: the crowd tops up near the player and
+-- recycles whoever is furthest, so at one instant it can be a few short
+-- (where the pavements thin out, and the order it goes through them shifts
+-- with entity ids: anything that adds an entity anywhere on the map).
+local peak_peds = 0
+engine.on("tick", function() peak_peds = math.max(peak_peds, peds.count()) end)
 after(0.2, function()
-  check(peds.count() >= 35, "pedestrians spawned (" .. peds.count() .. ")")
+  check(peak_peds >= 35, "pedestrians spawned (" .. peak_peds .. " at most, " .. peds.count() .. " now)")
   check(walking_peds() >= 20, "pedestrians are walking (" .. walking_peds() .. " moving)")
   -- A new physical vehicle isolates this independent phase from the stunt
   -- car's accumulated damage. Leave the old car/damage/explosion untouched;
