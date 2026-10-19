@@ -54,17 +54,28 @@ engine.on("init", function()
   end
   local most = tonumber(os.getenv("DRIVE_SWEEP_MAX") or "")
   if most then for i = #todo, most + 1, -1 do todo[i] = nil end end
-  local bus = os.getenv("DRIVE_SWEEP_BUS") ~= nil
+  local bus = (os.getenv("DRIVE_SWEEP_BUS") or "0") ~= "0" and os.getenv("DRIVE_SWEEP_BUS") ~= ""
 
   local next_i, live, trouble, done, t0 = 1, {}, {}, 0, os.clock()
   local function note(kind, x, y, z, a, b, what)
     trouble[#trouble + 1] = {kind = kind, x = x, y = y, z = z, a = a, b = b, what = what or "nothing"}
   end
-  local function launch(a, b)
+  -- A sweep vehicle isn't started on top of another one still at the
+  -- start of its road (many roads meet at a bus terminal): it waits its
+  -- turn, put back at the end of the list, up to WAITS times.
+  local ROOM, WAITS, waits, deferred = bus and 18 or 10, 50, {}, 0
+  local function crowded(x, z)
+    for id in pairs(live) do
+      local ox, _, oz = engine.pos(id)
+      if ox and U.dist2d(x, z, ox, oz) < ROOM then return true end
+    end
+  end
+  -- Returns false (and launches nothing) when the start is crowded.
+  local function launch(a, b, k)
     local path = city.path(a, b)
     local len = 0
     for i = 2, #path do len = len + U.dist2d(path[i - 1][1], path[i - 1][2], path[i][1], path[i][2]) end
-    if len < 12 then done = done + 1; return end -- too short to start on and get anywhere
+    if len < 12 then done = done + 1; return true end -- too short to start on and get anywhere
     -- 6 m in, in the right-hand lane.
     local p, q = path[1], path[2]
     local seg = U.dist2d(p[1], p[2], q[1], q[2])
@@ -73,20 +84,35 @@ engine.on("init", function()
     local rx, rz = U.right(yaw)
     local lane = city.lane(a, b)
     local x, z = p[1] + (q[1] - p[1]) * t + rx * lane, p[2] + (q[2] - p[2]) * t + rz * lane
+    if (waits[k] or 0) < WAITS and crowded(x, z) then
+      waits[k] = (waits[k] or 0) + 1
+      deferred = deferred + 1
+      return false
+    end
     local id = vehicle.spawn(x, z, yaw, nil, bus and "bus" or nil, bus and "bus" or "car", road_y(a, b, x, z))
     local c = {from = a, to = b, path = path, wp = 2, lane = lane, speed = 0, stuck = 0, keep = true}
     traffic.cars[id] = c
     live[id] = {a = a, b = b, c = c, born = engine.time(), limit = SLACK * len / CRUISE + 8, still = 0, tipped = 0}
+    return true
   end
+
+  local GROUND = {terrain = true, road = true}
+  engine.on("contact", function(a, b)
+    for _, p in ipairs{{a, b}, {b, a}} do
+      local s, tag = live[p[1]], engine.tag(p[2])
+      if s and tag and not GROUND[tag] then s.hit, s.hit_at = tag, engine.time() end
+    end
+  end)
 
   engine.on("tick", function(dt)
     -- Top up the batch.
     local n = 0
     for _ in pairs(live) do n = n + 1 end
-    while n < BATCH and next_i <= #todo do
-      launch(todo[next_i][1], todo[next_i][2])
-      next_i = next_i + 1
-      n = n + 1
+    local tries = 0
+    while n < BATCH and next_i <= #todo and tries < BATCH do
+      local d = todo[next_i]
+      if launch(d[1], d[2], d) then n = n + 1 else todo[#todo + 1] = d end
+      next_i, tries = next_i + 1, tries + 1
     end
     for id, s in pairs(live) do
       local finished, kind
@@ -117,13 +143,15 @@ engine.on("init", function()
           end
         end
         local here = road_y(c.from, c.to, x, z)
-        -- Where it first went wrong: a jolt up or off its wheels.
-        if not s.first then
+        -- Where it first went wrong: a jolt up or off its wheels. What it
+        -- hit just before, if anything (a bus's nose is 6 m from its
+        -- middle), else the nearest thing to it.
+        if not s.first and engine.time() - s.born > 0.5 then -- (not yet settled on its wheels when new)
           local _, vy = engine.vel(id)
           if math.abs(vy) > 3 or not vehicle.on_wheels(id) then
-            local what
-            local hit = engine.nearest(x, y, z, 3.5, nil, id)
-            if hit then what = engine.tag(hit) end
+            local what = s.hit and engine.time() - s.hit_at < 1 and s.hit or nil
+            local near = not what and engine.nearest(x, y, z, 3.5, nil, id)
+            if near then what = engine.tag(near) end
             s.first = {x = x, y = y, z = z, what = what}
           end
         end
@@ -177,7 +205,8 @@ engine.on("init", function()
       for k, v in pairs(whats) do ws[#ws + 1] = k .. " " .. v end
       table.sort(ws)
       print("DRIVE_SWEEP: near what: " .. table.concat(ws, ", "))
-      print(string.format("DRIVE_SWEEP: %d drives, %d in trouble at %d spots, %.0f s", #todo, #trouble, #groups, os.clock() - t0))
+      print(string.format("DRIVE_SWEEP: %d drives, %d in trouble at %d spots, %.0f s (%d waits for room)", #todo - deferred, #trouble,
+        #groups, os.clock() - t0, deferred))
       print("DRIVE_SWEEP: PASSED")
       engine.quit()
     end

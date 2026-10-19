@@ -7,6 +7,7 @@ local tunnel = require "lib.tunnel"
 local R = {}
 
 local SIDEWALK = 3          -- meters of pavement each side of a non-highway road
+local BEND_CLEAR = 30       -- meters either side of a sharp bend kept free of street lamps
 -- A tunnel's roof (from the importer's `roof`): the hill is measured this far out from
 -- the road's edge (tools/osm_import.py ROOF_REACH); the slab is between these
 -- thick, and leaves at least this much headroom over the road, or it isn't built.
@@ -1524,11 +1525,34 @@ build = function(map, kit)
     local walk = e.kind ~= "highway"
     if walk and e.lit ~= false and not e.roofed then -- a roofed tunnel has its lights in the roof
       local side = 1
+      -- Does the road bend sharply (over 20 degrees, counting the 20 m on
+      -- either side: a bend may be drawn as a few small kinks) at bend k?
+      -- Cars and buses swing across the kerb for a while after one, and a
+      -- lamp there stops them dead (or sends them up it).
+      local function along(k, step, d) -- the point d m from bend k, toward bend k + step
+        local x, z = e.pts[k][1], e.pts[k][2]
+        while e.pts[k + step] do
+          local nx, nz = e.pts[k + step][1], e.pts[k + step][2]
+          local l = math.sqrt((nx - x) ^ 2 + (nz - z) ^ 2)
+          if l >= d then return x + (nx - x) * d / l, z + (nz - z) * d / l end
+          d, x, z, k = d - l, nx, nz, k + step
+        end
+        return x, z
+      end
+      local function sharp(k)
+        if k <= 1 or k >= #e.pts then return false end
+        local px, pz = along(k, -1, 20)
+        local rx, rz = along(k, 1, 20)
+        local qx, qz = e.pts[k][1], e.pts[k][2]
+        local ux, uz, vx, vz = qx - px, qz - pz, rx - qx, rz - qz
+        return (ux * vx + uz * vz) < math.cos(math.rad(20)) * math.sqrt((ux * ux + uz * uz) * (vx * vx + vz * vz))
+      end
       for i = 2, #e.pts do
         local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
         local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
         local yaw = math.atan(bx - ax, bz - az)
         local rx, rz = math.cos(yaw), -math.sin(yaw)
+        local clear_a, clear_b = sharp(i - 1) and BEND_CLEAR or 0, sharp(i) and BEND_CLEAR or 0
         for s = 14, len - 14, map.lamp_every or 38 do
           local t = s / len
           local sd = e.height and {kind = "walk"} or side_at(e, i, t, side > 0 and 1 or 2)
@@ -1540,7 +1564,7 @@ build = function(map, kit)
           local on_road = H.near(lx, lz, 40, function(it)
             return it.edge and it.edge ~= ei and dist_seg(lx, lz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 1.5
           end)
-          if not on_road and not under_roof(lx, lz) and (sd.kind ~= "median" or sd.w > 0.5) then
+          if not on_road and not under_roof(lx, lz) and (sd.kind ~= "median" or sd.w > 0.5) and s >= clear_a and s <= len - clear_b then
             kit.static{mesh = "lamp", pos = {lx, 0.05 + (e.height and e.height(lx, lz) or (GROUND and GROUND(lx, lz) or 0)), lz},
                        yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true}
           end
