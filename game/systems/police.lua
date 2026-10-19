@@ -16,7 +16,7 @@ local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
 local STATION_RANGE = 250 -- a station this close sends some of the backup (it arrives in seconds)
-local LANE = 3.2 -- meters right of the center line, as traffic drives
+local LANE = 3.2 -- meters right of the center line on a grid (on a road map: city.lane)
 
 function P.build()
   local parts = require("lib.prefabs").car_parts({0.95, 0.95, 0.97})
@@ -313,7 +313,17 @@ local function drive_cop(c, dt)
       if te and off > 12 then
         local E = net.edges[te]
         goal = (E.oneway or U.dist2d(x, z, city.pos(E.a)) <= U.dist2d(x, z, city.pos(E.b))) and E.a or E.b
-        if roadnet.nearest_edge(x, z, nil, y) == te then
+        -- On that stretch: the nearest road to the car, or the car is on its
+        -- end (at the junction, another road meeting there can be nearer).
+        local beside = false
+        for i = 2, #E.pts do
+          local a, b = E.pts[i - 1], E.pts[i]
+          local dx, dz = b[1] - a[1], b[2] - a[2]
+          local l2 = math.max(dx * dx + dz * dz, 1e-6)
+          local t = U.clamp(((x - a[1]) * dx + (z - a[2]) * dz) / l2, 0, 1)
+          if U.dist2d(x, z, a[1] + dx * t, a[2] + dz * t) < E.width / 2 + 4 then beside = true; break end
+        end
+        if beside or roadnet.nearest_edge(x, z, nil, y) == te then
           on_it = true
           c.goal, c.route, c.ri = {sx, sz}, {{sx, sz}}, 1
           if U.dist2d(x, z, sx, sz) < 12 and now >= (c.roads_until or 0) then c.dash_until = now + 10 end
@@ -338,7 +348,7 @@ local function drive_cop(c, dt)
         at = city.step_toward(at, goal)
       end
       -- Pick the road up at the bend after the stretch the car is on.
-      c.route, c.ri = city.path(from, at), 2
+      c.route, c.ri, c.lane = city.path(from, at), 2, city.lane(from, at)
       local best = math.huge
       for i = 2, #c.route do
         local d = U.dist2d(x, z, c.route[i][1], c.route[i][2]) + U.dist2d(x, z, c.route[i - 1][1], c.route[i - 1][2])
@@ -357,7 +367,7 @@ local function drive_cop(c, dt)
     -- On a road map, a parked or stuck car in the lane is passed too.
     if (tag == "car" or tag == "cop") and city.network() and math.abs(vehicle.speed(hit)) < 1 then c.overtake = 2 end
     c.overtake = math.max(0, (c.overtake or 0) - dt)
-    local lane = c.overtake > 0 and -LANE or LANE
+    local lane = (c.overtake > 0 and -1 or 1) * (c.lane or LANE)
     tx, tz = gx + rx * lane, gz + rz * lane
     -- Slow for the corner coming up at the next intersection, and for
     -- anything in the way.
