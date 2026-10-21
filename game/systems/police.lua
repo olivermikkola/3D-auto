@@ -36,7 +36,7 @@ end
 
 function P.count()
   local n = 0
-  for _ in pairs(P.cops) do n = n + 1 end
+  for _, c in pairs(P.cops) do if not c.block then n = n + 1 end end
   return n
 end
 
@@ -485,6 +485,9 @@ local function run_officers(dt, px, pz)
           o.cool = 0.9 + math.random() * 0.5
           officer_shoot(id, o)
         end
+      elseif o.post then
+        -- At a roadblock: stay behind the car.
+        engine.set_vel(id, 0, vy, 0)
       else
         -- Close in (or come around the corner).
         local s = d > 2 and 5 or 0
@@ -514,6 +517,153 @@ engine.on("contact", function(a, b, speed)
     H.damage(o, 200, other, vx, vy, vz)
   end
 end)
+
+-- ---- roadblocks ----------------------------------------------------------
+-- From three stars up, now and then, two squad cars park across the road
+-- ahead of you, 110-220 m on, with officers posted behind them. Ram through
+-- or turn off; once you're past (or gone another way), they join the chase.
+
+local BLOCK_STARS, BLOCK_EVERY = 3, 30
+local next_block = 0
+
+-- The junction ahead of a car going (fx, fz) from (x, z): the nearest one
+-- within 60 degrees of straight on.
+local function junction_ahead(x, z, fx, fz, y)
+  local best, bd
+  for _, j in ipairs(city.junctions()) do
+    local jx, jz = city.pos(j)
+    local dx, dz = jx - x, jz - z
+    local d = math.sqrt(dx * dx + dz * dz)
+    local ly = city.level(j)
+    if d > 5 and d < 250 and (dx * fx + dz * fz) / d > 0.5 and (bd == nil or d < bd)
+       and not (y and ly and math.abs(ly - y) > 4) then
+      best, bd = j, d
+    end
+  end
+  return best, bd
+end
+
+-- Where a block goes: on the way straight on from the junction ahead, as
+-- x, z, the road's heading there, its height (nil on the ground), and the
+-- half-width of what to block; nil if there's no such road in range.
+function P.block_spot(x, z, fx, fz, y)
+  local j, d = junction_ahead(x, z, fx, fz, y)
+  if not j then return end
+  local hx, hz = fx, fz
+  for _ = 1, 8 do
+    -- Straight on from j: the road leaving it closest to the heading.
+    local jx, jz = city.pos(j)
+    local best, bdot, bpath
+    for _, n in ipairs(city.links(j) or {}) do
+      local path = city.path(j, n)
+      local p = path[2]
+      local dx, dz = p[1] - jx, p[2] - jz
+      local l = math.sqrt(dx * dx + dz * dz)
+      if l > 1 and (dx * hx + dz * hz) / l > (bdot or 0.6) then best, bdot, bpath = n, (dx * hx + dz * hz) / l, path end
+    end
+    if not best then return end
+    -- 25 m along it (half way on a short one).
+    local len = 0
+    for i = 2, #bpath do len = len + U.dist2d(bpath[i - 1][1], bpath[i - 1][2], bpath[i][1], bpath[i][2]) end
+    local want = math.min(25, len / 2)
+    if d + want >= 110 then
+      if d + want > 220 or len < 24 then return end
+      for i = 2, #bpath do
+        local a, b = bpath[i - 1], bpath[i]
+        local l = U.dist2d(a[1], a[2], b[1], b[2])
+        if want <= l then
+          local t = want / l
+          local bx, bz = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+          local by = city.height_on(j, best, bx, bz)
+          local net = city.network() and require("lib.roadnet").net()
+          local e = net and net.edges[net.edge_of[j .. ">" .. best] or 0]
+          local half = e and e.width / 2 or 6
+          return bx, bz, math.atan(b[1] - a[1], b[2] - a[2]), by, half
+        end
+        want = want - l
+      end
+      return
+    end
+    -- Not far enough yet: on through the next junction.
+    local bx, bz = city.pos(best)
+    local dx, dz = bx - jx, bz - jz
+    local l = math.sqrt(dx * dx + dz * dz)
+    hx, hz = dx / l, dz / l
+    d, j = d + len, best
+  end
+end
+
+function P.place_block(bx, bz, yaw, by, half)
+  -- Clear the spot of traffic (it's far off, round the bend ahead).
+  for _, id in ipairs(engine.find("car")) do
+    local x, _, z = engine.pos(id)
+    if id ~= G.vehicle and U.dist2d(x, z, bx, bz) < half + 8 then engine.despawn(id) end
+  end
+  local fx, fz = U.forward(yaw)
+  local rx, rz = U.right(yaw)
+  -- Cars side by side across the road, turned a little each way and
+  -- staggered so none touches the next (a car spans 4.7 m across it): two
+  -- on a street (their ends on the kerbs), up to four on a wide avenue.
+  local STEP = 4.9
+  local n = U.clamp(math.floor((half * 2 + 1.5) / STEP), 2, 4)
+  for k = 1, n do
+    local side = k % 2 == 0 and 1 or -1
+    local o = (k - (n + 1) / 2) * STEP
+    local x, z = bx + rx * o + fx * side * 0.9, bz + rz * o + fz * side * 0.9
+    local cyaw = yaw + math.pi / 2 + side * 0.2
+    local id = vehicle.spawn(x, z, cyaw, nil, "cop", "cop", by)
+    vehicle.headlights(id)
+    local c = {id = id, stuck = 0, reverse = 0, block = {bx, bz, fx, fz}, deployed = true, launch = 45}
+    c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
+    c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}
+    P.cops[id] = c
+    -- An officer stands behind each of the outer two, on the far side from you.
+    if k ~= 1 and k ~= n then goto next end
+    local ox, oz = x + fx * 4, z + fz * 4
+    local oid = engine.spawn{mesh = "officer", pos = {ox, (by or U.ground(ox, oz)) + 1.3, oz}, size = {0.7, 1.8, 0.7},
+                             body = "dynamic", mass = 85, friction = 0, step = 0.45, lock_rotation = true, tag = "officer"}
+    H.set(oid, 60)
+    P.officers[oid] = {car = id, cool = 1, post = true}
+    ::next::
+  end
+  local street = city.street(bx, bz)
+  U.message("ROADBLOCK AHEAD" .. (street and (" ON " .. street:upper()) or ""), 3)
+  engine.emit("roadblock", bx, bz)
+end
+
+local function blocks()
+  local n = 0
+  for _, c in pairs(P.cops) do if c.block then n = n + 1 end end
+  return n
+end
+
+local function roadblocks(px, py, pz)
+  if wanted.stars() < BLOCK_STARS or not G.vehicle or engine.time() < next_block or blocks() > 0 then return end
+  local v = vehicle.speed(G.vehicle)
+  if v < 8 then return end
+  next_block = engine.time() + BLOCK_EVERY
+  local fx, fz = U.forward(engine.yaw(G.vehicle))
+  local bx, bz, yaw, by, half = P.block_spot(px, pz, fx, fz, py)
+  if not bx then return end
+  -- Facing the way you're going: the road may run either way from there.
+  local rfx, rfz = U.forward(yaw)
+  if rfx * fx + rfz * fz < 0 then yaw = yaw + math.pi end
+  P.place_block(bx, bz, yaw, by, half)
+end
+
+-- A block holds until you're past it, or gone another way.
+local function hold_block(c, px, pz)
+  local b = c.block
+  local ahead = (b[1] - px) * b[3] + (b[2] - pz) * b[4]
+  local d = U.dist2d(b[1], b[2], px, pz)
+  if ahead < -15 or d > 260 or engine.time() > (c.held_until or math.huge) then
+    c.block = nil
+    for _, o in pairs(P.officers) do if o.car == c.id then o.post = nil end end
+    if c.siren == nil then c.siren = engine.play("siren", {loop = true, follow = c.id}) end
+    return
+  end
+  if d < 30 then c.held_until = c.held_until or engine.time() + 8 end -- you stopped there: they come for you
+end
 
 -- ---- the loop ------------------------------------------------------------
 
@@ -586,12 +736,14 @@ engine.on("tick", function(dt)
     spawn_cop()
   end
 
+  roadblocks(px, py, pz)
   local seen, close = run_officers(dt, px, pz)
   -- An officer may just have killed the player; nothing more to chase this tick.
   if not (G.player or G.vehicle) then return end
   local slow_player = G.player ~= nil or math.abs(vehicle.speed(G.vehicle)) < 4
   for id, c in pairs(P.cops) do
-    c.siren = c.siren or engine.play("siren", {loop = true, follow = id})
+    if c.block then hold_block(c, px, pz) end
+    c.siren = c.siren or (not c.block and engine.play("siren", {loop = true, follow = id})) or nil
     c.sees = sees_player(id)
     seen = seen or c.sees
     local x, _, z = engine.pos(id)
@@ -602,7 +754,8 @@ engine.on("tick", function(dt)
       for oid, o in pairs(P.officers) do
         if o.car == id and engine.exists(oid) then crew = true break end
       end
-      if d > 60 or wanted.stars() == 0 or (wanted.stars() < DEPLOY_STARS and not c.arrest) then recall(c)
+      if c.block then -- held across the road (hold_block lets it go)
+      elseif d > 60 or wanted.stars() == 0 or (wanted.stars() < DEPLOY_STARS and not c.arrest) then recall(c)
       elseif crew then c.redeploy = nil
       elseif not c.redeploy then c.redeploy = engine.time() + 5 -- its officers are down: a fresh pair soon
       elseif engine.time() >= c.redeploy and c.sees and d < DEPLOY_RANGE then
@@ -651,7 +804,7 @@ end)
 
 engine.on("wanted_changed", function(new)
   if new == 0 then
-    for _, c in pairs(P.cops) do engine.stop(c.siren); c.siren = nil end
+    for _, c in pairs(P.cops) do if c.siren then engine.stop(c.siren) end c.siren = nil end
   end
 end)
 

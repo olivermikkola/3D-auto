@@ -505,6 +505,10 @@ changes**, which is the point of the kernel:
   They follow the street grid toward you (or your last known position), switch to direct pursuit
   once they can see you (a raycast), and search nearby streets once they lose you. Light bars and
   sirens follow each car.
+- **Roadblocks:** from three stars, driving at speed, squad cars park across the road
+  110–220 m ahead (two on a street, up to four on an avenue) with officers posted behind
+  them, at most one block every 30 s. Ram through or turn off; once you're past or gone
+  another way, they join the chase. `ROADBLOCK_TEST=1` checks one.
 - **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
