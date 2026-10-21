@@ -50,7 +50,7 @@ class TemplateTests(unittest.TestCase):
         for name in ("turku", "raisio"):
             with self.subTest(map=name):
                 out = self.probe(name)
-                for title in ("Joyride", "Street Race", "Getaway", "Fragile Cargo", "Smuggler's Run"):
+                for title in ("Joyride", "Street Race", "Getaway", "Fragile Cargo", "Takedown", "Smuggler's Run"):
                     m = re.search(re.escape(title) + r": (\d+)/(\d+) seeds playable", out)
                     self.assertTrue(m, title + "\n" + out)
                     self.assertEqual(m[1], m[2], title)

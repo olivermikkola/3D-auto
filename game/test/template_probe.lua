@@ -95,7 +95,7 @@ engine.on("init", function()
 
   -- Getaway and Fragile Cargo: a real place for every seed, and how many
   -- different ones.
-  for _, id in ipairs{"01_joyride", "02_checkpoints", "04_getaway", "05_cargo"} do
+  for _, id in ipairs{"01_joyride", "02_checkpoints", "04_getaway", "05_cargo", "06_takedown"} do
     local def
     for _, d in ipairs(mission.defs) do if d.id == id then def = d end end
     assert(def and def.cast, id .. " is cast from the map's places")

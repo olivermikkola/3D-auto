@@ -1,7 +1,7 @@
 # Mission templates: one story, played in many places
 
-Status: 2026-10-21. Steps 1-3 done; six missions on templates (Joyride, Street Race, Getaway, Fragile Cargo,
-Smuggler's Run, Häsburger Express).
+Status: 2026-10-21. Steps 1-3 done; seven missions on templates (Joyride, Street Race, Getaway, Fragile Cargo,
+Takedown, Smuggler's Run, Häsburger Express).
 
 ## The idea
 
@@ -115,7 +115,7 @@ Getaway and Fragile Cargo followed (`TEMPLATE_TEST` prints both):
   pickup and drop; `MISSION_TEST` plays Fragile Cargo to its drop on all
   four maps.
 
-Then Joyride, Street Race and Smuggler's Run (seeds 1-50, all playable on both maps):
+Then Joyride, Street Race, Takedown and Smuggler's Run (seeds 1-50, all playable on both maps):
 
 - **Joyride** brings the stolen car to a real car repair or tyre shop
   0.6-2.5 km by road from the lot. Turku 8 different garages, Raisio 18.
@@ -126,6 +126,9 @@ Then Joyride, Street Race and Smuggler's Run (seeds 1-50, all playable on both m
   bridge or in a tunnel (`template.route` gives the junctions). Turku 15
   finishes, 5-9 checkpoints; Raisio 8 finishes, 6-17 checkpoints (it is
   spread out: up to 6 km).
+- **Takedown**: the black car pulls away from a real nightclub, bar, pub
+  or casino 0.4-1.5 km by road from the start (a hotel every fourth run).
+  Turku 42 different places, Raisio 3.
 - **Smuggler's Run** picks up four packages behind a pub or bar, a kiosk,
   a car wash or petrol station and a garage, 0.4-1.1 km apart, and drops
   them at a marina or ferry terminal (whose street may be 250 m off: a
