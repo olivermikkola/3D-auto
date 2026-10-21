@@ -524,6 +524,11 @@ changes**, which is the point of the kernel:
   searchlight on you at night. It sees you wherever the sky is open over you, so in the open the
   cops never lose you; get under a roof, a bridge or into a tunnel. It leaves under four stars.
   `HELI_TEST=1` checks it.
+- **Street racers:** at night (20-04) in free roam, a sports car now and then waits at a
+  junction 80-200 m from you, orange on the map. Pull up beside it and stop: after a
+  countdown it races you by the shortest way to a landmark 1.2-2.5 km off (`traffic.set_plan`
+  drives it junction by junction). First to the finish junction wins $600.
+  `RACER_TEST=1` checks it.
 - **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
