@@ -43,3 +43,8 @@ add{id = "heli", on = "heli", cooldown = 300,
     text = "RADIO: The police helicopter is up over {area}. Somebody's having a night."}
 add{id = "heli_hide", on = "heli", cooldown = 900, when = function(ctx) return ctx.stars >= 5 end,
     text = "RADIO: Five stars and a helicopter. A tunnel would be the place to be."}
+add{id = "snow", on = "weather", cooldown = 600,
+    when = function(_, kind, was) return (kind == "snow" or kind == "blizzard") and was ~= "snow" and was ~= "blizzard" end,
+    text = "RADIO: Snow over {area}. Winter tyres, everyone. You do have winter tyres?"}
+add{id = "blizzard", on = "weather", cooldown = 900, when = function(_, kind) return kind == "blizzard" end,
+    text = "RADIO: Whiteout over {area}. The ploughs are out. So, apparently, are you."}
