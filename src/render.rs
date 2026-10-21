@@ -43,7 +43,7 @@ varying vec3 v_world;
 varying float v_emissive;
 uniform mat4 light_vp;
 uniform vec4 tint;
-uniform vec4 extra; // x = entity glow
+uniform vec4 extra; // x = entity glow, y = how wet the ground is
 uniform vec4 eye;
 uniform vec4 fog;
 uniform vec4 fog_color;
@@ -91,9 +91,19 @@ void main() {
         lamps += lcol[i].rgb * (lcol[i].w * att * att * spot * (0.25 + 0.75 * max(dot(n, l), 0.0)));
     }
     // Overlapping pools add up, but toward a ceiling instead of to white.
+    // Wet ground: flat, dark, grey surfaces (asphalt, paving) get darker,
+    // lamp pools spread brighter on them, and they mirror the sky when
+    // seen at a low angle.
+    float sat = max(base.r, max(base.g, base.b)) - min(base.r, min(base.g, base.b));
+    float lum = dot(base, vec3(0.3, 0.55, 0.15));
+    float wet = extra.y * smoothstep(0.85, 0.97, n.y) * (1.0 - smoothstep(0.06, 0.16, sat)) * (1.0 - smoothstep(0.3, 0.55, lum));
+    light += lamps * wet * 0.8;
     light += lamps / (1.0 + 0.4 * lamps);
     float glow = v_emissive * params.x + extra.x;
-    vec3 col = base * light + base * glow * 1.8;
+    vec3 col = base * light * (1.0 - 0.35 * wet) + base * glow * 1.8;
+    vec3 to_eye = normalize(eye.xyz - v_world);
+    float sheen = pow(1.0 - max(to_eye.y, 0.0), 5.0);
+    col = mix(col, fog_color.rgb * 0.8, wet * sheen * 0.7);
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
     f = f * f * (1.0 - 0.7 * glow);
@@ -530,7 +540,7 @@ impl Renderer {
             light_vp: light_vp.0,
             inv_scale2: [1.0; 4],
             tint: [1.0; 4],
-            extra: [0.0; 4],
+            extra: [0.0, env.wet, 0.0, 0.0],
             eye: v4(cam.eye, 0.),
             fog: [env.fog_start, env.fog_end, 0.0, 0.0],
             fog_color: c4(env.sky, 1.),
