@@ -16,9 +16,12 @@ function C.explode(id)
   local qx, qy, qz, qw = engine.rot(id)
   local vx, vy, vz = engine.vel(id)
   -- The car itself becomes a blackened wreck thrown into the air.
-  local mesh = "car1"
-  local wreck = engine.spawn{mesh = mesh, pos = {x, y + 0.3, z}, size = {2.0, 1.4, 4.4}, color = {0.12, 0.1, 0.09},
-                             body = "dynamic", mass = 1200, friction = 0.8, tag = "wreck"}
+  -- (the same kind of car: a van leaves a burnt-out van)
+  local prefabs = require "lib.prefabs"
+  local kind = prefabs.car_kind(engine.mesh_of(id))
+  local k = prefabs.CAR_KINDS[kind or "car"]
+  local wreck = engine.spawn{mesh = (kind or "car") .. "1", pos = {x, y + 0.3, z}, size = k.size, color = {0.12, 0.1, 0.09},
+                             body = "dynamic", mass = k.mass, friction = 0.8, tag = "wreck"}
   engine.set_rot(wreck, qx, qy, qz, qw)
   engine.set_vel(wreck, vx * 0.3, 7, vz * 0.3)
   engine.set_angvel(wreck, (math.random() - 0.5) * 3, (math.random() - 0.5) * 2, (math.random() - 0.5) * 3)

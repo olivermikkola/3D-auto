@@ -471,6 +471,12 @@ builder and pedestrians (who walk round blocks) still use. The city is about 600
 traffic follows the player: cars that end up more than 330 m away are moved to a street nearer,
 out of sight, and pedestrians spawn on the blocks around you.
 
+Traffic is mostly ordinary cars, with vans, taxis (a lit TAKSI sign) and the odd sports car
+among them (`prefabs.CAR_KINDS`, `vehicle.KINDS`). Each kind has its own collider and pull: from
+a standing start, 3 s at full throttle reach about 32 m/s in a sports car, 25 in a car and 19
+in a van. The lot always has a sports car and a van at its far end, and a respray keeps the
+kind of car (`vehicle.spawn(x, z, yaw, colour, "van")`). `CARKINDS_TEST=1` checks them.
+
 `lib/landmarks.lua` adds three one-off places (`E`, `T` and `C` on the minimap):
 
 - **The Empire,** an Art Deco tower in Midtown and the tallest thing in town: 186 m to the top

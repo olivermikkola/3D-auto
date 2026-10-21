@@ -84,6 +84,15 @@ local function place(c, min_dist)
   end
 end
 
+-- What kind of car the n-th one is: mostly ordinary cars, then vans,
+-- taxis and the odd sports car. Counted, not rolled, so the random numbers
+-- everything else draws stay the same.
+local added = 0
+local function kind_of(n)
+  local h = (n * 2654435761) % 100
+  if h < 14 then return "van" elseif h < 24 then return "cab" elseif h < 31 then return "sports" end
+end
+
 local function add_car(min_dist)
   local c = {}
   local x, z, yaw, y = place(c, min_dist)
@@ -91,9 +100,16 @@ local function add_car(min_dist)
   -- Föli buses run in Raisio and Turku
   local map_name = city.map().id
   local is_bus = (map_name == "raisio" or map_name == "turku") and (math.random(8) == 1)
-  local mesh = is_bus and "bus" or nil
+  added = added + 1
+  local kind = not is_bus and kind_of(added) or nil
+  local mesh = is_bus and "bus" or kind
   local tag = is_bus and "bus" or "car"
-  c.id = vehicle.spawn(x, z, yaw, nil, mesh, tag, y)
+  local color
+  if kind == "cab" then
+    math.random(8) -- as for any car's colour, so the sequence doesn't shift
+    color = added % 3 == 0 and 5 or 6 -- black, or now and then white
+  end
+  c.id = vehicle.spawn(x, z, yaw, color, mesh, tag, y)
   c.is_bus = is_bus
   vehicle.headlights(c.id)
   T.cars[c.id] = c
