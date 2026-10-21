@@ -29,3 +29,5 @@ add{id = "hospital", on = "respawned", map = "turku", cooldown = 300,
     text = "RADIO: TYKS discharges a patient who should really be more careful."}
 add{id = "night_drive", on = "vehicle_enter", hours = {23, 4}, cooldown = 600,
     text = "RADIO: Quiet night on the roads. Mind the last Föli buses."}
+add{id = "cashvan", on = "cashvan_robbed", cooldown = 300,
+    text = "RADIO: A Lumis cash van robbed on {street}. The bags were not insured for this."}
