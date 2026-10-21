@@ -34,6 +34,11 @@ pub struct Body {
     /// Ledges up to this height are stepped onto instead of blocking.
     pub step: f32,
     pub lock_rotation: bool,
+    /// A static that gives way (a street lamp): a body of at least
+    /// `BREAKER_MASS` meeting it this fast (m/s) goes through, and the
+    /// contact is reported as broken for the scripts to knock it over.
+    /// Zero: never gives way.
+    pub breaks_at: f32,
 }
 
 impl Body {
@@ -52,6 +57,7 @@ impl Body {
             grounded: false,
             step: 0.0,
             lock_rotation: false,
+            breaks_at: 0.0,
         };
         b.set_mass(1.0);
         b
@@ -347,7 +353,12 @@ pub struct Contact {
     pub b: u32,
     /// Closing speed along the contact normal when they met (m/s).
     pub speed: f32,
+    /// One of them gave way (see `Body::breaks_at`): there was no impulse.
+    pub broke: bool,
 }
+
+/// Lighter bodies (people, crates) never break a `breaks_at` static.
+pub const BREAKER_MASS: f32 = 400.0;
 
 /// Accumulated impulses from last step, keyed by (body a, body b, feature).
 /// Starting the solver from them ("warm starting") is what lets stacks rest.
@@ -449,6 +460,26 @@ impl Broad {
         }
     }
 
+    /// A static was despawned: take it out of the grid without a rebuild.
+    pub fn forget(&mut self, i: usize) {
+        let Some(Some((c, h))) = self.boxes.get(i).copied() else { return };
+        self.boxes[i] = None;
+        self.poses[i] = None;
+        self.statics -= 1;
+        let (x0, x1, z0, z1) = Self::range(c, h);
+        if x1 - x0 > Self::BIG || z1 - z0 > Self::BIG {
+            self.big.retain(|&j| j != i);
+            return;
+        }
+        for x in x0..=x1 {
+            for z in z0..=z1 {
+                if let Some(v) = self.cells.get_mut(&(x, z)) {
+                    v.retain(|&j| j != i);
+                }
+            }
+        }
+    }
+
     /// Entities near the box: statics from its cells, big ones and `movers`, sorted.
     fn near(&self, (c, h): (Vec3, Vec3), movers: &[usize], out: &mut Vec<usize>) {
         out.clear();
@@ -535,8 +566,16 @@ pub fn step(
             let (eb, bb) = body(ents, j);
             let Some((n, pts)) = collide(ea.pos, ea.rot, ba.half, eb.pos, eb.rot, bb.half) else { continue };
             if ba.sensor || bb.sensor {
-                touching.push((i, j, 0.0));
+                touching.push((i, j, 0.0, false));
                 continue;
+            }
+            // A heavy body fast enough goes through a static that gives way.
+            if bb.kind == Kind::Static && bb.breaks_at > 0.0 && ba.inv_mass > 0.0 && ba.inv_mass <= 1.0 / BREAKER_MASS {
+                let closing = -ba.vel.dot(n);
+                if closing >= bb.breaks_at {
+                    touching.push((i, j, closing, true));
+                    continue;
+                }
             }
             // Step-up: a low ledge met side-on lifts the body instead of walling it.
             // Narrow vertical posts and poles (e.g. lamp posts, traffic signs) must not act
@@ -550,7 +589,7 @@ pub fn step(
                     let b = e.body.as_mut().unwrap();
                     b.vel.y = b.vel.y.max(0.0);
                     b.grounded = true;
-                    touching.push((i, j, 0.0));
+                    touching.push((i, j, 0.0, false));
                     continue;
                 }
             }
@@ -572,7 +611,7 @@ pub fn step(
                 let (pn, pt1, pt2) = warm.get(&(i, j, feature)).copied().unwrap_or_default();
                 m.points.push(Point { feature, ra, rb, depth, t1, t2, mass_n: k(n), mass_t1: k(t1), mass_t2: k(t2), bounce, pn, pt1, pt2 });
             }
-            touching.push((i, j, closing));
+            touching.push((i, j, closing, false));
             if n.y > 0.7 {
                 ents[i].as_mut().unwrap().body.as_mut().unwrap().grounded = true;
             } else if n.y < -0.7 && b_dynamic {
@@ -621,7 +660,7 @@ pub fn step(
                 }
             }
             if hit {
-                touching.push((i, t.id, closing));
+                touching.push((i, t.id, closing, false));
             }
         }
         for i in grounded {
@@ -660,7 +699,7 @@ pub fn step(
         }
     }
 
-    touching.into_iter().map(|(a, b, speed)| Contact { a: a.min(b) as u32, b: a.max(b) as u32, speed }).collect()
+    touching.into_iter().map(|(a, b, speed, broke)| Contact { a: a.min(b) as u32, b: a.max(b) as u32, speed, broke }).collect()
 }
 
 fn rel_vel(a: &Body, b: &Body, ra: Vec3, rb: Vec3) -> Vec3 {
@@ -1279,6 +1318,51 @@ mod tests {
         let p = get(&w, 2).pos;
         assert!(p.x < 4.0, "narrow pole colliders must block horizontal travel, not act as ramps: x = {}", p.x);
         assert!(p.y < 2.5, "narrow pole colliders must not launch vehicle vertically (y = {})", p.y);
+    }
+
+    #[test]
+    fn heavy_fast_bodies_go_through_a_static_that_gives_way() {
+        // A car-sized body at `speed` meets a lamp post that breaks at 5 m/s.
+        let run = |mass: f32, speed: f32| {
+            let mut w = vec![
+                ground(),
+                ent(v3(5., 5.0, 0.), Kind::Static, v3(0.15, 5.0, 0.15)),
+                ent(v3(0., 0.8, 0.), Kind::Dynamic, v3(2.2, 0.7, 1.0)),
+            ];
+            w[1].as_mut().unwrap().body.as_mut().unwrap().breaks_at = 5.0;
+            let b = w[2].as_mut().unwrap().body.as_mut().unwrap();
+            b.lock_rotation = true;
+            b.set_mass(mass);
+            let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+            let mut broke = false;
+            for _ in 0..90 {
+                w[2].as_mut().unwrap().body.as_mut().unwrap().vel.x = speed;
+                broke |= step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None).iter().any(|c| c.broke && c.b == 2 && c.a == 1);
+            }
+            (get(&w, 2).pos.x, broke)
+        };
+        let (x, broke) = run(1200.0, 8.0);
+        assert!(broke && x > 8.0, "a car at 8 m/s goes through: x = {x}");
+        let (x, broke) = run(1200.0, 3.0);
+        assert!(!broke && x < 3.0, "at 3 m/s the post holds: x = {x}");
+        let (x, broke) = run(80.0, 8.0);
+        assert!(!broke && x < 3.0, "a person never breaks it: x = {x}");
+    }
+
+    #[test]
+    fn forgetting_a_static_needs_no_rebuild() {
+        let mut w = vec![ground(), ent(v3(5., 1., 0.), Kind::Static, Vec3::ONE), ent(v3(0., 1., 0.), Kind::Dynamic, Vec3::ONE)];
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
+        let built = broad.rebuilds;
+        w[1] = None;
+        broad.forget(1);
+        for _ in 0..60 {
+            w[2].as_mut().unwrap().body.as_mut().unwrap().vel.x = 6.0;
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
+        }
+        assert_eq!(broad.rebuilds, built);
+        assert!(get(&w, 2).pos.x > 5.0, "nothing left in the way");
     }
 
     #[test]

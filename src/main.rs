@@ -182,7 +182,7 @@ fn tick(eng: &Shared, script: &Script) -> (f64, f64) {
     let contacts = eng.borrow_mut().step(dt);
     let t2 = now();
     for c in contacts {
-        script.emit(eng, "contact", (c.a, c.b, c.speed));
+        script.emit(eng, "contact", (c.a, c.b, c.speed, c.broke));
     }
     (t1 - t0 + now() - t2, t2 - t1)
 }

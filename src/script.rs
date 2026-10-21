@@ -362,6 +362,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             b.gravity = t.get::<Option<f32>>("gravity")?.unwrap_or(b.gravity);
             b.sensor = t.get::<Option<bool>>("sensor")?.unwrap_or(false);
             b.step = t.get::<Option<f32>>("step")?.unwrap_or(0.0);
+            b.breaks_at = t.get::<Option<f32>>("breaks_at")?.unwrap_or(0.0);
             ent.body = Some(b);
         }
         Ok(e.spawn(ent))
