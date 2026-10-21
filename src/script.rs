@@ -43,13 +43,50 @@ function engine.once(ev, fn)
   local function w(...) engine.off(ev, w); return fn(...) end
   return engine.on(ev, w)
 end
+-- PROFILE=1: time every handler call, by event and where the handler is
+-- defined, so a slow frame can be pinned on the code that made it slow.
+local clock, timed = engine._clock, __PROFILE and {} or nil
+__PROFILE = nil
+local where, game_dir = setmetatable({}, {__mode = "k"}), "@" .. __ROOT .. "/"
+local function name_of(fn)
+  local n = where[fn]
+  if not n then
+    local i = debug.getinfo(fn, "S")
+    local src = i.source:gsub("\\", "/") -- (Windows paths, as __ROOT is written)
+    src = src:sub(1, #game_dir) == game_dir and src:sub(#game_dir + 1) or i.short_src
+    n = src .. ":" .. i.linedefined
+    where[fn] = n
+  end
+  return n
+end
 function engine.emit(ev, ...)
   local t = handlers[ev]
   if not t then return end
   for i = 1, #t do
+    local t0 = timed and clock()
     local ok, err = xpcall(t[i], traceback, ...)
     if not ok then engine._error(ev, tostring(err)) end
+    if timed then
+      local dt, k = clock() - t0, ev .. " " .. name_of(t[i])
+      local s = timed[k]
+      if not s then s = {0, 0}; timed[k] = s end
+      s[1], s[2] = s[1] + dt, math.max(s[2], dt)
+    end
   end
+end
+-- The handlers slowest in a single call since the last report, worst
+-- first, as "12.3 ms tick game/systems/police.lua:120 (40.1 ms in all)".
+function engine._profile_report(n)
+  if not timed then return {} end
+  local all = {}
+  for k, s in pairs(timed) do all[#all + 1] = {k, s[1], s[2]} end
+  table.sort(all, function(a, b) return a[3] > b[3] end)
+  local out = {}
+  for i = 1, math.min(n, #all) do
+    out[i] = string.format("%.1f ms %s (%.1f ms in all)", all[i][3] * 1e3, all[i][1], all[i][2] * 1e3)
+  end
+  timed = {}
+  return out
 end
 
 -- ---- mods ------------------------------------------------------------------
@@ -186,6 +223,7 @@ impl Script {
         let api = bind(&lua, eng)?;
         lua.globals().set("engine", api)?;
         lua.globals().set("__ROOT", root.to_string_lossy().replace('\\', "/"))?;
+        lua.globals().set("__PROFILE", profiling())?;
         lua.load(KERNEL).set_name("=kernel").exec()?;
         let pkg: Table = lua.globals().get("package")?;
         let r = root.display();
@@ -195,6 +233,13 @@ impl Script {
         lua.load(src).set_name("@main.lua").exec()?;
         let emit = lua.globals().get::<Table>("engine")?.get::<Function>("emit")?;
         Ok(Script { lua, emit })
+    }
+
+    /// PROFILE=1: the `n` handlers slowest in one call since the last
+    /// time this was asked, worst first.
+    pub fn slowest(&self, n: usize) -> Vec<String> {
+        let report = self.lua.globals().get::<Table>("engine").and_then(|e| e.get::<Function>("_profile_report"));
+        report.and_then(|f| f.call::<Vec<String>>(n)).unwrap_or_default()
     }
 
     /// Emit an event. Handler errors are caught inside the bus, so this only
@@ -209,6 +254,11 @@ impl Script {
             report(eng, ev, &e.to_string());
         }
     }
+}
+
+/// PROFILE=1 in the environment.
+pub fn profiling() -> bool {
+    std::env::var("PROFILE").is_ok_and(|v| v == "1")
 }
 
 pub fn report(eng: &Shared, ev: &str, msg: &str) {
@@ -798,6 +848,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
 
     // ---- misc -----------------------------------------------------------
     f!("time", |e, _lua, (): ()| Ok(e.time));
+    // Wall-clock seconds, for timing code (PROFILE=1). Not for game logic.
+    f!("_clock", |_e, _lua, (): ()| Ok(miniquad::date::now()));
     f!("ticks", |e, _lua, (): ()| Ok(e.tick));
     f!("quit", |e, _lua, (): ()| Ok(e.quit = true));
     f!("reload", |e, _lua, (): ()| Ok(e.reload = true));

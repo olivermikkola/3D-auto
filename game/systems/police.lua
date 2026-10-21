@@ -55,15 +55,17 @@ local function occupied(x, z)
 end
 
 -- How far it is by road from each junction to junction `to` (meters),
--- driving the right way down one-way streets.
-local function road_dist(to)
+-- driving the right way down one-way streets, for every junction up to
+-- `limit` m away (further ones may be missing or too far: the search
+-- stops there, rather than going on across the whole city).
+local function road_dist(to, limit)
   local dist, done = {[to] = 0}, {}
   while true do
     local best, u = math.huge
     for j, d in pairs(dist) do
       if not done[j] and (d < best or (d == best and j < u)) then best, u = d, j end
     end
-    if not u then return dist end
+    if not u or best > limit then return dist end
     done[u] = true
     for _, n in ipairs(city.links_in(u)) do
       local p, len = city.path(n, u), 0
@@ -88,7 +90,7 @@ local function spawn_point()
   if city.network() then
     -- Up a long dead end there may be none that near: then the nearest
     -- by road, up to twice as far.
-    local dist, cands = road_dist(city.nearest(px, pz, py)), {}
+    local dist, cands = road_dist(city.nearest(px, pz, py), 320), {}
     for _, far in ipairs{160, 320} do
       for _, j in ipairs(city.junctions()) do
         local x, z = city.pos(j)
