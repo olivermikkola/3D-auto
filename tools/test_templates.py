@@ -46,6 +46,18 @@ class TemplateTests(unittest.TestCase):
                 self.assertGreaterEqual(int(m[3]), int(m[2]) * 0.6)
                 self.assertIn("Häsburger Express played, 3 customers, passed", out)
 
+    def test_every_templated_mission_plays_at_every_seed(self):
+        for name in ("turku", "raisio"):
+            with self.subTest(map=name):
+                out = self.probe(name)
+                for title in ("Joyride", "Street Race", "Getaway", "Fragile Cargo", "Takedown", "Smuggler's Run"):
+                    m = re.search(re.escape(title) + r": (\d+)/(\d+) seeds playable", out)
+                    self.assertTrue(m, title + "\n" + out)
+                    self.assertEqual(m[1], m[2], title)
+                m = re.search(r"Street Race: (\d+)-(\d+) checkpoints", out)
+                self.assertTrue(m, out)
+                self.assertGreaterEqual(int(m[1]), 3)
+
     def test_a_grid_map_casts_nothing(self):
         self.assertIn("grid map, nothing to cast", self.probe("starter"))
 

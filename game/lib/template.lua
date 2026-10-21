@@ -68,13 +68,13 @@ local function road_length(a, b)
   return l
 end
 
-local drives = setmetatable({}, {__mode = "k"})
+local drives, prevs = setmetatable({}, {__mode = "k"}), setmetatable({}, {__mode = "k"})
 function T.drive_from(start)
   local map = city.map()
   local per = drives[map]
-  if not per then per = {}; drives[map] = per end
+  if not per then per = {}; drives[map] = per; prevs[map] = {} end
   if per[start] then return per[start] end
-  local dist, heap = {[start] = 0}, {{0, start}}
+  local dist, prev, heap = {[start] = 0}, {}, {{0, start}}
   local function push(d, id)
     heap[#heap + 1] = {d, id}
     local i = #heap
@@ -107,12 +107,25 @@ function T.drive_from(start)
     if d <= dist[id] then
       for _, nb in ipairs(city.links(id) or {}) do
         local nd = d + road_length(id, nb)
-        if nd < (dist[nb] or math.huge) then dist[nb] = nd; push(nd, nb) end
+        if nd < (dist[nb] or math.huge) then dist[nb], prev[nb] = nd, id; push(nd, nb) end
       end
     end
   end
-  per[start] = dist
+  per[start], prevs[map][start] = dist, prev
   return dist
+end
+
+-- The junctions of the shortest way by road from (x, z) (its nearest
+-- junction) to point of interest p, both ends included; nil if there's none.
+function T.route(x, z, p)
+  local start = city.nearest(x, z)
+  if T.drive_from(start)[p.junction] == nil then return nil end
+  local prev, out, j = prevs[city.map()][start], {}, p.junction
+  while j do
+    table.insert(out, 1, j)
+    j = j ~= start and prev[j] or nil
+  end
+  return out
 end
 
 -- Meters by road from (x, z) (its nearest junction) to point of interest p
