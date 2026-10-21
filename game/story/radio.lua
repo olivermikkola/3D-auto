@@ -39,3 +39,7 @@ add{id = "clears", on = "weather", cooldown = 300,
     text = "RADIO: The rain has passed. {area} steams gently in the sun."}
 add{id = "cashvan", on = "cashvan_robbed", cooldown = 300,
     text = "RADIO: A Lumis cash van robbed on {street}. The bags were not insured for this."}
+add{id = "heli", on = "heli", cooldown = 300,
+    text = "RADIO: The police helicopter is up over {area}. Somebody's having a night."}
+add{id = "heli_hide", on = "heli", cooldown = 900, when = function(ctx) return ctx.stars >= 5 end,
+    text = "RADIO: Five stars and a helicopter. A tunnel would be the place to be."}

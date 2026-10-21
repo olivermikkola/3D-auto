@@ -778,6 +778,10 @@ engine.on("tick", function(dt)
     end
   end
 
+  -- The helicopter keeps you in sight wherever the sky is open over you.
+  local heli = package.loaded["systems.heli"]
+  if heli and heli.sees() then seen = true end
+
   -- Evasion: out of sight and outside the search circle for a while, longer
   -- the more stars (see wanted.escape_time).
   if seen then
