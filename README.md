@@ -210,7 +210,12 @@ bridge or in a tunnel), hisses, and pulls the fog in, which also means fewer dra
 roads look it (the renderer darkens flat grey asphalt and paving and lets it mirror the sky at
 low angles, `engine.lighting{wet = 0..1}`), brake about a third longer and let the car slide more, and they take a couple of minutes
 to dry. `WEATHER=storm auto game` holds one kind; the WEATHER setting turns it off.
-`WEATHER_TEST=1` checks it.
+In winter (November to March by the calendar; `SEASON=winter` to try it) it snows instead:
+flakes drift down, grass, roofs and pavements go white (roads only thinly), the cover melts over
+five minutes once it stops, and snowy roads grip least of all (10.1 m to stop from 20 m/s, 6.2
+dry). `WEATHER=snow` or `blizzard` holds it. `WEATHER_TEST=1` checks it.
+
+![The same Turku street in summer and under snow](docs/snow.png)
 
 ![The same Turku street, clear and in a storm](docs/rain.png)
 

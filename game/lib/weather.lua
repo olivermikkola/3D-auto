@@ -3,15 +3,20 @@
 -- it's overcast); rain falls on the screen, hisses, pulls the fog in, and
 -- wets the roads, which then grip less (lib/vehicle) and dry slowly.
 -- The sequence is fixed by the seed, and the first three hours of a game
--- are always clear. WEATHER=clear|cloudy|rain|storm holds one (pictures,
--- tests); the WEATHER setting off keeps it clear.
+-- are always clear. In winter (November to March by the calendar) it
+-- snows instead of raining: flakes drift down, the ground goes white (the
+-- roads less so) and stays white a while, and snowy roads grip less.
+-- WEATHER=clear|cloudy|rain|storm|snow|blizzard holds one (pictures, tests)
+-- and SEASON=summer|winter picks the season; a seeded run (SEED set, as the
+-- tests do) is summer unless told. The WEATHER setting off keeps it clear.
 local U = require "lib.util"
 
 local W = {
   SLOT = 3,         -- hours of game time per spell of weather
   CHANGE = 40,      -- seconds a change takes
   DRY = 150,        -- seconds wet roads take to dry
-  cloud = 0, rain = 0, wet = 0,
+  MELT = 300,       -- seconds a snow cover takes to go
+  cloud = 0, rain = 0, wet = 0, snow = 0, cover = 0,
   kind = "clear", spells = 0,
 }
 -- What each kind is: cloud cover and rain, 0-1.
@@ -20,12 +25,20 @@ W.KINDS = {
   cloudy = {cloud = 0.75, rain = 0},
   rain = {cloud = 0.9, rain = 0.55},
   storm = {cloud = 1, rain = 1},
+  snow = {cloud = 0.85, rain = 0, snow = 0.55},
+  blizzard = {cloud = 1, rain = 0, snow = 1},
 }
--- How likely each is when the weather turns (out of 100).
-local ODDS = {{"clear", 42}, {"cloudy", 30}, {"rain", 20}, {"storm", 8}}
+-- How likely each is when the weather turns (out of 100), by season.
+local ODDS = {
+  summer = {{"clear", 42}, {"cloudy", 30}, {"rain", 20}, {"storm", 8}},
+  winter = {{"clear", 35}, {"cloudy", 30}, {"snow", 25}, {"blizzard", 10}},
+}
 
 local held = os.getenv("WEATHER")
-assert(not held or W.KINDS[held], "WEATHER must be clear, cloudy, rain or storm")
+assert(not held or W.KINDS[held], "WEATHER must be clear, cloudy, rain, storm, snow or blizzard")
+W.SEASON = os.getenv("SEASON") or (os.getenv("SEED") and "summer")
+  or (({[11] = true, [12] = true, [1] = true, [2] = true, [3] = true})[os.date("*t").month] and "winter" or "summer")
+assert(ODDS[W.SEASON], "SEASON must be summer or winter")
 local seed = math.tointeger(tonumber(os.getenv("SEED") or "")) or 1337
 local slot, base_fog, voice = nil, nil, nil
 
@@ -35,7 +48,7 @@ function W.pick(n)
   local s = (seed * 7919 + n * 104729) & 0x7fffffff
   s = (s * 1103515245 + 12345) & 0x7fffffff
   local r = s % 100
-  for _, o in ipairs(ODDS) do
+  for _, o in ipairs(ODDS[W.SEASON]) do
     if r < o[2] then return o[1] end
     r = r - o[2]
   end
@@ -57,8 +70,9 @@ function W.set(kind)
   W.kind = kind
   local t = W.target()
   W.cloud, W.rain, W.wet = t.cloud, t.rain, math.min(1, t.rain * 1.6)
-  W.shown_wet = W.wet
-  engine.lighting{wet = W.wet}
+  W.snow, W.cover = t.snow or 0, t.snow and 1 or 0
+  W.shown_wet, W.shown_cover = W.wet, W.cover
+  engine.lighting{wet = W.wet, snow = W.cover}
   W.apply()
 end
 
@@ -91,7 +105,7 @@ end
 
 function W.fog()
   if not base_fog then return nil end
-  local k = 1 - 0.5 * W.rain - 0.1 * W.cloud
+  local k = 1 - 0.5 * math.max(W.rain, W.snow * 0.9) - 0.1 * W.cloud
   return base_fog[1] * k, base_fog[2] * k
 end
 
@@ -128,6 +142,8 @@ local function streak(i)
   return s
 end
 
+local draw_snow
+
 -- Under a roof, a bridge or in a tunnel, no rain falls past the camera:
 -- 1 in the open, 0 under cover (it fades between the two).
 W.open = 1
@@ -139,6 +155,7 @@ end
 
 -- Drawn by the HUD before anything of its own, so the rain is under it.
 function W.draw()
+  draw_snow()
   if W.rain * W.open < 0.02 then return end
   local w, sh = engine.screen()
   local t, n = engine.time(), math.floor(260 * W.rain * W.open)
@@ -152,6 +169,24 @@ function W.draw()
     local y = ((st[2] + t * st[1]) % 1.2 - 0.1) * sh
     local x = (st[3] * w + y * 0.12) % w         -- leaning a little in the wind
     engine.rect(x, y, math.max(1, 1.4 * s), st[4] * s, 0.78 * k, 0.82 * k, 0.9 * k, a)
+  end
+end
+
+-- Snowflakes: small, slow, swaying. Grey in the dark like the rain.
+function draw_snow()
+  if W.snow * W.open < 0.02 then return end
+  local w, sh = engine.screen()
+  local t, n = engine.time(), math.floor(420 * W.snow * W.snow * W.open + 60 * W.snow * W.open)
+  local s = sh / 720
+  local D = package.loaded["lib.daynight"]
+  local k = 1 - 0.6 * (D and D.glow or 0)
+  for i = 1, n do
+    local st = streak(i)
+    -- A blizzard drives them sideways, faster.
+    local y = ((st[2] + t * (0.12 + st[1] * 0.08) * (1 + W.snow)) % 1.1 - 0.05) * sh
+    local x = (st[3] * w + math.sin(t * (0.6 + st[1] * 0.3) + i) * 18 * s + t * W.snow * W.snow * 0.5 * w) % w
+    local size = (1.5 + (st[4] - 14) / 8) * s
+    engine.rect(x, y, size, size, 0.95 * k, 0.96 * k, 1 * k, 0.55 + 0.3 * W.snow)
   end
 end
 
@@ -177,26 +212,34 @@ engine.on("tick", function(dt)
     if W.kind ~= was then engine.emit("weather", W.kind, was) end
   end
   local t, step = W.target(), dt / W.CHANGE
-  local c0, r0 = W.cloud, W.rain
+  local c0, r0, s0 = W.cloud, W.rain, W.snow
   W.cloud = W.cloud + U.clamp(t.cloud - W.cloud, -step, step)
-  -- Rain waits for the clouds, and stops before they go.
-  local rain_to = W.cloud >= t.cloud - 0.1 and t.rain or 0
-  W.rain = W.rain + U.clamp(rain_to - W.rain, -step, step)
+  -- Rain (or snow) waits for the clouds, and stops before they go.
+  local ready = W.cloud >= t.cloud - 0.1
+  W.rain = W.rain + U.clamp((ready and t.rain or 0) - W.rain, -step, step)
+  W.snow = W.snow + U.clamp((ready and t.snow or 0) - W.snow, -step, step)
+  -- Snow settles in a minute or so of snowfall and melts slowly.
+  if W.snow > 0.05 then W.cover = math.min(1, W.cover + dt * W.snow / 60)
+  else W.cover = math.max(0, W.cover - dt / W.MELT) end
+  if math.abs(W.cover - (W.shown_cover or -1)) > 0.01 then
+    W.shown_cover = W.cover
+    engine.lighting{snow = W.cover}
+  end
   -- Roads wet through in 20 s of rain (a drizzle wets them less), and dry slowly.
   local wet_to = math.min(1, W.rain * 1.6)
   if W.wet < wet_to then W.wet = math.min(wet_to, W.wet + dt / 20)
   else W.wet = math.max(wet_to, W.wet - dt / W.DRY) end
-  if W.cloud ~= c0 or W.rain ~= r0 then W.apply() end
+  if W.cloud ~= c0 or W.rain ~= r0 or W.snow ~= s0 then W.apply() end
   if math.abs(W.wet - (W.shown_wet or -1)) > 0.01 then
     W.shown_wet = W.wet
     engine.lighting{wet = W.wet}
   end
-  if W.rain > 0 then open_sky(dt) end
+  if W.rain > 0 or W.snow > 0 then open_sky(dt) end
   if W.rain > 0 or voice then sound() end
 end)
 
--- How well tyres grip, 1 on dry roads, less on wet ones.
-function W.grip() return 1 - 0.3 * W.wet end
+-- How well tyres grip: 1 on dry roads, less on wet ones, least on snow.
+function W.grip() return 1 - math.max(0.3 * W.wet, 0.45 * W.cover) end
 
 engine.on("init", function()
   if held then W.set(held) end

@@ -43,7 +43,7 @@ varying vec3 v_world;
 varying float v_emissive;
 uniform mat4 light_vp;
 uniform vec4 tint;
-uniform vec4 extra; // x = entity glow, y = how wet the ground is
+uniform vec4 extra; // x = entity glow, y = how wet the ground is, z = snow cover
 uniform vec4 eye;
 uniform vec4 fog;
 uniform vec4 fog_color;
@@ -96,7 +96,12 @@ void main() {
     // seen at a low angle.
     float sat = max(base.r, max(base.g, base.b)) - min(base.r, min(base.g, base.b));
     float lum = dot(base, vec3(0.3, 0.55, 0.15));
-    float wet = extra.y * smoothstep(0.85, 0.97, n.y) * (1.0 - smoothstep(0.06, 0.16, sat)) * (1.0 - smoothstep(0.3, 0.55, lum));
+    float asphalt = (1.0 - smoothstep(0.06, 0.16, sat)) * (1.0 - smoothstep(0.3, 0.55, lum));
+    float wet = extra.y * smoothstep(0.85, 0.97, n.y) * asphalt;
+    // Snow lies on what faces up: grass, roofs, pavements; roads only thinly
+    // (traffic keeps them dark).
+    float snow = extra.z * smoothstep(0.6, 0.85, n.y) * (1.0 - 0.65 * asphalt);
+    base = mix(base, vec3(0.9, 0.92, 0.96), snow);
     light += lamps * wet * 0.8;
     light += lamps / (1.0 + 0.4 * lamps);
     float glow = v_emissive * params.x + extra.x;
@@ -540,7 +545,7 @@ impl Renderer {
             light_vp: light_vp.0,
             inv_scale2: [1.0; 4],
             tint: [1.0; 4],
-            extra: [0.0, env.wet, 0.0, 0.0],
+            extra: [0.0, env.wet, env.snow, 0.0],
             eye: v4(cam.eye, 0.),
             fog: [env.fog_start, env.fog_end, 0.0, 0.0],
             fog_color: c4(env.sky, 1.),
