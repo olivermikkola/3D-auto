@@ -95,7 +95,7 @@ engine.on("init", function()
 
   -- Getaway and Fragile Cargo: a real place for every seed, and how many
   -- different ones.
-  for _, id in ipairs{"04_getaway", "05_cargo"} do
+  for _, id in ipairs{"01_joyride", "02_checkpoints", "04_getaway", "05_cargo", "06_takedown"} do
     local def
     for _, d in ipairs(mission.defs) do if d.id == id then def = d end end
     assert(def and def.cast, id .. " is cast from the map's places")
@@ -115,6 +115,44 @@ engine.on("init", function()
       map, def.title, ok2, SEEDS, n, lo, hi))
     assert(ok2 == SEEDS, id .. ": every seed gives a playable run")
   end
+
+  -- Street Race: checkpoints on the way, none too close together.
+  local race
+  for _, d in ipairs(mission.defs) do if d.id == "02_checkpoints" then race = d end end
+  local fewest, most = math.huge, 0
+  for seed = 1, SEEDS do
+    local finish, cps, seconds, length = race.cast(seed)
+    assert(finish and #cps >= 2 and seconds >= 60, "a race with checkpoints and time to drive it")
+    for i = 2, #cps do
+      assert(U.dist2d(cps[i][1], cps[i][2], cps[i - 1][1], cps[i - 1][2]) > 60, "checkpoints apart")
+    end
+    fewest, most = math.min(fewest, #cps), math.max(most, #cps)
+    assert(length >= finish.drive - 1, "the route is the drive")
+  end
+  print(string.format("TEMPLATE_PROBE %s: Street Race: %d-%d checkpoints", map, fewest, most))
+
+  -- Smuggler's Run: four pickups and a drop by the water, every seed.
+  local smug
+  for _, d in ipairs(mission.defs) do if d.id == "07_smuggler" then smug = d end end
+  assert(smug and smug.cast, "Smuggler's Run is cast from the map's places")
+  local ok3, drops3, routes, lo3, hi3 = 0, {}, {}, math.huge, 0
+  for seed = 1, SEEDS do
+    local stops, drop, seconds = smug.cast(seed)
+    if stops then
+      assert(#stops >= 3 and drop.name and drop.drive < math.huge, "three or four pickups and a named drop")
+      for _, p in ipairs(stops) do assert(p.name and p.road and p.drive < math.huge, "a pickup cars can reach") end
+      ok3 = ok3 + 1
+      drops3[drop.name] = true
+      routes[stops[1].name .. "|" .. stops[2].name .. "|" .. stops[3].name .. "|" .. (stops[4] and stops[4].name or "")] = true
+      lo3, hi3 = math.min(lo3, seconds), math.max(hi3, seconds)
+    end
+  end
+  local nr, nd = 0, 0
+  for _ in pairs(routes) do nr = nr + 1 end
+  for _ in pairs(drops3) do nd = nd + 1 end
+  print(string.format("TEMPLATE_PROBE %s: Smuggler's Run: %d/%d seeds playable, %d different routes, %d drops, timer %d-%d s",
+    map, ok3, SEEDS, nr, nd, lo3, hi3))
+  assert(ok3 == SEEDS, "07_smuggler: every seed gives a playable run")
 
   -- Play it: unlock, walk into the start marker, then onto each red marker.
   G.passed["02_checkpoints"] = true
