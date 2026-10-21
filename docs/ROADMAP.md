@@ -55,8 +55,7 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
    CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
-2. **Weather, part two:** wet asphalt that looks wet (the roads are part of the terrain mesh,
-   so this is a renderer change), and snow in winter.
+2. **Weather, part two:** snow in winter (wet roads already darken and shine).
 3. **More free-roam events**, like the cash van: picked from a closed list by game state,
    never made up (a taxi fare that calls, a street racer at a red light, a convoy at four
    stars).
