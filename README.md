@@ -203,6 +203,17 @@ lamp bulbs, a third of the office floors) and scales every light. Street lamps a
 are ordinary `engine.light`s that follow their entity, so the engine moves them; Lua never
 touches them per frame. A full day lasts 48 minutes; N skips 3 hours. `HOUR=22 auto game` starts at night.
 
+**Weather** (`lib/weather.lua`) turns every three hours of game time: clear, cloudy, rain or a
+storm, in an order fixed by the seed (a game always starts clear). Clouds grey the palette and
+dim the sun, and overcast skies cast no shadows. Rain falls on the screen (not under a roof, a
+bridge or in a tunnel), hisses, and pulls the fog in, which also means fewer draw calls. Wet
+roads look it (the renderer darkens flat grey asphalt and paving and lets it mirror the sky at
+low angles, `engine.lighting{wet = 0..1}`), brake about a third longer and let the car slide more, and they take a couple of minutes
+to dry. `WEATHER=storm auto game` holds one kind; the WEATHER setting turns it off.
+`WEATHER_TEST=1` checks it.
+
+![The same Turku street, clear and in a storm](docs/rain.png)
+
 | | |
 |---|---|
 | ![Noon](docs/noon.png) | ![Dusk](docs/dusk.png) |

@@ -29,5 +29,13 @@ add{id = "hospital", on = "respawned", map = "turku", cooldown = 300,
     text = "RADIO: TYKS discharges a patient who should really be more careful."}
 add{id = "night_drive", on = "vehicle_enter", hours = {23, 4}, cooldown = 600,
     text = "RADIO: Quiet night on the roads. Mind the last Föli buses."}
+add{id = "rain", on = "weather", cooldown = 300,
+    when = function(_, kind, was) return (kind == "rain" or kind == "storm") and was ~= "rain" and was ~= "storm" end,
+    text = "RADIO: Rain moving in over {area}. Wet roads: give yourself room to brake."}
+add{id = "storm", on = "weather", cooldown = 600, when = function(_, kind) return kind == "storm" end,
+    text = "RADIO: A proper autumn downpour over {area}. Stay in if you can. You won't, will you?"}
+add{id = "clears", on = "weather", cooldown = 300,
+    when = function(_, kind, was) return kind == "clear" and (was == "rain" or was == "storm") end,
+    text = "RADIO: The rain has passed. {area} steams gently in the sun."}
 add{id = "cashvan", on = "cashvan_robbed", cooldown = 300,
     text = "RADIO: A Lumis cash van robbed on {street}. The bags were not insured for this."}

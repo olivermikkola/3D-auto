@@ -37,6 +37,8 @@ function D.apply()
   -- Sun arcs east to west, tilted south; at night the moon takes over.
   local sun = e > -0.05 and {math.cos(a) * 0.8, math.max(e, 0.06), 0.35} or {0.35, 0.75, -0.45}
   local p = D.palette(D.hour)
+  local weather = package.loaded["lib.weather"]
+  if weather then p = weather.tint(p) end
   engine.lighting{sky = p.sky, sky_top = p.top, sun = sun, sun_color = p.sun, ambient = p.ambient, ground = p.ground, glow = p.glow}
   D.glow = p.glow
 end
