@@ -34,7 +34,7 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   Hesburger, banks, garages, landmarks, pubs, marinas).
 - **Free roam**: traffic of cars, vans, taxis and sports cars, Föli buses, pedestrians, police pursuits with roadblocks from three
   stars and a helicopter from four, Lumis cash vans to rob, street lamps that knock over, weather (clear, cloudy, rain,
-  storm) with wet roads, and a city radio that answers what you do.
+  storm; snow in winter) with wet and snowy roads, and a city radio that answers what you do.
 - **Sweeps that drive the whole map** keep it playable: traffic (`DRIVE_SWEEP`), buses,
   pedestrians (`PED_SWEEP`), the player's car (`PLAYER_SWEEP`), bridges (`BRIDGE_AUDIT`), and
   landmark renders checked by pixel in CI.
@@ -55,13 +55,12 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
    CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
-2. **Weather, part two:** snow in winter (wet roads already darken and shine).
-3. **More free-roam events**, like the cash van: picked from a closed list by game state,
+2. **More free-roam events**, like the cash van: picked from a closed list by game state,
    never made up (a taxi fare that calls, a street racer at a red light, a convoy at four
    stars).
-4. **Templates:** an "across the river" condition (needs the water as a line), and the
+3. **Templates:** an "across the river" condition (needs the water as a line), and the
    map-specific missions (Pansio heist, Föli, archipelago) where it makes sense.
-5. **More Turku:** the next districts, each with a render check.
+4. **More Turku:** the next districts, each with a render check.
 
 ### Later
 
