@@ -48,3 +48,7 @@ add{id = "snow", on = "weather", cooldown = 600,
     text = "RADIO: Snow over {area}. Winter tyres, everyone. You do have winter tyres?"}
 add{id = "blizzard", on = "weather", cooldown = 900, when = function(_, kind) return kind == "blizzard" end,
     text = "RADIO: Whiteout over {area}. The ploughs are out. So, apparently, are you."}
+add{id = "racer_won", on = "racer_won", cooldown = 600,
+    text = "RADIO: Residents near {area} report two cars at speed and one very loud celebration."}
+add{id = "racer_lost", on = "racer_lost", cooldown = 600,
+    text = "RADIO: Somebody near {area} lost a street race tonight. Better luck, and fewer witnesses, next time."}

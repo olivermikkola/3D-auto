@@ -393,7 +393,9 @@ engine.on("frame", function(dt)
   for _, msg in ipairs(G.messages) do
     if msg.till > now then
       keep[#keep + 1] = msg
-      centered(msg.text, y, 30, 1, 0.85, 0.2)
+      -- A long one (a street's or a shop's name in it) shrinks to fit the screen.
+      local size = math.min(30, math.floor(30 * w * 0.94 / math.max(1, engine.text_width(msg.text, 30))))
+      centered(msg.text, y, size, 1, 0.85, 0.2)
       y = y + 44
     end
   end

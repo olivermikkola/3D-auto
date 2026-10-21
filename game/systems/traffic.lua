@@ -33,6 +33,12 @@ local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
 -- A one-way street that just ends (cut off at the map's edge) has no way
 -- on at all: the car is lost, and gets moved to another street.
 local function pick_next(c)
+  -- A car with a plan (a street racer) takes the next junction on it.
+  if c.plan and #c.plan > 0 then
+    c.from, c.to = c.to, table.remove(c.plan, 1)
+    route(c)
+    return
+  end
   local opts, back = {}, false
   for _, n in ipairs(city.links(c.to) or {}) do
     if n ~= c.from then opts[#opts + 1] = n else back = true end
@@ -128,6 +134,16 @@ function T.adopt(id, opts)
   vehicle.headlights(id)
   T.cars[id] = c
   return c
+end
+
+-- Drive junctions js[1], js[2], ... in order (js[1] the one it's at), then
+-- wander as usual.
+function T.set_plan(id, js)
+  local c = T.cars[id]
+  if not c or #js < 2 then return end
+  c.from, c.to, c.speed = js[1], js[2], c.speed or 0
+  route(c)
+  c.plan = {table.unpack(js, 3)}
 end
 
 function T.start(n)
