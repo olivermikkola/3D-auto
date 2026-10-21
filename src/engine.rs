@@ -84,6 +84,8 @@ pub struct Env {
     /// 0 dry, 1 soaked: flat dark grey surfaces (asphalt, paving) darken
     /// and mirror the sky at low angles.
     pub wet: f32,
+    /// 0 bare, 1 snowed over: flat ground goes white (roads less so).
+    pub snow: f32,
     pub fog_start: f32,
     pub fog_end: f32,
     pub sun: Vec3,
@@ -211,6 +213,7 @@ impl Engine {
                 glow: 0.0,
                 shadows: true,
                 wet: 0.0,
+                snow: 0.0,
                 fog_start: 80.0,
                 fog_end: 260.0,
                 sun: v3(0.4, 0.8, 0.3).norm(),

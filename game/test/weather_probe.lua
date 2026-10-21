@@ -96,6 +96,28 @@ local function script()
   check(W.grip() < 0.75, "wet roads grip less")
   local wet = stopping(best[1], best[2], best[3])
   check(wet > dry * 1.2, string.format("and the car stops later: %.1f m dry, %.1f m wet", dry, wet))
+
+  -- Winter: snow instead of rain; it settles, and grips least of all.
+  check(W.SEASON == "summer", "a seeded run is summer")
+  W.SEASON = "winter"
+  local kinds = {}
+  for n = 1, 400 do kinds[W.pick(n)] = true end
+  check(kinds.snow and kinds.blizzard and not kinds.rain and not kinds.storm, "in winter it snows instead of raining")
+  W.SEASON = "summer"
+  W.set("blizzard")
+  sleep(1)
+  check(W.cover == 1 and W.snow == 1 and W.rain == 0, "a blizzard: snow falling and lying")
+  local _, sb = W.fog()
+  check(sb < fog_b * 0.6, string.format("and the fog closes in (%.0f m)", sb))
+  check(W.grip() < 0.6, string.format("snowy roads grip least (%.2f)", W.grip()))
+  local snowy = stopping(best[1], best[2], best[3])
+  check(snowy > wet, string.format("and the car stops later still: %.1f m on snow", snowy))
+  W.set("clear")
+  check(W.cover == 0, "cleared")
+  -- Snow melts slowly once it stops.
+  W.cover = 1
+  sleep(1)
+  check(W.cover < 1 and W.cover > 0.9, string.format("and melts slowly (%.3f after 1 s)", W.cover))
   W.set("clear")
   sleep(0.2)
   check(W.grip() == 1, "dry again")
