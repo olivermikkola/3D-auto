@@ -17,6 +17,7 @@ local traffic = require "systems.traffic"
 local police = require "systems.police"
 local peds = require "systems.peds"
 local daynight = require "lib.daynight"
+local weather = require "lib.weather"
 local pickups = require "lib.pickups"
 local wanted = require "lib.wanted"
 require "lib.health"
@@ -30,6 +31,7 @@ require "lib.hud"
 require "lib.story"
 require "story.radio"
 require "systems.garage"
+require "systems.cashvan"
 require "lib.menu"
 require "lib.shop"
 
@@ -40,7 +42,7 @@ engine.on("init", function()
   math.randomseed(seed)
   print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
   local fog = city.map().fog or {110, 380} -- a map can see further
-  settings.watch("view", function(p) engine.fog(fog[1] * p / 100, fog[2] * p / 100) end)
+  settings.watch("view", function(p) weather.base_fog(fog[1] * p / 100, fog[2] * p / 100) end)
 
   prefabs.build()
   sfx.build()
@@ -95,6 +97,7 @@ engine.on("init", function()
   require("systems.gunshop").build()
   require("systems.paintshop").build()
   require("systems.dealer").build()
+  require("systems.cashvan").build()
   engine.grab_mouse(true)
 end)
 
@@ -159,6 +162,9 @@ if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
+if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
+if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
+if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

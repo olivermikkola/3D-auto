@@ -25,7 +25,7 @@ def seeded_cases(maps, seeds, suite):
 
 
 TEST_ENV = ("MAP", "SEED", "AUTO_TEST", "CITY_TEST", "PAD_TEST", "SOAK",
-            "SAVE_TEST", "MENU_TEST", "SHOP_TEST", "GARAGE_TEST", "RELIABILITY_TEST", "MISSION_TEST", "TERRAIN_TEST")
+            "SAVE_TEST", "MENU_TEST", "SHOP_TEST", "GARAGE_TEST", "RELIABILITY_TEST", "MISSION_TEST", "TERRAIN_TEST", "WEATHER")
 ERROR = re.compile(r"\[lua:|FAILED", re.IGNORECASE)
 
 

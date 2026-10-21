@@ -203,6 +203,16 @@ lamp bulbs, a third of the office floors) and scales every light. Street lamps a
 are ordinary `engine.light`s that follow their entity, so the engine moves them; Lua never
 touches them per frame. A full day lasts 48 minutes; N skips 3 hours. `HOUR=22 auto game` starts at night.
 
+**Weather** (`lib/weather.lua`) turns every three hours of game time: clear, cloudy, rain or a
+storm, in an order fixed by the seed (a game always starts clear). Clouds grey the palette and
+dim the sun, and overcast skies cast no shadows. Rain falls on the screen (not under a roof, a
+bridge or in a tunnel), hisses, and pulls the fog in, which also means fewer draw calls. Wet
+roads brake about a third longer and let the car slide more, and they take a couple of minutes
+to dry. `WEATHER=storm auto game` holds one kind; the WEATHER setting turns it off.
+`WEATHER_TEST=1` checks it.
+
+![The same Turku street, clear and in a storm](docs/rain.png)
+
 | | |
 |---|---|
 | ![Noon](docs/noon.png) | ![Dusk](docs/dusk.png) |
@@ -494,12 +504,20 @@ changes**, which is the point of the kernel:
   They follow the street grid toward you (or your last known position), switch to direct pursuit
   once they can see you (a raycast), and search nearby streets once they lose you. Light bars and
   sirens follow each car.
+- **Roadblocks:** from three stars, driving at speed, squad cars park across the road
+  110–220 m ahead (two on a street, up to four on an avenue) with officers posted behind
+  them, at most one block every 30 s. Ram through or turn off; once you're past or gone
+  another way, they join the chase. `ROADBLOCK_TEST=1` checks one.
 - **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
   Get out of it and stay unseen: 3 s at one star, 5.5 s more for each star after (25 s at five).
   Hidden inside it, they give up after 30 s (70 s at five). The stars blink while they can't see
   you, and being seen starts the clock over.
+- **Cash vans:** in free roam (no mission, no stars) a Lumis cash van leaves a bank 120–500 m
+  from you every five minutes (the first after 2.5 minutes), green on the minimap
+  (`systems/cashvan.lua`). Hit it and it runs (one star); wreck it and four bags of $250 spill
+  out (two stars). Leave it and it drives off. `CASHVAN_TEST=1` plays one through.
 
 ## Shops
 
