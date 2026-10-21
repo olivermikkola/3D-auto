@@ -317,6 +317,8 @@ engine.on("key", function(k, down)
 end)
 
 engine.on("frame", function(dt)
+  local weather = package.loaded["lib.weather"]
+  if weather then weather.draw() end
   local w, h = engine.screen()
   shadow_text(string.format("$%d", G.cash), w - 20 - engine.text_width(string.format("$%d", G.cash), 28), 20, 28, 0.4, 0.9, 0.4)
 

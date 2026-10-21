@@ -89,11 +89,15 @@ function M.drive(id, dt, input)
   local lift = vx * ux + vy * uy + vz * uz
 
   local c = M.class(id)
+  -- Wet roads (lib/weather): brakes bite less, and the car slides more.
+  local weather = package.loaded["lib.weather"]
+  local grip = weather and weather.grip() or 1
+  local brake = c.brake * (1 - 0.9 * (1 - grip))
   local t = input.throttle or 0
   if t > 0 then
-    v = v + (v < 0 and c.brake or c.accel * (1 - v / c.top)) * t * dt
+    v = v + (v < 0 and brake or c.accel * (1 - v / c.top)) * t * dt
   elseif t < 0 then
-    v = v + (v > 0 and -c.brake or -c.accel * (1 + v / c.reverse)) * -t * dt
+    v = v + (v > 0 and -brake or -c.accel * (1 + v / c.reverse)) * -t * dt
   end
   v = v - v * M.DRAG * dt - (input.handbrake and v * 2.5 * dt or 0)
   if t == 0 and math.abs(v) < 0.3 then v = 0 end
@@ -110,7 +114,7 @@ function M.drive(id, dt, input)
   engine.set_angvel(id, (wx - ux * wu) * k + ux * rate, (wy - uy * wu) * k + uy * rate, (wz - uz * wu) * k + uz * rate)
 
   -- Kill sideways slip (tyre grip), less with the handbrake on for drifts.
-  side = side * (input.handbrake and 0.92 or 0.6)
+  side = side * (input.handbrake and 0.92 or (0.6 + 0.8 * (1 - grip)))
   engine.set_vel(id, fx * v + rx * side + ux * lift, fy * v + ry * side + uy * lift, fz * v + rz * side + uz * lift)
   return true
 end
