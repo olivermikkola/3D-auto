@@ -30,6 +30,7 @@ require "lib.hud"
 require "lib.story"
 require "story.radio"
 require "systems.garage"
+require "systems.cashvan"
 require "lib.menu"
 require "lib.shop"
 
@@ -95,6 +96,7 @@ engine.on("init", function()
   require("systems.gunshop").build()
   require("systems.paintshop").build()
   require("systems.dealer").build()
+  require("systems.cashvan").build()
   engine.grab_mouse(true)
 end)
 
@@ -159,6 +161,7 @@ if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
+if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
