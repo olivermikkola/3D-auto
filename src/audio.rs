@@ -19,6 +19,12 @@ struct Voice {
     pos: f64,
     pitch: f32,
     volume: f32,
+    /// Volume the last buffer ended at: volume changes ramp from here
+    /// across the next buffer instead of jumping (a jump is a click).
+    /// Loops fade in from silence; one-shots carry their own attack.
+    heard: f32,
+    /// Stopped: fades to silence over one buffer, then goes.
+    stopping: bool,
     looped: bool,
     world: Option<Vec3>,
     gains: (f32, f32),
@@ -59,7 +65,19 @@ impl Mixer {
         let id = self.next;
         self.next += 1;
         let gains = spatial(world, self.listener, self.listener_right);
-        self.voices.push(Voice { id, data, pos: 0.0, pitch, volume, looped, world, gains, ui });
+        self.voices.push(Voice {
+            id,
+            data,
+            pos: 0.0,
+            pitch,
+            volume,
+            heard: if looped { 0.0 } else { volume },
+            stopping: false,
+            looped,
+            world,
+            gains,
+            ui,
+        });
         id
     }
 
@@ -72,7 +90,9 @@ impl Mixer {
     }
 
     pub fn stop(&mut self, id: u32) {
-        self.voices.retain(|v| v.id != id);
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.stopping = true;
+        }
     }
 
     pub fn stop_all(&mut self) {
@@ -81,7 +101,7 @@ impl Mixer {
     }
 
     pub fn playing(&self, id: u32) -> bool {
-        self.voices.iter().any(|v| v.id == id)
+        self.voices.iter().any(|v| v.id == id && !v.stopping)
     }
 
     pub fn voice_count(&self) -> usize {
@@ -96,6 +116,9 @@ impl Mixer {
         let (listener, right) = (self.listener, self.listener_right);
         for v in &mut self.voices {
             if self.paused && !v.ui {
+                if v.stopping {
+                    v.heard = 0.0; // silent already: no fade needed
+                }
                 continue;
             }
             let n = v.data.len();
@@ -108,6 +131,8 @@ impl Mixer {
             let (gl0, gr0) = v.gains;
             let (gl1, gr1) = spatial(v.world, listener, right);
             v.gains = (gl1, gr1);
+            let (vol0, vol1) = (v.heard, if v.stopping { 0.0 } else { v.volume });
+            v.heard = vol1;
             let step = v.pitch.max(0.0) as f64 * ratio;
             for f in 0..frames {
                 if v.pos >= n as f64 {
@@ -125,14 +150,14 @@ impl Mixer {
                 } else {
                     0.0
                 };
-                let s = (v.data[i] + (next - v.data[i]) * frac) * v.volume;
                 let t = f as f32 / frames as f32;
+                let s = (v.data[i] + (next - v.data[i]) * frac) * (vol0 + (vol1 - vol0) * t);
                 out[2 * f] += s * (gl0 + (gl1 - gl0) * t);
                 out[2 * f + 1] += s * (gr0 + (gr1 - gr0) * t);
                 v.pos += step;
             }
         }
-        self.voices.retain(|v| v.looped || v.pos < v.data.len() as f64);
+        self.voices.retain(|v| !(v.stopping && v.heard == 0.0) && (v.looped || v.pos < v.data.len() as f64));
         for s in out.iter_mut() {
             *s = (*s * self.master).clamp(-1.0, 1.0);
         }
@@ -208,6 +233,7 @@ impl Synth {
             }
             let n = (dur * sr).round() as usize;
             let mut phase = 0.0f32;
+            let mut raw = Vec::with_capacity(if looped { n } else { 0 });
             for k in 0..n {
                 let t = k as f32 / n as f32;
                 let f = if looped { f0 } else { f0 * (f1 / f0).powf(t) };
@@ -243,8 +269,24 @@ impl Synth {
                     let rel = if self.release > 0.0 { ((dur - secs) / self.release).clamp(0.0, 1.0) } else { 1.0 };
                     att * rel
                 };
+                if looped {
+                    raw.push(x);
+                    continue;
+                }
                 lp += a * (x - lp);
                 out.push(lp * env * self.volume);
+            }
+            // A loop goes through the lowpass twice and keeps the second
+            // pass: it starts where its own end leaves the filter, so the
+            // seam doesn't jump back from there to silence (a click on
+            // every pass of the loop).
+            for pass in 0..if looped { 2 } else { 0 } {
+                for &x in &raw {
+                    lp += a * (x - lp);
+                    if pass == 1 {
+                        out.push(lp * self.volume);
+                    }
+                }
             }
         }
         out
@@ -477,6 +519,19 @@ mod tests {
     }
 
     #[test]
+    fn filtered_loop_has_no_click_at_its_seam() {
+        // The engines' sound: a low saw through the lowpass, looped. The
+        // step from the last sample back to the first must be no bigger
+        // than the biggest step inside the buffer, or every pass of the
+        // loop clicks.
+        let s = Synth { wave: Wave::Saw, freq: 55.0, dur: 0.5, looped: true, volume: 0.35, lowpass: 0.35, ..Default::default() };
+        let buf = s.render();
+        let inner = buf.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        let seam = (buf[0] - buf[buf.len() - 1]).abs();
+        assert!(seam <= inner * 1.01, "seam step {seam} vs biggest inner step {inner}");
+    }
+
+    #[test]
     fn mixer_plays_pans_and_finishes() {
         let mut m = Mixer::default();
         m.listener_right = v3(-1.0, 0.0, 0.0); // camera looks down +Z
@@ -497,6 +552,36 @@ mod tests {
         m.mix(&mut vec![0.0; 2 * 4096]);
         assert!(m.playing(lp));
         m.stop(lp);
+        assert!(!m.playing(lp));
+        m.mix(&mut vec![0.0; 2 * 256]);
+        assert_eq!(m.voice_count(), 0, "faded out over one buffer, then gone");
+    }
+
+    #[test]
+    fn loops_fade_in_and_out_instead_of_jumping() {
+        // An engine voice starting, changing volume and stopping mid-wave
+        // ramps across a buffer: no output step bigger than the loop's own.
+        let s = Synth { wave: Wave::Saw, freq: 55.0, dur: 0.5, looped: true, volume: 0.35, lowpass: 0.35, ..Default::default() };
+        let data: Samples = Arc::new(s.render());
+        let inner = data.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        let mut m = Mixer::default();
+        m.master = 1.0;
+        let id = m.play(data, 1.0, 1.3, true, None, false);
+        let mut heard = vec![0.0f32]; // silence before the voice
+        for k in 0..12 {
+            if k == 4 {
+                m.set(id, Some(0.2), None, None);
+            }
+            if k == 8 {
+                m.stop(id);
+            }
+            let mut out = vec![0.0; 2 * 512];
+            m.mix(&mut out);
+            heard.extend(out.iter().step_by(2));
+        }
+        let step = heard.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        assert!(step <= inner * 1.3 * 1.05, "biggest step {step}, loop's own {inner}");
+        assert_eq!(*heard.last().unwrap(), 0.0);
         assert_eq!(m.voice_count(), 0);
     }
 
