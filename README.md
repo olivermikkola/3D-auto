@@ -510,6 +510,10 @@ changes**, which is the point of the kernel:
   Get out of it and stay unseen: 3 s at one star, 5.5 s more for each star after (25 s at five).
   Hidden inside it, they give up after 30 s (70 s at five). The stars blink while they can't see
   you, and being seen starts the clock over.
+- **Cash vans:** in free roam (no mission, no stars) a Lumis cash van leaves a bank 120–500 m
+  from you every five minutes (the first after 2.5 minutes), green on the minimap
+  (`systems/cashvan.lua`). Hit it and it runs (one star); wreck it and four bags of $250 spill
+  out (two stars). Leave it and it drives off. `CASHVAN_TEST=1` plays one through.
 
 ## Shops
 

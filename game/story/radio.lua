@@ -37,3 +37,5 @@ add{id = "storm", on = "weather", cooldown = 600, when = function(_, kind) retur
 add{id = "clears", on = "weather", cooldown = 300,
     when = function(_, kind, was) return kind == "clear" and (was == "rain" or was == "storm") end,
     text = "RADIO: The rain has passed. {area} steams gently in the sun."}
+add{id = "cashvan", on = "cashvan_robbed", cooldown = 300,
+    text = "RADIO: A Lumis cash van robbed on {street}. The bags were not insured for this."}
