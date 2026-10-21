@@ -27,7 +27,7 @@ class WeatherTests(unittest.TestCase):
                 out = res.stdout + res.stderr
                 self.assertEqual(res.returncode, 0, out)
                 self.assertIn(f"WEATHER_PROBE {name}: PASSED", out, out)
-                m = re.search(r"([\\d.]+) m dry, ([\\d.]+) m wet", out)
+                m = re.search(r"([\d.]+) m dry, ([\d.]+) m wet", out)
                 self.assertTrue(m, out)
                 self.assertGreater(float(m[2]), float(m[1]) * 1.2)
 
