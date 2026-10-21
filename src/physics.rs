@@ -543,10 +543,19 @@ pub fn step(
             // as step ramps for vehicles; require the obstacle to have sufficient horizontal footprint.
             let b_is_pole = hb.x < 0.25 && hb.z < 0.25 && hb.y > 1.5;
             if !b_dynamic && !b_is_pole && ba.step > 0.0 && n.y.abs() < 0.5 {
-                let rise = (cb.y + hb.y) - (ca.y - ha.y);
-                if rise > 0.0 && rise <= ba.step && ca.y > cb.y + hb.y {
+                // The ledge's height where the body is: a tilted slab's top
+                // face there (a bridge deck piece), not its bounding box's
+                // top, which is its highest corner metres away.
+                let up = eb.rot.rotate(Vec3::UP);
+                let mut top = cb.y + hb.y;
+                if up.y > 0.9 {
+                    let t = eb.pos + up * bb.half.y;
+                    top = top.min(t.y - (up.x * (ca.x - t.x) + up.z * (ca.z - t.z)) / up.y);
+                }
+                let rise = top - (ca.y - ha.y);
+                if rise > -0.2 && rise <= ba.step && ca.y > top {
                     let e = ents[i].as_mut().unwrap();
-                    e.pos.y += rise + 0.01;
+                    e.pos.y += rise.max(0.0) + 0.01;
                     let b = e.body.as_mut().unwrap();
                     b.vel.y = b.vel.y.max(0.0);
                     b.grounded = true;
@@ -1256,6 +1265,35 @@ mod tests {
         assert!(p.x < 3.0, "without step-up the curb blocks: x = {}", p.x);
         let p = mk(0.4);
         assert!(p.x > 4.0 && (p.y - 1.1).abs() < 0.06, "stepped up: {p:?}");
+    }
+
+    #[test]
+    fn walkers_step_over_a_seam_between_tilted_slabs() {
+        // Two 10 m deck pieces up a 6 % slope, the second 8 cm proud of the
+        // first where they meet (pieces of a bridge at a bend). The step is
+        // the slab's top there, not its bounding box's (its far corner).
+        let rot = Quat::euler(0.0, -0.06, 0.0);
+        let fwd = rot.rotate(v3(0., 0., 1.));
+        let mut w =
+            vec![ent(v3(0., 0., 0.), Kind::Static, v3(3., 0.5, 5.)), ent(fwd * 10.0 + v3(0., 0.08, 0.), Kind::Static, v3(3., 0.5, 5.))];
+        for e in w.iter_mut() {
+            e.as_mut().unwrap().rot = rot;
+        }
+        let start = v3(0., 0.0, -3.0);
+        let top = start.y + 0.5 / rot.rotate(Vec3::UP).y + (start.z * fwd.y / fwd.z);
+        w.push(ent(v3(0., top + 0.95, -3.0), Kind::Dynamic, v3(0.35, 0.9, 0.35)));
+        let b = w[2].as_mut().unwrap().body.as_mut().unwrap();
+        b.step = 0.45;
+        b.lock_rotation = true;
+        b.set_mass(70.0);
+        b.friction = 0.0;
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        for _ in 0..600 {
+            w[2].as_mut().unwrap().body.as_mut().unwrap().vel.z = 1.3;
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
+        }
+        let p = get(&w, 2).pos;
+        assert!(p.z > 8.0, "walked on over the seam: z = {}", p.z);
     }
 
     #[test]

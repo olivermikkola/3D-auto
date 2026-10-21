@@ -1408,9 +1408,11 @@ build = function(map, kit)
   -- How far a deck's slab may reach to one side (r: unit vector that way)
   -- from (x, z), at most `reach`: up to another road's asphalt that's at
   -- another height (a twin carriageway's deck, a ramp's road below), where
-  -- its edge would stand up as an invisible kerb.
+  -- its edge would stand up as an invisible kerb. Second: that road is well
+  -- below (2.5 m or more), where a thin pavement may still reach over it.
   local function deck_reach(ei, x, z, h, rx, rz, reach)
-    local w = NET.edges[ei].width / 2
+    local e = NET.edges[ei]
+    local w = e.width / 2
     for o = w + 0.5, reach + 0.01, 0.5 do
       local px, pz = x + rx * o, z + rz * o
       local ci, cj = math.floor(px / CELL), math.floor(pz / CELL)
@@ -1423,7 +1425,13 @@ build = function(map, kit)
               local d, cx, cz = dist_seg(px, pz, a[1], a[2], b[1], b[2])
               if d < oe.width / 2 then
                 local dh = math.abs((oe.height or GROUND)(cx, cz) - h)
-                if dh > 0.15 and dh < 4 then return math.max(w, o - 0.5) end
+                -- A road carrying on from the deck's own end is graded to
+                -- meet it there, not to match it to the inch beside it:
+                -- cut for that only where it's a real step.
+                local joins = oe.a == e.a or oe.a == e.b or oe.b == e.a or oe.b == e.b
+                if dh > (joins and 0.5 or 0.15) and dh < 4 then
+                  return math.max(w, o - 0.5), h - (oe.height or GROUND)(cx, cz) >= 2.5
+                end
               end
             end
           end
@@ -1431,6 +1439,28 @@ build = function(map, kit)
       end
     end
     return reach
+  end
+  -- How far a deck turns at its point i (or, at an end, onto the deck it
+  -- carries on as there, in the air), in radians: two straight slab
+  -- pieces meeting at a turn leave a wedge open on its outside.
+  local function heading(p, q) return math.atan(q[1] - p[1], q[2] - p[2]) end
+  local function turn_between(y0, y1) return math.abs((y1 - y0 + math.pi) % (2 * math.pi) - math.pi) end
+  local function deck_turn(e, i)
+    local p = e.pts
+    if i > 1 and i < #p then return turn_between(heading(p[i - 1], p[i]), heading(p[i], p[i + 1])) end
+    local id = i == 1 and e.a or e.b
+    if not floating(id) then return 0 end
+    local into = i == 1 and heading(p[2], p[1]) or heading(p[#p - 1], p[#p])
+    local best = 0
+    for _, o in ipairs(meeting()[id]) do
+      if o ~= e and o.height then
+        local q = o.pts
+        local out = o.a == id and heading(q[1], q[2]) or heading(q[#q], q[#q - 1])
+        local t = turn_between(into, out)
+        if t < math.rad(45) and (best == 0 or t < best) then best = t end
+      end
+    end
+    return best
   end
   for ei, e in ipairs(NET.edges) do
     local parts = {}
@@ -1457,17 +1487,39 @@ build = function(map, kit)
           local mx, mz, mh, pitch = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2, (h0 + h1) / 2, -math.atan(h1 - h0, len / n)
           -- Sample both ends too: a forking ramp can arrive under one end first.
           local left, right = wide / 2, wide / 2
+          local thin = {[-1] = true, [1] = true} -- every cut that side is over a road well below
           for _, f in ipairs{t0, (t0 + t1) / 2, t1} do
             local fx, fz = ax + (bx - ax) * f, az + (bz - az) * f
             local fh = hf(fx, fz)
-            left = math.min(left, deck_reach(ei, fx, fz, fh, -rx, -rz, left))
-            right = math.min(right, deck_reach(ei, fx, fz, fh, rx, rz, right))
+            local l, lb = deck_reach(ei, fx, fz, fh, -rx, -rz, left)
+            local r, rb = deck_reach(ei, fx, fz, fh, rx, rz, right)
+            if lb == false then thin[-1] = false end
+            if rb == false then thin[1] = false end
+            left, right = math.min(left, l), math.min(right, r)
           end
           local sx, sz, sw = mx + rx * (right - left) / 2, mz + rz * (right - left) / 2, left + right
-          kit.static{pos = {sx, mh - 0.5, sz}, yaw = yaw, pitch = pitch, size = {sw, 1, len / n + 0.05}, visible = false,
+          -- At a turn, the end pieces reach on past it to close the wedge
+          -- on its outside (walkers on the outer pavement fell through).
+          local reach = math.max(left, right)
+          local e0 = k == 0 and reach * math.tan(math.min(deck_turn(e, i - 1), math.rad(60)) / 2) or 0
+          local e1 = k == n - 1 and reach * math.tan(math.min(deck_turn(e, i), math.rad(60)) / 2) or 0
+          local fx, fz = (bx - ax) / len, (bz - az) / len
+          sx, sz = sx + fx * (e1 - e0) / 2, sz + fz * (e1 - e0) / 2
+          local sh, sl = mh + (h1 - h0) / (len / n) * (e1 - e0) / 2, len / n + 0.05 + e0 + e1
+          kit.static{pos = {sx, sh - 0.5, sz}, yaw = yaw, pitch = pitch, size = {sw, 1, sl}, visible = false,
                      tag = "bridge", abs = true}
-          parts[#parts + 1] = {mesh = "cube", pos = {sx, mh - 0.7, sz}, yaw = yaw, pitch = pitch, size = {sw, 1.2, len / n + 0.05},
+          parts[#parts + 1] = {mesh = "cube", pos = {sx, sh - 0.7, sz}, yaw = yaw, pitch = pitch, size = {sw, 1.2, sl},
                                color = {0.55, 0.55, 0.53}, abs = true}
+          -- The pavement cut off over a road well below: a thin slab under
+          -- it, so walkers don't drop through, with room under it to drive.
+          for _, side in ipairs{-1, 1} do
+            local cut = side > 0 and right or left
+            if walk and thin[side] and cut < wide / 2 - 0.25 then
+              local o = (cut + wide / 2) / 2
+              kit.static{pos = {mx + rx * side * o, mh - 0.125, mz + rz * side * o}, yaw = yaw, pitch = pitch,
+                         size = {wide / 2 - cut, 0.25, len / n + 0.05}, visible = false, tag = "bridge", abs = true}
+            end
+          end
           for _, side in ipairs(e.over and {} or {-1, 1}) do -- over a tunnel, the roof is the ground
             local o = side > 0 and right or left
             if o >= wide / 2 then -- no railing where the slab meets another road
@@ -2020,6 +2072,27 @@ build = function(map, kit)
   -- a raised deck there); solid where it's up. `concrete` ones have the
   -- 1970s' solid parapets.
   local TOP = 5.6
+  -- A road deck under a footbridge's piece, running its way: the map's
+  -- walkway on a bridge (between twin carriageways, say). The deck and its
+  -- pavements carry walkers there; a footbridge built from the ground up
+  -- would stand out of the deck instead.
+  local function along_deck(x, z, yaw, width)
+    local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+    for i = ci - 1, ci + 1 do
+      for j = cj - 1, cj + 1 do
+        for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+          local oe = NET.edges[it[1]]
+          if oe.height and not oe.tunnel then
+            local a, b = oe.pts[it[2] - 1], oe.pts[it[2]]
+            local d = dist_seg(x, z, a[1], a[2], b[1], b[2])
+            local turn = math.abs((math.atan(b[1] - a[1], b[2] - a[2]) - yaw) % math.pi)
+            if d < oe.width / 2 + SIDEWALK + width / 2 and math.min(turn, math.pi - turn) < math.rad(25) then return true end
+          end
+        end
+      end
+    end
+    return false
+  end
   for _, b in ipairs(map.footbridges or {}) do
     local width, pts = b[1], {}
     for i = 2, #b do pts[#pts + 1] = b[i] end
@@ -2043,6 +2116,7 @@ build = function(map, kit)
         local x, z = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
         local l, pitch = seg / n, -math.atan(h1 - h0, seg / n)
         local high = math.min(h0, h1) >= TOP
+        if along_deck(x, z, yaw, width) then goto next_piece end
         local deck = {mesh = "cube", pos = {x, (h0 + h1) / 2, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
                       color = {0.62, 0.62, 0.6}, tag = "bridge"}
         if high then kit.static(deck) else engine.spawn(deck) end
@@ -2062,6 +2136,7 @@ build = function(map, kit)
             kit.static{mesh = "cylinder", pos = {x, (h0 + h1) / 4, z}, size = {0.7, (h0 + h1) / 2, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge"}
           end
         end
+        ::next_piece::
       end
       sv = sv + seg
     end
