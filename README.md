@@ -515,6 +515,10 @@ changes**, which is the point of the kernel:
   110–220 m ahead (two on a street, up to four on an avenue) with officers posted behind
   them, at most one block every 30 s. Ram through or turn off; once you're past or gone
   another way, they join the chase. `ROADBLOCK_TEST=1` checks one.
+- **Helicopter:** from four stars a police helicopter flies in and hangs 40 m over you, its
+  searchlight on you at night. It sees you wherever the sky is open over you, so in the open the
+  cops never lose you; get under a roof, a bridge or into a tunnel. It leaves under four stars.
+  `HELI_TEST=1` checks it.
 - **Busted:** stop (or stand) next to a cop for 1.5 s. You pay a fine, the wanted level clears,
   any active mission fails, and you're released on foot.
 - **Escape:** the red circle on the minimap is the search area around where you were last seen.
