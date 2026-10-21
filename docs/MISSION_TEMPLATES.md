@@ -132,8 +132,10 @@ Then Joyride, Street Race, Takedown and Smuggler's Run (seeds 1-50, all playable
 - **Smuggler's Run** picks up four packages behind a pub or bar, a kiosk,
   a car wash or petrol station and a garage, 0.4-1.1 km apart, and drops
   them at a marina or ferry terminal (whose street may be 250 m off: a
-  marina's middle is out on its jetties). Turku 50 different routes, 10
-  drops, timer 350-710 s; Raisio 11 routes, 3 drops, 630-1100 s.
+  marina's middle is out on its jetties; the nearer the likelier). A round
+  over 6.5 km by road (Raisio is spread out) has three packages, not
+  four. Turku 50 different routes, 10 drops, timer 350-630 s; Raisio 6
+  routes, 3 drops, 540-910 s.
 
 Names alone would mislead: Turku has charging stations called "Helen
 Hesburger ...". Tags tell them apart (`amenity=fast_food`).

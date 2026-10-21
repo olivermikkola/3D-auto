@@ -115,10 +115,10 @@ local function script()
 
   -- ---- Smuggler's Run: heat rises per package; the drop waits for zero stars
   m = start("07_smuggler")
-  check(m.stops and #m.stops == 4, "four packages to pick up")
+  check(m.stops and #m.stops >= 3, #m.stops .. " packages to pick up")
   for i, n in ipairs(m.stops) do
     go(n[1], n[2])
-    wait(function() return m.objective and m.objective:find(i < 4 and tostring(i + 1) .. " of" or "drop") end, 1,
+    wait(function() return m.objective and m.objective:find(i < #m.stops and tostring(i + 1) .. " of" or "drop") end, 1,
          "package " .. i .. " picked up")
     check(wanted.stars() == math.min(3, i - 1), string.format("%d star(s) after package %d", wanted.stars(), i))
   end

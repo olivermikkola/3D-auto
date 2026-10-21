@@ -139,11 +139,11 @@ engine.on("init", function()
   for seed = 1, SEEDS do
     local stops, drop, seconds = smug.cast(seed)
     if stops then
-      assert(#stops == 4 and drop.name and drop.drive < math.huge, "four pickups and a named drop")
+      assert(#stops >= 3 and drop.name and drop.drive < math.huge, "three or four pickups and a named drop")
       for _, p in ipairs(stops) do assert(p.name and p.road and p.drive < math.huge, "a pickup cars can reach") end
       ok3 = ok3 + 1
       drops3[drop.name] = true
-      routes[stops[1].name .. "|" .. stops[2].name .. "|" .. stops[3].name .. "|" .. stops[4].name] = true
+      routes[stops[1].name .. "|" .. stops[2].name .. "|" .. stops[3].name .. "|" .. (stops[4] and stops[4].name or "")] = true
       lo3, hi3 = math.min(lo3, seconds), math.max(hi3, seconds)
     end
   end

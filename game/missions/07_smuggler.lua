@@ -38,7 +38,8 @@ local function cast(seed)
   local fits = {}
   for _, tags in ipairs(DROPS) do
     local role = {"drop", from = {c.fourth.x, c.fourth.z}, name = true, drive_min = 600, drive_max = 2000,
-                  road_dist = 250, relax = {{drive_max = 4000}, {drive_min = false, drive_max = false}}}
+                  road_dist = 250, relax = {{drive_max = 4000}, {drive_min = false, drive_max = false}},
+                  weight = function(p) return 1 / (1 + p.drive / 1000) end} -- the nearer the better
     for k, v in pairs(tags) do role[k] = v end
     local d = template.cast{seed = seed, from = home, roles = {role}}
     if d then fits[#fits + 1] = d.drop end
@@ -48,6 +49,11 @@ local function cast(seed)
   local stops = {c.first, c.second, c.third, c.fourth}
   local drive = drop.drive
   for _, p in ipairs(stops) do drive = drive + p.drive end
+  -- A spread-out town (Raisio) makes a long round: three packages will do.
+  if drive > 6500 then
+    drive = drive - c.fourth.drive
+    stops[4] = nil
+  end
   -- Driving at about 13 m/s, plus a minute to shake the cops.
   return stops, drop, math.floor((60 + drive / 13) / 10 + 0.5) * 10
 end
