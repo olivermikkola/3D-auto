@@ -28,6 +28,73 @@ function P.car_parts(c)
   return parts
 end
 
+-- Sports car: collider 2.0 x 1.2 x 4.6, low and long, with a wing.
+function P.sports_parts(c)
+  local glass, tire, rim, dark = {0.12, 0.16, 0.22}, {0.08, 0.08, 0.08}, {0.75, 0.75, 0.78}, {0.1, 0.1, 0.11}
+  local parts = {
+    {mesh = "cube", pos = {0, -0.25, 0}, size = {2.0, 0.45, 4.6}, color = c},
+    {mesh = "cube", pos = {0, 0.12, -0.35}, size = {1.7, 0.36, 1.9}, color = {c[1] * 0.85, c[2] * 0.85, c[3] * 0.85}},
+    {mesh = "cube", pos = {0, 0.14, -0.35}, size = {1.74, 0.26, 1.6}, color = glass},
+    {mesh = "cube", pos = {0, 0.12, 0.62}, size = {1.5, 0.28, 0.06}, color = glass},
+    {mesh = "cube", pos = {0, -0.02, 1.5}, size = {1.2, 0.04, 1.0}, color = dark},
+    {mesh = "cube", pos = {0, 0.2, -2.15}, size = {1.9, 0.07, 0.4}, color = dark},
+    {mesh = "cube", pos = {0.7, 0.05, -2.15}, size = {0.08, 0.25, 0.2}, color = dark},
+    {mesh = "cube", pos = {-0.7, 0.05, -2.15}, size = {0.08, 0.25, 0.2}, color = dark},
+    {mesh = "cube", pos = {0.62, -0.18, 2.31}, size = {0.5, 0.12, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {-0.62, -0.18, 2.31}, size = {0.5, 0.12, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {0, -0.15, -2.31}, size = {1.7, 0.1, 0.04}, color = {0.9, 0.05, 0.05}, emissive = 1},
+  }
+  for _, w in ipairs{{0.9, 1.45}, {-0.9, 1.45}, {0.92, -1.45}, {-0.92, -1.45}} do
+    parts[#parts + 1] = {mesh = "cylinder", axis = "x", pos = {w[1], -0.3, w[2]}, size = {0.38, 0.68, 0.68}, color = tire}
+    parts[#parts + 1] = {mesh = "cylinder", axis = "x", pos = {w[1] * 1.02, -0.3, w[2]}, size = {0.36, 0.4, 0.4}, color = rim}
+  end
+  return parts
+end
+
+-- Delivery van: collider 2.1 x 2.2 x 5.0, a cab and a tall box.
+function P.van_parts(c)
+  local glass, tire, rim = {0.15, 0.2, 0.28}, {0.08, 0.08, 0.08}, {0.55, 0.55, 0.55}
+  local parts = {
+    {mesh = "cube", pos = {0, -0.65, 0}, size = {2.1, 0.4, 5.0}, color = {0.2, 0.2, 0.22}},
+    {mesh = "cube", pos = {0, 0.25, -0.6}, size = {2.1, 1.7, 3.8}, color = c},
+    {mesh = "cube", pos = {0, -0.05, 1.85}, size = {2.04, 1.1, 1.3}, color = c},
+    {mesh = "cube", pos = {0, 0.2, 2.25}, size = {1.86, 0.5, 0.5}, color = glass},
+    {mesh = "cube", pos = {0, 0.2, 1.75}, size = {2.08, 0.45, 0.8}, color = glass},
+    {mesh = "cube", pos = {0.65, -0.4, 2.51}, size = {0.4, 0.18, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {-0.65, -0.4, 2.51}, size = {0.4, 0.18, 0.04}, color = {1, 0.95, 0.7}, emissive = 1},
+    {mesh = "cube", pos = {0.85, -0.3, -2.51}, size = {0.25, 0.4, 0.04}, color = {0.9, 0.05, 0.05}, emissive = 1},
+    {mesh = "cube", pos = {-0.85, -0.3, -2.51}, size = {0.25, 0.4, 0.04}, color = {0.9, 0.05, 0.05}, emissive = 1},
+    {mesh = "cube", pos = {0, 0.25, -2.52}, size = {0.04, 1.5, 0.02}, color = {0.25, 0.25, 0.27}},
+  }
+  for _, w in ipairs{{0.95, 1.7}, {-0.95, 1.7}, {0.95, -1.6}, {-0.95, -1.6}} do
+    parts[#parts + 1] = {mesh = "cylinder", axis = "x", pos = {w[1], -0.72, w[2]}, size = {0.32, 0.76, 0.76}, color = tire}
+    parts[#parts + 1] = {mesh = "cylinder", axis = "x", pos = {w[1] * 1.02, -0.72, w[2]}, size = {0.3, 0.36, 0.36}, color = rim}
+  end
+  return parts
+end
+
+-- Taxi: the car with a lit TAKSI sign on the roof.
+function P.cab_parts(c)
+  local parts = P.car_parts(c)
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 0.82, -0.3}, size = {0.75, 0.22, 0.32}, color = {1, 0.85, 0.15}, emissive = 1}
+  return parts
+end
+
+-- Kinds of car, by mesh name prefix: their collider, mass, and how high
+-- the body rides (half the collider's height, plus a little).
+P.CAR_KINDS = {
+  car = {size = {2.0, 1.4, 4.4}, mass = 1200, lift = 0.75, parts = P.car_parts},
+  sports = {size = {2.0, 1.2, 4.6}, mass = 1100, lift = 0.65, parts = P.sports_parts},
+  van = {size = {2.1, 2.2, 5.0}, mass = 1900, lift = 1.15, parts = P.van_parts},
+  cab = {size = {2.0, 1.4, 4.4}, mass = 1200, lift = 0.75, parts = P.cab_parts},
+}
+
+-- "car", "sports", "van" or "cab" for a mesh like "van3"; nil for others.
+function P.car_kind(mesh)
+  local k = mesh and mesh:match("^(%a+)%d+$")
+  return k and P.CAR_KINDS[k] and k or nil
+end
+
 -- Person collider is 0.7 x 1.8 x 0.7.
 function P.person(name, shirt, pants, skin, hair)
   engine.mesh(name, {
@@ -42,7 +109,9 @@ function P.person(name, shirt, pants, skin, hair)
 end
 
 function P.build()
-  for i, c in ipairs(P.car_colors) do engine.mesh("car" .. i, P.car_parts(c)) end
+  for kind, k in pairs(P.CAR_KINDS) do
+    for i, c in ipairs(P.car_colors) do engine.mesh(kind .. i, k.parts(c)) end
+  end
 
   P.person("person", {0.85, 0.85, 0.82}, {0.2, 0.25, 0.45}, {0.85, 0.7, 0.55}, {0.15, 0.1, 0.05})
 
