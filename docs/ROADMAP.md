@@ -33,7 +33,7 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   from the map's real points of interest by seed, so each run is another version (a real
   Hesburger, banks, garages, landmarks, pubs, marinas).
 - **Free roam**: traffic of cars, vans, taxis and sports cars, Föli buses, pedestrians, police pursuits with roadblocks from three
-  stars, Lumis cash vans to rob, street lamps that knock over, weather (clear, cloudy, rain,
+  stars and a helicopter from four, Lumis cash vans to rob, street lamps that knock over, weather (clear, cloudy, rain,
   storm) with wet roads, and a city radio that answers what you do.
 - **Sweeps that drive the whole map** keep it playable: traffic (`DRIVE_SWEEP`), buses,
   pedestrians (`PED_SWEEP`), the player's car (`PLAYER_SWEEP`), bridges (`BRIDGE_AUDIT`), and
