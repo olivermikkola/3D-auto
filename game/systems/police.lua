@@ -808,7 +808,7 @@ end)
 
 engine.on("wanted_changed", function(new)
   if new == 0 then
-    for _, c in pairs(P.cops) do engine.stop(c.siren); c.siren = nil end
+    for _, c in pairs(P.cops) do if c.siren then engine.stop(c.siren) end c.siren = nil end
   end
 end)
 
