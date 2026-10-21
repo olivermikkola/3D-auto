@@ -16,9 +16,20 @@ M.CLASSES = {
   bus = {top = 42, accel = 5, brake = 16, reverse = 6},
   pasi = {top = 44, accel = 6, brake = 18, reverse = 7},
 }
+-- Cars by their kind of body (lib/prefabs CAR_KINDS): a sports car levels
+-- off at about 135 km/h and gets there quickly; a van at about 90.
+M.KINDS = {
+  sports = {top = 46, accel = 24, brake = 34, reverse = 10},
+  van = {top = 34, accel = 12, brake = 24, reverse = 8},
+}
 
 function M.class(id)
-  return M.CLASSES[engine.tag(id) or ""] or CAR
+  local tag = engine.tag(id) or ""
+  if tag == "car" then
+    local kind = require("lib.prefabs").car_kind(engine.mesh_of(id))
+    if kind and M.KINDS[kind] then return M.KINDS[kind] end
+  end
+  return M.CLASSES[tag] or CAR
 end
 
 -- The speed (m/s) a vehicle of this class levels off at on the flat.
@@ -34,15 +45,20 @@ M.tags = {car = true, cop = true, pasi = true, bus = true, boat = true}
 -- in a tunnel).
 function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local n = color_index or math.random(8)
+  -- Another kind of car ("sports", "van", "cab": lib/prefabs) in that colour.
+  local prefabs = require "lib.prefabs"
+  if mesh and prefabs.CAR_KINDS[mesh] then mesh = mesh .. n end
+  local kind = prefabs.CAR_KINDS[prefabs.car_kind(mesh) or ""]
   local is_pasi = mesh == "pasi" or tag == "pasi"
   local is_bus = mesh == "bus" or tag == "bus"
   local is_boat = mesh == "speedboat" or tag == "boat"
-  local size = is_pasi and {2.9, 2.5, 7.2} or (is_bus and {2.6, 3.2, 12.2} or (is_boat and {2.4, 1.4, 6.2} or {2.0, 1.4, 4.4}))
-  local mass = is_pasi and 13500 or (is_bus and 11500 or (is_boat and 950 or 1200))
+  local size = is_pasi and {2.9, 2.5, 7.2} or (is_bus and {2.6, 3.2, 12.2} or (is_boat and {2.4, 1.4, 6.2} or (kind and kind.size or {2.0, 1.4, 4.4})))
+  local mass = is_pasi and 13500 or (is_bus and 11500 or (is_boat and 950 or (kind and kind.mass or 1200)))
   local step = (is_pasi or is_bus) and 0.55 or (is_boat and 0.2 or 0.35)
   local id_mesh = mesh or (is_pasi and "pasi" or (is_bus and "bus" or (is_boat and "speedboat" or ("car" .. n))))
   local default_tag = is_pasi and "pasi" or (is_bus and "bus" or (is_boat and "boat" or "car"))
-  local id = engine.spawn{mesh = id_mesh, pos = {x, (is_bus and 1.6 or (is_pasi and 1.25 or (is_boat and 0.3 or 0.75))) + (y or U.ground(x, z)), z},
+  local lift = is_bus and 1.6 or (is_pasi and 1.25 or (is_boat and 0.3 or (kind and kind.lift or 0.75)))
+  local id = engine.spawn{mesh = id_mesh, pos = {x, lift + (y or U.ground(x, z)), z},
                           yaw = yaw or 0, size = size, body = "dynamic", mass = mass, friction = 0,
                           step = step, tag = tag or default_tag}
   return id

@@ -61,7 +61,8 @@ engine.on("init", function()
 
   -- Start on the sidewalk by the parking lot, with a few cars to pick from.
   local lx, lz = city.place("lot")
-  for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0) end
+  -- (the far end: a sports car and a van)
+  for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0, nil, s == 1 and "sports" or (s == 2 and "van" or nil)) end
   G.spawn = {lx - 6, 1.2 + U.ground(lx - 6, lz - 15), lz - 15}
 
   local transfer = engine.load("cross_city_transfer")
@@ -162,6 +163,7 @@ if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
+if os.getenv("CARKINDS_TEST") then require "test.carkinds_probe" end
 if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end

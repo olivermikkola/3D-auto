@@ -23,19 +23,22 @@ end
 
 local car -- the car being painted while the menu is open
 
+-- Its mesh in colour i: the same kind of car (a van stays a van).
+local function painted(i) return (prefabs.car_kind(engine.mesh_of(car)) or "car") .. i end
+
 local page = {title = function() return string.format("PAY 'N' SPRAY  $%d", M.price()) end, items = {}}
 for i = 1, #prefabs.car_colors do
   page.items[#page.items + 1] = {
     label = M.names[i] or ("COLOR " .. i),
     value = function()
-      if engine.mesh_of(car) == "car" .. i then return "CURRENT", {0.6, 0.6, 0.6} end
+      if engine.mesh_of(car) == painted(i) then return "CURRENT", {0.6, 0.6, 0.6} end
       return shop.price(M.price())
     end,
     act = function()
-      if engine.mesh_of(car) == "car" .. i then return end
+      if engine.mesh_of(car) == painted(i) then return end
       local stars = wanted.stars()
       if not shop.pay(M.price()) then return end
-      engine.set_mesh(car, "car" .. i)
+      engine.set_mesh(car, painted(i))
       if stars > 0 then wanted.clear() end
       menu.close()
       U.message(stars > 0 and "RESPRAYED. THE COPS LOST YOUR TRAIL" or "FRESH PAINT", 3)
