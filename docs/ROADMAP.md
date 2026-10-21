@@ -20,74 +20,54 @@ Targets after Raisio, roughly in order of difficulty:
 Everything built for Raisio should be generic and driven by map tags, in `tools/osm_import.py`
 and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
-## Where things stand (v0.9.1, "Aurajoki")
+## Where things stand (October 2026)
 
-- The release is called **Aurajoki** and ships Raisio and Turku (`aurajoki-v0.9.1-*`). Brands
-  in the game are Finnish parodies (Häsburger, Pöli, Puskuri, Vicklund, Verkkari Stadion).
-- Turku at real size: OSM roads and 2 m MML LiDAR terrain, the Aurajoki with real bridges,
-  boats and the Föri, and hand-made 500 m slices: Kauppatori, Vanha Suurtori and Tuomiokirkko,
-  Kakolanmäki with the funicular, Portsa, Turun linna and the harbour.
-- Raisio is about 8 × 8 km of OSM data on the 10 m elevation model. Raisio ↔ Turku is one
-  corridor, and you keep your car when you cross.
-- Föli buses, Pasi the APC, police pursuits, pedestrians that keep to pavements and avoid
-  traffic, and a camera spring arm.
-- **Memory:** Turku peaks at about 1.2 GB RSS and Raisio at 1.1 GB. Lua accounts for 60–120 MB
-  of that. About 800 MB is 6 M triangles of CPU-side geometry at 132 bytes each (a 40-byte
-  vertex ×3, plus indices). Roads alone are 3.1 M triangles.
+- The release line is **Aurajoki** (`aurajoki-v0.9.x`) with Raisio and Turku. Brands in the
+  game are Finnish parodies (Häsburger, Pöli, Puskuri, Vicklund, Verkkari Stadion, Lumis).
+- Turku at real size: OSM roads and buildings on 2 m MML LiDAR terrain; the Aurajoki with its
+  bridges (decks level with their streets and arched over what passes under), boats and the
+  Föri; covered tunnels (Myllyahde, Helsinginkatu); hand-made slices for Kauppatori, Vanha
+  Suurtori and Tuomiokirkko, Kakolanmäki, Portsa, Turun linna, the harbour, Kupittaa and
+  Yliopistonmäki. Raisio is about 8 × 8 km on the 10 m elevation model, one corridor away.
+- **Missions on templates** (`docs/MISSION_TEMPLATES.md`): seven missions cast their places
+  from the map's real points of interest by seed, so each run is another version (a real
+  Hesburger, banks, garages, landmarks, pubs, marinas).
+- **Free roam**: traffic, Föli buses, pedestrians, police pursuits with roadblocks from three
+  stars, Lumis cash vans to rob, street lamps that knock over, weather (clear, cloudy, rain,
+  storm) with wet roads, and a city radio that answers what you do.
+- **Sweeps that drive the whole map** keep it playable: traffic (`DRIVE_SWEEP`), buses,
+  pedestrians (`PED_SWEEP`), the player's car (`PLAYER_SWEEP`), bridges (`BRIDGE_AUDIT`), and
+  landmark renders checked by pixel in CI.
+- **Performance:** `PROFILE=1` prints fps, Lua, physics and draw time and the worst frame;
+  `PROFILE_DRIVE=1` drives a robot round town. Turku headless peaks at about 540 MB RSS (it
+  was 1.2 GB; vertices are 20 bytes now). The GPU side on real hardware is still unmeasured.
 
-## Next, in order
+## Done from the old list
 
-### 1. See every landmark in CI
+- Every landmark has a render check in CI (`tools/test_landmark_renders.py`).
+- Vertices packed to 20 bytes; memory roughly halved.
+- The Gemini review's items: each vehicle class has its own pull and top speed (bus ~75 km/h),
+  spot lights fade softly to their edge, the clock is 48 minutes a day, the help box shows on
+  the first run only, and losing the cops takes time out of sight scaled by stars.
+- The story catalogue and scorer (`lib/story.lua`, `story/radio.lua`).
 
-`tools/test_landmark_renders.py` renders the landmarks and checks the pixels: a landmark
-that is black, buried or in the wrong place fails. It has cameras on Kakola, Kauppatori, Turun
-linna, Tuomiokirkko, Portsa, Forum Marinum (Suomen Joutsen), the Föri, Koroistenniemi and
-Raisio's centre. A new slice isn't done until it has a camera here.
+## Next
 
-### 2. Halve the memory
-
-- Pack vertices from 40 to 20 bytes: f32 position, i8 normal, u8 colour, emissive in alpha.
-- Free the CPU copy of a mesh once the GPU has it; keep it only where something reads it back.
-- Fewer road triangles: check what makes 3.1 M (kerbs, fillets, segment length).
-
-Target: Turku under 500 MB, measured with `/usr/bin/time -v` on `--headless`.
-
-### 3. What the Gemini review found that is still open
-
-- One speed for everything: the bus does 107 km/h like a sedan. Give each vehicle class its
-  own acceleration and top speed (bus about 70–80 km/h).
-- Headlight and lamp cones are hard-edged polygons that add up to white. Soften and clamp them.
-- Explosions are big white cubes. Make them smaller and short-lived.
-- A 6-star wanted level is lost in 10 s of driving straight. Losing the cops should need time
-  out of sight, scaled by stars.
-- A whole evening passes in under two minutes. Slow the clock.
-- The controls help box covers the top left on every start. Show it on the first run only.
-
-### 4. A story that reacts: catalogue + scorer
-
-The world stays fixed. What happens in it is picked from hand-written material:
-
-- **Catalogue** (Lua): story fragments, mission branches and reactions. Each one has
-  preconditions (place, wanted level, time, what just happened), weights and cooldowns.
-- **Scorer** (Lua, deterministic): scores the fragments that fit the current state and picks
-  the best (same state and seed give the same pick), so tests stay stable. It costs no
-  noticeable memory.
-- **Started:** `lib/story.lua` (catalogue and scorer) and `game/story/radio.lua`, eleven city
-  radio lines that answer stunts, busts, lost cops, missions, carjackings, explosions, the
-  hospital and night drives, by place and hour. Next: more lines, and mission branches.
-- Only once the catalogue is big enough to need it: swap the scorer for a small classifier
-  behind the same interface (ONNX through `tract`). A 400 M-parameter model is 0.4–1.7 GB,
-  more than the whole game today. Keep it out of the open world, and load it only for story
-  missions.
-
-### 5. More Turku
-
-Kupittaa and Yliopistonmäki (from Forge's list), then Turku's other districts. Each slice comes
-with a render check (see 1).
+1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
+   CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
+2. **Weather, part two:** wet asphalt that looks wet (the roads are part of the terrain mesh,
+   so this is a renderer change), and snow in winter.
+3. **More free-roam events**, like the cash van: picked from a closed list by game state,
+   never made up (a taxi fare that calls, a street racer at a red light, a convoy at four
+   stars).
+4. **Templates:** an "across the river" condition (needs the water as a line), and the
+   map-specific missions (Pansio heist, Föli, archipelago) where it makes sense.
+5. **More Turku:** the next districts, each with a render check.
 
 ### Later
 
 - Laser-scan roof shapes and heights (MML, CC BY 4.0) matched to OSM footprints.
+- A small classifier behind the story scorer, only once the catalogue needs it.
 - Helsinki, then 1:1 Manhattan.
 
 ## Data sources
