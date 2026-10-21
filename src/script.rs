@@ -787,6 +787,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         env.glow = t.get::<Option<f32>>("glow")?.unwrap_or(env.glow).clamp(0.0, 1.0);
         env.shadows = t.get::<Option<bool>>("shadows")?.unwrap_or(env.shadows);
+        env.wet = t.get::<Option<f32>>("wet")?.unwrap_or(env.wet).clamp(0.0, 1.0);
         Ok(())
     });
 

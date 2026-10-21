@@ -57,6 +57,8 @@ function W.set(kind)
   W.kind = kind
   local t = W.target()
   W.cloud, W.rain, W.wet = t.cloud, t.rain, math.min(1, t.rain * 1.6)
+  W.shown_wet = W.wet
+  engine.lighting{wet = W.wet}
   W.apply()
 end
 
@@ -142,11 +144,14 @@ function W.draw()
   local t, n = engine.time(), math.floor(260 * W.rain * W.open)
   local s = sh / 720
   local a = 0.18 + 0.2 * W.rain
+  -- Grey streaks in the dark, not white ones.
+  local D = package.loaded["lib.daynight"]
+  local k = 1 - 0.65 * (D and D.glow or 0)
   for i = 1, n do
     local st = streak(i)                          -- speed in screens a second, place, length
     local y = ((st[2] + t * st[1]) % 1.2 - 0.1) * sh
     local x = (st[3] * w + y * 0.12) % w         -- leaning a little in the wind
-    engine.rect(x, y, math.max(1, 1.4 * s), st[4] * s, 0.78, 0.82, 0.9, a)
+    engine.rect(x, y, math.max(1, 1.4 * s), st[4] * s, 0.78 * k, 0.82 * k, 0.9 * k, a)
   end
 end
 
@@ -182,6 +187,10 @@ engine.on("tick", function(dt)
   if W.wet < wet_to then W.wet = math.min(wet_to, W.wet + dt / 20)
   else W.wet = math.max(wet_to, W.wet - dt / W.DRY) end
   if W.cloud ~= c0 or W.rain ~= r0 then W.apply() end
+  if math.abs(W.wet - (W.shown_wet or -1)) > 0.01 then
+    W.shown_wet = W.wet
+    engine.lighting{wet = W.wet}
+  end
   if W.rain > 0 then open_sky(dt) end
   if W.rain > 0 or voice then sound() end
 end)
