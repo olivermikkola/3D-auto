@@ -17,9 +17,12 @@ BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto
 # street lamp in their way (Turku 25, Raisio 14), and walkers put on a
 # bridge's pavement stood on the ground under it (Turku 8, Raisio 13): in
 # all Turku 36, Raisio 34. Now 5 and 8, most where a bridge's deck is
-# narrower than its pavements at the ends. Lower these as they're fixed;
-# never raise them.
-TROUBLE_MAX = {"turku": 10, "raisio": 15}
+# narrower than its pavements at the ends. Then 3 and 2: decks reach round
+# their bends, keep their pavements over roads well below and where the
+# road carrying on is graded a little off, and the map's walkway between
+# Tykistökatu's twin decks no longer stands out of them. Lower these as
+# they're fixed; never raise them.
+TROUBLE_MAX = {"turku": 6, "raisio": 5}
 
 
 @unittest.skipUnless(BINARY.exists(), "needs a release build")
