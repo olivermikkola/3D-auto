@@ -1,6 +1,6 @@
 # Mission templates: one story, played in many places
 
-Status: 2026-10-18. Steps 1-3 done for one mission (Häsburger Express); more missions to port.
+Status: 2026-10-21. Steps 1-3 done; three missions on templates (Häsburger Express, Getaway, Fragile Cargo).
 
 ## The idea
 
@@ -97,6 +97,22 @@ hotel or museum) are cast per run from a seed saved with progress
 different, 180-300 s. One run is played through by the probe on each map.
 Maps without a Hesburger (the grid maps) no longer get the mission (they
 used Raisio's coordinates before).
+
+Getaway and Fragile Cargo followed (`TEMPLATE_TEST` prints both):
+
+- **Getaway** robs a real bank (`amenity=bank`, named) 250 m-2.5 km by
+  road from where you get your car. Banks sit together in the centres:
+  Turku's nine are 0.3-0.6 km from the start and all get robbed over 50
+  seeds; Raisio 2 different (277-306 m).
+- **Fragile Cargo** loads at the real antiques, second-hand or furnishings
+  shop nearest the old pickup and goes 1-2.5 km by road to a museum or
+  gallery, a theatre or arts centre, or another dealer: the seed picks the
+  kind among those the map has, then the place. Turku 47 different drops
+  over 50 seeds (1.1-2.5 km), Raisio 5 (2.6-5.3 km; it has 2 museums and
+  1 theatre). The timer follows the drive (30 s + 1 s per 12 m).
+- The grid maps have no points of interest and keep the hand-placed bank,
+  pickup and drop; `MISSION_TEST` plays Fragile Cargo to its drop on all
+  four maps.
 
 Names alone would mislead: Turku has charging stations called "Helen
 Hesburger ...". Tags tell them apart (`amenity=fast_food`).

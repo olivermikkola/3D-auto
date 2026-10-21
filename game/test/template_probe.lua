@@ -93,6 +93,29 @@ engine.on("init", function()
     map, playable, SEEDS, different, shortest, longest))
   assert(playable == SEEDS, "every seed gives a playable run")
 
+  -- Getaway and Fragile Cargo: a real place for every seed, and how many
+  -- different ones.
+  for _, id in ipairs{"04_getaway", "05_cargo"} do
+    local def
+    for _, d in ipairs(mission.defs) do if d.id == id then def = d end end
+    assert(def and def.cast, id .. " is cast from the map's places")
+    local ok2, places, lo, hi = 0, {}, math.huge, 0
+    for seed = 1, SEEDS do
+      local p = def.cast(seed)
+      if p then
+        assert(p.name and p.road and p.drive < math.huge, id .. ": a named place cars can reach")
+        ok2 = ok2 + 1
+        places[p.name] = true
+        lo, hi = math.min(lo, p.drive), math.max(hi, p.drive)
+      end
+    end
+    local n = 0
+    for _ in pairs(places) do n = n + 1 end
+    print(string.format("TEMPLATE_PROBE %s: %s: %d/%d seeds playable, %d different places, %.0f-%.0f m by road",
+      map, def.title, ok2, SEEDS, n, lo, hi))
+    assert(ok2 == SEEDS, id .. ": every seed gives a playable run")
+  end
+
   -- Play it: unlock, walk into the start marker, then onto each red marker.
   G.passed["02_checkpoints"] = true
   for _, d in ipairs(mission.defs) do if d.id == "02_checkpoints" then d.passed = true end end
