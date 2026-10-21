@@ -1,6 +1,7 @@
 # Mission templates: one story, played in many places
 
-Status: 2026-10-21. Steps 1-3 done; three missions on templates (Häsburger Express, Getaway, Fragile Cargo).
+Status: 2026-10-21. Steps 1-3 done; six missions on templates (Joyride, Street Race, Getaway, Fragile Cargo,
+Smuggler's Run, Häsburger Express).
 
 ## The idea
 
@@ -113,6 +114,23 @@ Getaway and Fragile Cargo followed (`TEMPLATE_TEST` prints both):
 - The grid maps have no points of interest and keep the hand-placed bank,
   pickup and drop; `MISSION_TEST` plays Fragile Cargo to its drop on all
   four maps.
+
+Then Joyride, Street Race and Smuggler's Run (seeds 1-50, all playable on both maps):
+
+- **Joyride** brings the stolen car to a real car repair or tyre shop
+  0.6-2.5 km by road from the lot. Turku 8 different garages, Raisio 18.
+- **Street Race** runs from its old start to a landmark 2-3.5 km away by
+  road (a museum or attraction, a castle or manor, a church, a stadium or
+  marina: the seed picks the kind, then the place). The checkpoints are
+  junctions on the shortest way there, about every 300 m, never on a
+  bridge or in a tunnel (`template.route` gives the junctions). Turku 15
+  finishes, 5-9 checkpoints; Raisio 8 finishes, 6-17 checkpoints (it is
+  spread out: up to 6 km).
+- **Smuggler's Run** picks up four packages behind a pub or bar, a kiosk,
+  a car wash or petrol station and a garage, 0.4-1.1 km apart, and drops
+  them at a marina or ferry terminal (whose street may be 250 m off: a
+  marina's middle is out on its jetties). Turku 50 different routes, 10
+  drops, timer 350-710 s; Raisio 11 routes, 3 drops, 630-1100 s.
 
 Names alone would mislead: Turku has charging stations called "Helen
 Hesburger ...". Tags tell them apart (`amenity=fast_food`).

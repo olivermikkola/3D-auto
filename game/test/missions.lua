@@ -4,7 +4,6 @@ local G = require "lib.state"
 local U = require "lib.util"
 local H = require "lib.health"
 local mission = require "lib.mission"
-local city = require "lib.city"
 local wanted = require "lib.wanted"
 local traffic = require "systems.traffic"
 
@@ -116,13 +115,15 @@ local function script()
 
   -- ---- Smuggler's Run: heat rises per package; the drop waits for zero stars
   m = start("07_smuggler")
-  for i, n in ipairs(city.route("smuggle")) do
+  check(m.stops and #m.stops == 4, "four packages to pick up")
+  for i, n in ipairs(m.stops) do
     go(n[1], n[2])
     wait(function() return m.objective and m.objective:find(i < 4 and tostring(i + 1) .. " of" or "drop") end, 1,
          "package " .. i .. " picked up")
     check(wanted.stars() == math.min(3, i - 1), string.format("%d star(s) after package %d", wanted.stars(), i))
   end
-  go(city.place("smuggle_drop"))
+  check(m.goal, "the drop is picked")
+  go(m.goal[1], m.goal[2])
   sleep(0.5)
   check(G.mission == m, "the drop waits while you're wanted")
   wanted.set(0)
