@@ -1566,7 +1566,8 @@ build = function(map, kit)
           end)
           if not on_road and not under_roof(lx, lz) and (sd.kind ~= "median" or sd.w > 0.5) and s >= clear_a and s <= len - clear_b then
             kit.static{mesh = "lamp", pos = {lx, 0.05 + (e.height and e.height(lx, lz) or (GROUND and GROUND(lx, lz) or 0)), lz},
-                       yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true}
+                       yaw = yaw - side * math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp", abs = true,
+                       breaks_at = kit.LAMP_BREAKS_AT}
           end
           side = -side
         end

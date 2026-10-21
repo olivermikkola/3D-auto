@@ -25,6 +25,7 @@ local PARK, SPECIAL, BILLBOARDS, roads, GRAPH
 -- Set when the map is drawn as roads (lib/roadnet) rather than a grid.
 local NET
 local roadnet = require "lib.roadnet"
+local LAMP_BREAKS_AT = require("systems.lamps").BREAKS_AT
 
 local palette = {
   {0.85, 0.82, 0.76}, {0.72, 0.68, 0.62}, {0.70, 0.45, 0.35}, {0.62, 0.66, 0.70},
@@ -876,7 +877,8 @@ local function central_park(L)
   for z = z0 + 20, z1 - 20, 40 do
     for _, s in ipairs{-1, 1} do
       local x = s < 0 and x0 + 1 or x1 - 1
-      static{mesh = "lamp", pos = {x, CURB, z}, yaw = s < 0 and -math.pi / 2 or math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp"}
+      static{mesh = "lamp", pos = {x, CURB, z}, yaw = s < 0 and -math.pi / 2 or math.pi / 2, size = {0.3, 10, 0.3}, tag = "lamp",
+             breaks_at = LAMP_BREAKS_AT}
     end
   end
   L.park_area = {x0 = x0, x1 = x1, z0 = z0, z1 = z1, transverse = zt}
@@ -1096,7 +1098,7 @@ end
 
 function C.build()
   if NET then
-    return roadnet.build(MAP, {static = static, rng = rng, CURB = CURB, FLOOR = FLOOR, feature = feature,
+    return roadnet.build(MAP, {static = static, rng = rng, LAMP_BREAKS_AT = LAMP_BREAKS_AT, CURB = CURB, FLOOR = FLOOR, feature = feature,
                                building_mesh = building_mesh, warehouse_mesh = warehouse_mesh, ramp = C.ramp})
   end
   local sx, sz = NX * PX + AVE, NZ * PZ + ST

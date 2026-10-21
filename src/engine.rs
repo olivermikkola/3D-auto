@@ -277,6 +277,9 @@ impl Engine {
             && let Some(e) = slot.take()
         {
             self.live -= 1;
+            if e.body.as_ref().is_some_and(|b| b.kind == physics::Kind::Static) {
+                self.broad.forget(id as usize);
+            }
             if let Some(ids) = self.tagged.get_mut(&e.tag)
                 && let Ok(k) = ids.binary_search(&id)
             {

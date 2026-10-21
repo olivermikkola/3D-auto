@@ -86,6 +86,13 @@ function P.build()
     {mesh = "cube", pos = {0, 5.0, 0.6}, size = {0.15, 0.12, 1.3}, color = {0.25, 0.25, 0.27}},
     {mesh = "cube", pos = {0, 4.92, 1.15}, size = {0.35, 0.1, 0.5}, color = {1.0, 0.95, 0.75}, emissive = 1},
   })
+  -- A knocked-over lamp (systems/lamps): the same post about its middle,
+  -- so it tumbles like one, and its light out.
+  engine.mesh("lamp_down", {
+    {mesh = "cylinder", pos = {0, 0, 0}, size = {0.15, 5.0, 0.15}, color = {0.25, 0.25, 0.27}},
+    {mesh = "cube", pos = {0, 2.5, 0.6}, size = {0.15, 0.12, 1.3}, color = {0.25, 0.25, 0.27}},
+    {mesh = "cube", pos = {0, 2.42, 1.15}, size = {0.35, 0.1, 0.5}, color = {0.55, 0.55, 0.5}},
+  })
 
   engine.mesh("crate", {
     {mesh = "cube", size = 1, color = {0.6, 0.42, 0.22}},
