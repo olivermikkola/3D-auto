@@ -21,6 +21,9 @@
 --   drive_min, drive_max     meters by road from `from`, one-way streets the
 --                            right way; a place cars can't get to from
 --                            `from` is never picked
+--   across_water = "role" or {x, z}   the straight line from there to the
+--                            place crosses water (a river, a strait, a bay;
+--                            roadnet.across_water)
 --   relax = {{...}, ...}     if nothing fits, try again with these changes,
 --                            one after another (false drops a condition)
 --   weight = function(p, cast) -> number   how much to like a candidate
@@ -32,7 +35,7 @@ local pois = require "lib.pois"
 
 local T = {}
 
-local OWN = {from = true, drive_min = true, drive_max = true, relax = true, weight = true}
+local OWN = {from = true, drive_min = true, drive_max = true, relax = true, weight = true, across_water = true}
 local TRIES = 8 -- whole casts tried, each from its own seed, before giving up
 
 function T.key(p) return string.format("%.0f,%.0f", p.x, p.z) end
@@ -158,12 +161,19 @@ local function candidates(role, t, cast, used)
   for k, v in pairs(role) do
     if k ~= 1 and not OWN[k] then q[k] = v end
   end
+  local across = role.across_water
+  if type(across) == "string" then
+    local p = cast[across]
+    assert(p, "role '" .. role[1] .. "' is across water from '" .. across .. "', which isn't cast before it")
+    across = {p.x, p.z}
+  end
   local out = {}
   local reach = T.drive_from(city.nearest(from[1], from[2]))
   for _, p in ipairs(pois.find(q)) do
     local d = reach[p.junction] or math.huge
     if not used[T.key(p)] and d < math.huge
-       and (not role.drive_min or d >= role.drive_min) and (not role.drive_max or d <= role.drive_max) then
+       and (not role.drive_min or d >= role.drive_min) and (not role.drive_max or d <= role.drive_max)
+       and (not across or require("lib.roadnet").across_water(across[1], across[2], p.x, p.z)) then
       p.drive = d
       out[#out + 1] = p
     end

@@ -48,13 +48,19 @@ local DROPS = {
 local state, fare, next_at, on_duty
 -- fare = {pickup, drop, rider (entity), marker, blip, at (s), drive (m), tip (0..1), knocked}
 
+-- A ride over the river (a bridge, the Föri's water) is twice as likely.
+local function across_river(p, cast)
+  return require("lib.roadnet").across_water(cast.pickup.x, cast.pickup.z, p.x, p.z) and 2 or 1
+end
+
 -- A pickup near (x, z) and a drop from there, or nil.
 function F.cast(x, z, seed)
   for _, pk in ipairs(errand.kinds(PICKUPS, seed)) do
     for _, dk in ipairs(errand.kinds(DROPS, seed + 1)) do
       local c = template.cast{seed = seed, from = {x, z}, roles = {
         errand.role("pickup", pk, {min_dist = 80, max_dist = 600, drive_max = 1200, relax = {{max_dist = 1000, drive_max = 2000}}}),
-        errand.role("drop", dk, {from = "pickup", drive_min = 700, drive_max = 2500, relax = {{drive_min = 400, drive_max = 4000}}}),
+        errand.role("drop", dk, {from = "pickup", drive_min = 700, drive_max = 2500, relax = {{drive_min = 400, drive_max = 4000}},
+                                 weight = across_river}),
       }}
       if c then return c.pickup, c.drop, pk end
     end

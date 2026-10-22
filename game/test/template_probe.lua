@@ -63,6 +63,26 @@ engine.on("init", function()
   assert(far and info.far == 2, "relax steps")
   local none, why = template.cast{seed = 1, from = from, roles = {{"x", amenity = "no_such_thing"}}}
   assert(not none and why:match("^x: "), "a role nothing fits")
+  -- Across the water: the drop's straight line from the pickup crosses it.
+  local roadnet = require "lib.roadnet"
+  local across, both, kept = 0, 0, 0
+  for seed = 1, 10 do
+    local c = template.cast{seed = seed, from = from, roles = {
+      {"pickup", amenity = "place_of_worship", max_dist = 3000},
+      {"drop", shop = "supermarket", across_water = "pickup", from = "pickup", max_dist = 4000}}}
+    if c then
+      across = across + 1
+      assert(roadnet.across_water(c.pickup.x, c.pickup.z, c.drop.x, c.drop.z), "a drop across the water that isn't")
+      -- How many of all the supermarkets in reach were across (the rest left out).
+      for _, p in ipairs(require("lib.pois").find{shop = "supermarket", from = {c.pickup.x, c.pickup.z}, max_dist = 4000}) do
+        both = both + 1
+        if roadnet.across_water(c.pickup.x, c.pickup.z, p.x, p.z) then kept = kept + 1 end
+      end
+    end
+  end
+  print(string.format("TEMPLATE_PROBE %s: across the water: %d/10 seeds cast; %d of %d supermarkets in reach were across", map,
+    across, kept, both))
+  assert(across == 0 or kept < both, "across the water left nothing out")
   local r = {}
   for role, n in pairs(relaxed) do r[#r + 1] = role .. " " .. n end
   table.sort(r)

@@ -543,7 +543,7 @@ changes**, which is the point of the kernel:
   in free roam, you go on duty and fares call (`systems/fares.lua`). A passenger waits by a
   real place 80-600 m off, picked by the hour from a closed list (hotels, the hospital,
   stations and ferry terminals, malls by day, theatres in the evening, pubs and bars at
-  night), going to another 0.7-2.5 km away by road. Stop by them, then take them there: $15
+  night), going to another 0.7-2.5 km away by road (one across the river twice as likely). Stop by them, then take them there: $15
   plus $40 a km by road, and up to half again as a tip for a quick ride, cut by every knock
   the cab takes. A star or leaving the cab calls the fare off. `FARES_TEST=1` drives one
   through by the GPS.
