@@ -131,9 +131,18 @@ local function script()
   sleep(0.1)
   check(ambulance.state() == nil and said("YOU LEFT THE AMBULANCE"), "leaving the ambulance calls it off")
 
-  -- A lost ambulance is back at the hospital.
+  -- A lost ambulance is back at the hospital, but not while you're by it.
   engine.despawn(amb)
   ambulance.RESPAWN = 1
+  engine.set_pos(G.player, hx + 30, 1.2 + U.ground(hx + 30, hz), hz)
+  sleep(2)
+  check(not ambulance.vehicle(), "not back while you're by the hospital")
+  local fx, fz = hx + 300, hz
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
+    if U.dist2d(x, z, hx, hz) > 150 then fx, fz = x, z; break end
+  end
+  engine.set_pos(G.player, fx, 1.2 + U.ground(fx, fz), fz)
   wait(function() local a = ambulance.vehicle() return a and engine.exists(a) end, 4, "a lost ambulance is back")
   local nx, _, nz = engine.pos(ambulance.vehicle())
   check(U.dist2d(nx, nz, hx, hz) < 90, "at the hospital")

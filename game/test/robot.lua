@@ -137,7 +137,7 @@ function R.gps_driver(fast, slow)
       if tx then
         g.tows = g.tows + 1
         print(string.format("ROBOT: stuck at %.0f, %.0f (y %.1f) for %d s: towed 15 m on (%s)", x, z, y, TOW_AFTER,
-          require("lib.roadnet").where(x, z) or "?"))
+          city.network() and require("lib.roadnet").where(x, z) or "?"))
         engine.set_pos(car, tx, y + 0.5, tz)
         engine.set_rot(car, 0, 0, 0, 1)
         engine.set_yaw(car, yaw)

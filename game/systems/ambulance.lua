@@ -24,7 +24,7 @@ local A = {
   KNOCK = 4,       -- seconds a knock costs
   BASE = 80, PER_SECOND = 2, -- dollars: and for each second left
   STREAK = 4, BONUS = 400,   -- every fourth patient in a row
-  RESPAWN = 60,    -- seconds before a lost ambulance is back at the hospital
+  RESPAWN = 60,    -- seconds before a lost ambulance is back at the hospital (when you're not by it)
 }
 
 -- Where calls come from: {tag conditions, hours or nil, weight, what's wrong, where (unnamed)}.
@@ -231,7 +231,11 @@ engine.on("tick", function()
   local now = engine.time()
   -- A lost ambulance (wrecked, or gone) is back at the hospital after a while.
   if amb and not engine.exists(amb) then amb, lost_at = nil, now end
-  if not amb and lost_at and now > lost_at + A.RESPAWN and G.vehicle == nil then A.park() end
+  if not amb and lost_at and now > lost_at + A.RESPAWN then
+    local hx, hz = hospital_spot()
+    local px, _, pz = U.player_pos()
+    if px and U.dist2d(px, pz, hx, hz) > 100 then A.park() end -- (not while you watch)
+  end
   if A.in_ambulance() and G.vehicle ~= amb then amb = G.vehicle end
 
   local duty = A.in_ambulance() and not G.mission and not G.dead and wanted.stars() == 0
