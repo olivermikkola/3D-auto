@@ -53,9 +53,10 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 ## Next
 
-1. **Measure the GPU.** A `PROFILE=1` run from a real machine in Turku, driving. Everything
-   CPU-side is a few ms. The report now names the GPU (and flags software rendering) and gives
-   the GPU's own milliseconds per frame, so one run says whether ~1.4k draw calls are a problem.
+1. **GPU: measured, not the limit.** Beelink (Radeon 890M, radeonsi), Turku at 1920x1080, a
+   two-minute robot drive with a two-star chase (2026-10-23): a steady 60 fps (vsync), GPU 2-4 ms
+   a frame, CPU about 5 ms, worst frame 27 ms, no frame over 50 ms. There is room to spend on
+   looks (shadow reach, view distance, more traffic) before anything needs culling.
 2. **More free-roam events**, like the cash van: picked from a closed list by game state,
    never made up (cash vans and night street racers are in; next: a taxi fare that calls,
    a convoy at four stars).
