@@ -407,6 +407,7 @@ engine.on("frame", function(dt)
   end
 
   local m = G.mission
+  if not m and G.errand then centered(G.errand, 110, 18, 1, 0.9, 0.5) end -- a free-roam job's (taxi fares)
   if m then
     if m.objective then centered(m.objective, 110, 18, 1, 0.9, 0.5) end
     if m.deadline then

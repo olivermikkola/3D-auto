@@ -52,3 +52,7 @@ add{id = "racer_won", on = "racer_won", cooldown = 600,
     text = "RADIO: Residents near {area} report two cars at speed and one very loud celebration."}
 add{id = "racer_lost", on = "racer_lost", cooldown = 600,
     text = "RADIO: Somebody near {area} lost a street race tonight. Better luck, and fewer witnesses, next time."}
+add{id = "fare_paid", on = "fare_paid", cooldown = 600, when = function(_, _, tip) return (tip or 0) > 0 end,
+    text = "RADIO: A taxi passenger in {area} says they've never got there so fast. They're still a bit pale."}
+add{id = "fare_lost", on = "fare_lost", cooldown = 600,
+    text = "RADIO: A taxi passenger on {street} is looking for another ride. And a calmer driver."}

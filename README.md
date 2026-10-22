@@ -539,6 +539,14 @@ changes**, which is the point of the kernel:
   from you every five minutes (the first after 2.5 minutes), green on the minimap
   (`systems/cashvan.lua`). Hit it and it runs (one star); wreck it and four bags of $250 spill
   out (two stars). Leave it and it drives off. `CASHVAN_TEST=1` plays one through.
+- **Taxi fares:** at the wheel of a cab (a black or white one from traffic, or the taxi mod's)
+  in free roam, you go on duty and fares call (`systems/fares.lua`). A passenger waits by a
+  real place 80-600 m off, picked by the hour from a closed list (hotels, the hospital,
+  stations and ferry terminals, malls by day, theatres in the evening, pubs and bars at
+  night), going to another 0.7-2.5 km away by road. Stop by them, then take them there: $15
+  plus $40 a km by road, and up to half again as a tip for a quick ride, cut by every knock
+  the cab takes. A star or leaving the cab calls the fare off. `FARES_TEST=1` drives one
+  through by the GPS.
 - **GPS:** the nearest blip that isn't a mission's start marker (a mission's goal, the cash van,
   the racer's finish) gets a route line on the minimap, the shortest way by road with one-way
   streets the right way round, and the distance left in its corner (`lib/gps.lua`). One search
