@@ -118,7 +118,35 @@ local function script()
 
   -- The robot follows the GPS to it (the suspect at a crawl, so this times
   -- the GPS on a moving goal, not the robot's top speed).
-  traffic.cars[s.id].cruise = 5
+  check(traffic.cars[s.id].choose == vigilante.flee, "it picks its own way at junctions")
+
+  -- On the run: of the roads out of a junction it takes the one away from
+  -- you (always, with SMART and SMART_MAX at 1), through traffic's own pick.
+  local smart, smart_max = vigilante.SMART, vigilante.SMART_MAX
+  vigilante.SMART, vigilante.SMART_MAX = 1, 1
+  local jf
+  local px, _, pz = U.player_pos()
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
+    if #city.links(j) >= 3 and U.dist2d(x, z, px, pz) > 80 then jf = j; break end
+  end
+  check(jf, "a junction to test that on")
+  do
+    local fake = {from = city.links(jf)[1], to = jf, choose = vigilante.flee, speed = 0, stuck = 0}
+    local opts, far, fd = {}, nil, -1
+    for _, n in ipairs(city.links(jf)) do
+      if n ~= fake.from then
+        opts[#opts + 1] = n
+        local x, z = city.pos(n)
+        if U.dist2d(x, z, px, pz) > fd then far, fd = n, U.dist2d(x, z, px, pz) end
+      end
+    end
+    traffic._pick_next(fake)
+    check(fake.to == far, "at a junction it takes the road away from you")
+  end
+  vigilante.SMART, vigilante.SMART_MAX = smart, smart_max
+
+  s.cruise = 5
   local heat_up = wanted.heat_up
   wanted.heat_up = function() end -- (the robot clips things now and then)
   driver = robot.gps_driver(15, 6)

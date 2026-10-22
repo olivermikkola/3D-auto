@@ -559,7 +559,9 @@ changes**, which is the point of the kernel:
 - **Vigilante:** steal a police car (a star), shake the cops off, and the radio calls suspects
   in (`systems/vigilante.lua`). A car with a crime from a closed list, picked by the hour (a
   stolen Volvo, a drunk driver at night, someone speeding past a school by day), sets off from
-  a junction 150-450 m away and runs, red on the minimap, and the GPS leads to it. Wreck it, or
+  a junction 150-450 m away and runs, red on the minimap, and the GPS leads to it. At each
+  junction it takes the road away from you (60 % of the time at level 1, up to 90 %), and
+  floors it (+3 m/s) with you within 60 m. Wreck it, or
   box it in and stay within 9 m of it, stopped, for 2 s, within 100 s. Rams on a suspect aren't
   crimes. $150 a level. Each catch raises the level: the next one runs faster (13 m/s, +1.2
   each, up to 21) and takes more beating. One that gets away keeps the level. Leaving the car,

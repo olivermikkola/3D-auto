@@ -26,6 +26,11 @@ local V = {
   PIN = 9, PIN_SECS = 2, -- stopped within this many m of you this long: the driver gives up
   PAY = 150,         -- dollars a level
   MAX_LEVEL = 10,
+  -- On the run: at each junction it takes the road away from you, most
+  -- of the time (more often the higher the level), and floors it when
+  -- you're close.
+  SMART = 0.6, SMART_STEP = 0.05, SMART_MAX = 0.9,
+  PANIC = 60, PANIC_BOOST = 3, -- m, m/s
 }
 
 -- Suspects: {crime, hours or nil, weight}.
@@ -45,6 +50,21 @@ function V.in_cop_car()
   return G.vehicle ~= nil and engine.mesh_of(G.vehicle) == "cop"
 end
 
+-- The next junction for a suspect: of opts, the one farthest from you
+-- (from the junction it's at, so a road that doubles back loses), now and
+-- then just any road. nil leaves it to traffic's own pick.
+function V.flee(c, opts)
+  local px, _, pz = U.player_pos()
+  if not px or math.random() > math.min(V.SMART_MAX, V.SMART + (level - 1) * V.SMART_STEP) then return nil end
+  local best, bd
+  for _, n in ipairs(opts) do
+    local x, z = city.pos(n)
+    local d = U.dist2d(x, z, px, pz)
+    if d > (bd or -1) then best, bd = n, d end
+  end
+  return best
+end
+
 -- Is id the suspect being chased? (lib/wanted: rams on it aren't crimes.)
 function V.is_suspect(id) return suspect ~= nil and suspect.id == id end
 
@@ -53,7 +73,7 @@ local function clear()
     errand.forget(suspect.blip)
     local c = traffic.cars[suspect.id]
     -- Back to plain traffic, recycled out of sight like the rest.
-    if c then c.keep, c.cruise = nil, nil end
+    if c then c.keep, c.cruise, c.choose = nil, nil, nil end
   end
   state, suspect, G.errand, G.errand_deadline = nil, nil, nil, nil
   next_at = engine.time() + V.EVERY
@@ -90,12 +110,14 @@ function V.call(x, z)
   local jx, jz = city.pos(j)
   local id = vehicle.spawn(jx, jz, 0, nil, "sports")
   H.set(id, H.VEHICLE_HP * (1 + (level - 1) * V.HP_STEP))
-  local c = traffic.adopt(id, {keep = true, cruise = math.min(V.CRUISE_MAX, V.CRUISE + (level - 1) * V.CRUISE_STEP)})
+  local cruise = math.min(V.CRUISE_MAX, V.CRUISE + (level - 1) * V.CRUISE_STEP)
+  local c = traffic.adopt(id, {keep = true, cruise = cruise})
+  c.choose = V.flee
   local a, b = c.path and c.path[1], c.path and c.path[2]
   if a and b and (a[1] ~= b[1] or a[2] ~= b[2]) then engine.orient(id, math.atan(b[1] - a[1], b[2] - a[2])) end
   local blip = {id = id, color = {1, 0.15, 0.15}}
   G.markers[#G.markers + 1] = blip
-  suspect = {id = id, crime = kind[1], blip = blip, deadline = engine.time() + V.CLOCK, pinned = 0}
+  suspect = {id = id, crime = kind[1], blip = blip, deadline = engine.time() + V.CLOCK, pinned = 0, cruise = cruise}
   state = "chase"
   local street = city.street(jx, jz)
   G.errand = "Vigilante: stop the suspect" .. (street and (" (" .. street .. ")") or "") .. "."
@@ -151,6 +173,11 @@ engine.on("tick", function(dt)
   local x, _, z = engine.pos(id)
   local px, _, pz = U.player_pos()
   if px and U.dist2d(x, z, px, pz) > V.GONE then return got_away("LOST THE SUSPECT") end
+  -- You on its tail: it floors it.
+  local c = traffic.cars[id]
+  if c and suspect.cruise and px then
+    c.cruise = suspect.cruise + (U.dist2d(x, z, px, pz) < V.PANIC and V.PANIC_BOOST or 0)
+  end
   -- Boxed in: stopped, with you right there.
   local stopped = math.abs(vehicle.speed(id)) < 1.5 and px and U.dist2d(x, z, px, pz) < V.PIN
   suspect.pinned = stopped and suspect.pinned + dt or 0
