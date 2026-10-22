@@ -35,12 +35,26 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 - **Free roam**: traffic of cars, vans, taxis and sports cars, Föli buses, pedestrians, police pursuits with roadblocks from three
   stars and a helicopter from four, Lumis cash vans to rob, street racers at night, street lamps that knock over, weather (clear, cloudy, rain,
   storm; snow in winter) with wet and snowy roads, and a city radio that answers what you do.
+- **Side jobs and finding your way** (in review, PRs #138-#142): a GPS line on the radar
+  to whatever you're after, a waypoint you set on the map (M), a radar that turns with you,
+  taxi fares that call while you drive a cab, and ambulance calls from the hospital. The jobs
+  pick their places like the missions do (real hotels, pitches, bars, hospitals), by the hour.
 - **Sweeps that drive the whole map** keep it playable: traffic (`DRIVE_SWEEP`), buses,
   pedestrians (`PED_SWEEP`), the player's car (`PLAYER_SWEEP`), bridges (`BRIDGE_AUDIT`), and
   landmark renders checked by pixel in CI.
 - **Performance:** `PROFILE=1` prints fps, Lua, physics and draw time and the worst frame;
   `PROFILE_DRIVE=1` drives a robot round town. Turku headless peaks at about 540 MB RSS (it
   was 1.2 GB; vertices are 20 bytes now). The GPU side on real hardware is still unmeasured.
+
+## Learned in October 2026
+
+- Lua's generational collector is worse here, not better: the heap drops from 215 to 84 MB,
+  but a full collection stopped one tick for 210 ms. The default incremental one had one
+  32 ms tick in two minutes of driving Turku. Hot code should still not make a table per
+  item: a route search with one did run into a 104 ms collection step.
+- The robot drivers (`test/robot.lua`) cut corners: at Hämeensilta's 87-degree slip road
+  they meet the railing that keeps cars off a 7 m drop. Slowed down, it's drivable. Tests of
+  a job tow the robot on after 12 s stuck, and print where.
 
 ## Done from the old list
 
@@ -55,12 +69,17 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
    CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
-2. **More free-roam events**, like the cash van: picked from a closed list by game state,
-   never made up (cash vans and night street racers are in; next: a taxi fare that calls,
-   a convoy at four stars).
-3. **Templates:** an "across the river" condition (needs the water as a line), and the
-   map-specific missions (Pansio heist, Föli, archipelago) where it makes sense.
-4. **More Turku:** the next districts, each with a render check.
+2. **Playtest the new jobs** (#138-#142): is the ambulance clock (the drive at 8 m/s plus
+   45 s) fair with traffic, is a taxi's pay worth the drive, does the turning radar help.
+   Numbers to tune are at the top of `systems/fares.lua` and `systems/ambulance.lua`.
+3. **More free-roam events**, picked from a closed list by game state, never made up (cash
+   vans, night street racers, taxi fares and ambulance calls are in). Open questions for
+   Oliver: a vigilante job in a police car (taking one is a star, so it would start after
+   losing the cops, as in GTA), a fire engine for burning wrecks, a convoy at four stars.
+4. **Templates:** "across the river" is in (`across_water`; Turku only, Raisio has no water
+   raster). Next: the map-specific missions (Pansio heist, Föli, archipelago) where it makes
+   sense.
+5. **More Turku:** the next districts, each with a render check.
 
 ### Later
 
