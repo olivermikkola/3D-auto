@@ -2,6 +2,7 @@
 local G = require "lib.state"
 local U = require "lib.util"
 local settings = require "lib.settings"
+local gps = require "lib.gps"
 
 local M = {}
 
@@ -96,6 +97,7 @@ end
 -- round the player. Its static part is world-space rects, bucketed in
 -- CELL-meter squares so a frame only looks at the ones in view.
 local RADAR, CELL = 400, 100
+local mapx, mapy -- the minimap's top left corner on screen, this frame
 local radar_base, radar_city
 local stamp = 0
 local function radar_rects(L)
@@ -133,6 +135,7 @@ local function radar(sw, sh, L)
   if not px then return end
   local S = math.floor(math.min(230, sh * 0.3))
   local x0, y0 = map_corner(sw, sh, S, S)
+  mapx, mapy = x0, y0
   local k = S / (2 * RADAR)
   -- Anything off the radar is pinned to its edge, so blips still point the way.
   local function map(wx, wz)
@@ -163,6 +166,14 @@ local function radar(sw, sh, L)
       end
     end
   end
+  local dots, col = gps.dots()
+  for i = 1, dots and #dots or 0, 2 do
+    local x, z = dots[i], dots[i + 1]
+    if math.abs(x - px) < RADAR and math.abs(z - pz) < RADAR then
+      local bx, by = map(x, z)
+      engine.rect(bx - 2, by - 2, 4, 4, col[1], col[2], col[3], 0.95)
+    end
+  end
   for _, id in ipairs(engine.find("car")) do
     local x, _, z = engine.pos(id)
     if math.abs(x - px) < RADAR and math.abs(z - pz) < RADAR then
@@ -188,20 +199,38 @@ local function radar(sw, sh, L)
   engine.rect(x0 + S / 2 - 3, y0 + S / 2 - 3, 6, 6, 1, 1, 1, 1)
 end
 
+-- How far the GPS route has left, in the minimap's top left corner.
+local function route_left()
+  local left = gps.left()
+  if not (left and mapx) then return end
+  local s = left < 1000 and string.format("%d m", math.floor(left / 10 + 0.5) * 10) or string.format("%.1f km", left / 1000)
+  local _, col = gps.dots()
+  engine.rect(mapx, mapy, engine.text_width(s, 14) + 12, 26, 0, 0, 0, 0.45)
+  shadow_text(s, mapx + 6, mapy + 6, 14, col[1], col[2], col[3])
+end
+
 local function minimap(sw, sh)
   local L = G.city
   if not L then return end
+  mapx = nil
+  gps.update()
   if L.network and math.max(L.sx, L.sz) > 2 * RADAR * 2.5 then return radar(sw, sh, L) end
   -- The island is tall and thin, so the map is too; it scales with the window.
   local H = math.floor(math.min(230, sh * 0.3))
   local W = math.floor(H * L.sx / L.sz)
   local x0, y0 = map_corner(sw, sh, W, H)
+  mapx, mapy = x0, y0
   local function map(wx, wz) return x0 + (wx - (L.cx or 0) + L.sx / 2) / L.sx * W, y0 + (wz - (L.cz or 0) + L.sz / 2) / L.sz * H end
   engine.rect(x0 - 4, y0 - 4, W + 8, H + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, W, H, 0.18, 0.32, 0.55, 0.85)
   for _, r in ipairs(map_base(L)) do
     local c = r[5]
     engine.rect(x0 + r[1] * W, y0 + r[2] * H, r[3] * W, r[4] * H, c[1], c[2], c[3], 0.9)
+  end
+  local dots, col = gps.dots()
+  for i = 1, dots and #dots or 0, 4 do -- the whole map is small: every other dot will do
+    local bx, by = map(dots[i], dots[i + 1])
+    engine.rect(bx - 1.5, by - 1.5, 3, 3, col[1], col[2], col[3], 0.95)
   end
   for _, id in ipairs(engine.find("car")) do
     local x, _, z = engine.pos(id)
@@ -402,6 +431,7 @@ engine.on("frame", function(dt)
   G.messages = keep
 
   minimap(w, h)
+  route_left()
   whereabouts(h)
 
   if require("lib.touch").active then

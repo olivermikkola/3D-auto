@@ -539,6 +539,12 @@ changes**, which is the point of the kernel:
   from you every five minutes (the first after 2.5 minutes), green on the minimap
   (`systems/cashvan.lua`). Hit it and it runs (one star); wreck it and four bags of $250 spill
   out (two stars). Leave it and it drives off. `CASHVAN_TEST=1` plays one through.
+- **GPS:** the nearest blip that isn't a mission's start marker (a mission's goal, the cash van,
+  the racer's finish) gets a route line on the minimap, the shortest way by road with one-way
+  streets the right way round, and the distance left in its corner (`lib/gps.lua`). One search
+  out backwards from the goal (about 3 ms on Turku) is kept while the goal stays put; the line
+  is redrawn from wherever you are every 0.4 s. `GPS_TEST=1` drives a car along it to a goal
+  1-2 km off.
 
 ## Shops
 
