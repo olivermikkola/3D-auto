@@ -53,8 +53,9 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 ## Next
 
-1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
-   CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
+1. **Measure the GPU.** A `PROFILE=1` run from a real machine in Turku, driving. Everything
+   CPU-side is a few ms. The report now names the GPU (and flags software rendering) and gives
+   the GPU's own milliseconds per frame, so one run says whether ~1.4k draw calls are a problem.
 2. **More free-roam events**, like the cash van: picked from a closed list by game state,
    never made up (cash vans and night street racers are in; next: a taxi fare that calls,
    a convoy at four stars).

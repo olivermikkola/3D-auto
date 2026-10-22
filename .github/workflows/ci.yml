@@ -41,7 +41,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri
           RENDER_CHECKS=1 RENDER_CHECKS_OUT=landmark-renders LIBGL_ALWAYS_SOFTWARE=1 \
-            xvfb-run -a -s "-screen 0 1280x720x24" python -m unittest tools/test_landmark_renders.py
+            xvfb-run -a -s "-screen 0 1280x720x24" python -m unittest tools/test_landmark_renders.py tools/test_profile_gpu.py
       - name: Upload landmark renders
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4

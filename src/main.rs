@@ -210,6 +210,11 @@ struct Profile {
     worst: (f64, [f64; 4], u32),
     /// Frames longer than LONG_FRAME.
     long: u32,
+    /// GPU seconds over that many frames (GL timer queries; None if the
+    /// driver has none).
+    gpu: Option<(f64, u32)>,
+    /// Which GPU, printed once with the first report.
+    gpu_name: Option<String>,
 }
 
 /// A frame this long (two frames missed at 60 fps) is a visible stutter.
@@ -236,9 +241,21 @@ impl Profile {
             return;
         }
         let (f, ms) = (self.frames as f64, |s: f64| s * 1e3 / self.frames as f64);
+        if let Some(name) = self.gpu_name.take() {
+            println!("profile: GPU {name}");
+            let soft = ["llvmpipe", "softpipe", "software", "swrast", "Microsoft Basic Render"];
+            if soft.iter().any(|s| name.to_lowercase().contains(&s.to_lowercase())) {
+                println!("profile:   that is SOFTWARE rendering on the CPU, not the graphics card: fix the GPU driver first");
+            }
+        }
+        let gpu = match self.gpu {
+            Some((s, n)) if n > 0 => format!("gpu {:.1} ms", s * 1e3 / n as f64),
+            Some(_) => "gpu ?".to_string(),
+            None => "gpu not timed".to_string(),
+        };
         println!(
             "profile: {:.1} fps | {:.2} ticks/frame: Lua {:.1} ms + physics {:.1} ms | frame Lua {:.1} ms | \
-             draw {:.1} ms, {draw_calls} calls, {:.2} M triangles | waiting {:.1} ms",
+             draw {:.1} ms, {draw_calls} calls, {:.2} M triangles | {gpu} | waiting {:.1} ms",
             f / secs,
             self.ticks as f64 / f,
             ms(self.tick_lua),
@@ -267,7 +284,8 @@ impl Profile {
         for line in script.map(|s| s.slowest(3)).unwrap_or_default() {
             println!("profile:   slowest Lua: {line}");
         }
-        *self = Profile { on: true, since: Some(t), ..Default::default() };
+        let gpu = self.gpu.map(|_| (0.0, 0));
+        *self = Profile { on: true, since: Some(t), gpu, ..Default::default() };
     }
 }
 
@@ -515,6 +533,10 @@ impl EventHandler for App {
             window::order_quit();
         }
         self.gfx.commit();
+        if let (Some(timer), Some(gpu)) = (&mut self.gfx.gpu_timer, &mut self.profile.gpu) {
+            let (s, n) = timer.take();
+            *gpu = (gpu.0 + s, gpu.1 + n);
+        }
         self.profile.frame_done(self.gfx.draw_calls, self.gfx.triangles, self.script.as_ref());
         if let Some(target) = self.target_frame {
             let elapsed = miniquad::date::now() - self.frame_start;
@@ -737,11 +759,18 @@ fn main() {
         eng.borrow_mut().fullscreen = fullscreen;
         let script = load(&eng);
         let mtime = newest_mtime(&root);
+        let mut gfx = render::Renderer::new();
+        let mut profile = Profile { on: script::profiling(), ..Default::default() };
+        if profile.on {
+            gfx.time_gpu();
+            profile.gpu = gfx.gpu_timer.as_ref().map(|_| (0.0, 0));
+            profile.gpu_name = Some(gfx.gpu_name());
+        }
         Box::new(App {
             eng,
             _audio: out,
             script,
-            gfx: render::Renderer::new(),
+            gfx,
             acc: 0.0,
             frame_time: (1.0 / TICK_HZ) as f32,
             last: miniquad::date::now(),
@@ -758,7 +787,7 @@ fn main() {
             pads: pad::Pads::new(),
             target_frame,
             frame_start: miniquad::date::now(),
-            profile: Profile { on: script::profiling(), ..Default::default() },
+            profile,
             failed,
         })
     });

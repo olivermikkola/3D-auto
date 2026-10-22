@@ -226,6 +226,78 @@ pub struct Renderer {
     /// Triangles drawn last frame, shadow pass included.
     pub triangles: usize,
     pub lights_used: usize,
+    /// PROFILE=1: times each frame on the GPU (see `GpuTimer`).
+    pub gpu_timer: Option<GpuTimer>,
+}
+
+/// PROFILE=1: how long the GPU spends on each frame, from GL timer queries
+/// (core since OpenGL 3.3). The CPU-side "draw" time only covers handing
+/// the commands over; this is the time the graphics card takes to run them.
+/// Three queries take turns, so reading one never stalls on the GPU; a
+/// frame whose turn comes while its query is still running isn't timed.
+#[derive(Default)]
+pub struct GpuTimer {
+    queries: [u32; 3],
+    running: [bool; 3],
+    next: usize,
+    timing: bool,
+    /// Seconds the GPU took over `frames` timed frames, since the last `take`.
+    seconds: f64,
+    frames: u32,
+}
+
+impl GpuTimer {
+    /// None where timer queries don't exist (OpenGL before 3.3, GLES, web).
+    pub fn new(gl_version: &str) -> Option<GpuTimer> {
+        let ok = !cfg!(target_arch = "wasm32")
+            && !gl_version.contains("OpenGL ES")
+            && (gl_version.starts_with("3.3") || gl_version.starts_with('4'));
+        ok.then(GpuTimer::default)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn begin(&mut self) {
+        use miniquad::gl::*;
+        let k = self.next;
+        unsafe {
+            if self.queries[k] == 0 {
+                glGenQueries(1, &mut self.queries[k]);
+            }
+            if self.running[k] {
+                let mut done = 0;
+                glGetQueryObjectiv(self.queries[k], GL_QUERY_RESULT_AVAILABLE, &mut done);
+                if done == 0 {
+                    return;
+                }
+                let mut ns: u64 = 0;
+                glGetQueryObjectui64v(self.queries[k], GL_QUERY_RESULT, &mut ns);
+                self.seconds += ns as f64 * 1e-9;
+                self.frames += 1;
+                self.running[k] = false;
+            }
+            glBeginQuery(GL_TIME_ELAPSED, self.queries[k]);
+        }
+        self.timing = true;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn end(&mut self) {
+        if std::mem::take(&mut self.timing) {
+            unsafe { miniquad::gl::glEndQuery(miniquad::gl::GL_TIME_ELAPSED) };
+            self.running[self.next] = true;
+            self.next = (self.next + 1) % self.queries.len();
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn begin(&mut self) {}
+    #[cfg(target_arch = "wasm32")]
+    fn end(&mut self) {}
+
+    /// The GPU's seconds and frames timed since the last call.
+    pub fn take(&mut self) -> (f64, u32) {
+        (std::mem::take(&mut self.seconds), std::mem::take(&mut self.frames))
+    }
 }
 
 fn blend() -> Option<BlendState> {
@@ -394,7 +466,30 @@ impl Renderer {
             draw_calls: 0,
             triangles: 0,
             lights_used: 0,
+            gpu_timer: None,
         }
+    }
+
+    /// Which GPU and driver draw the game: "renderer (vendor), OpenGL version".
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn gpu_name(&self) -> String {
+        use miniquad::gl::*;
+        const GL_RENDERER: u32 = 0x1F01; // missing from miniquad's list
+        let get = |name| unsafe {
+            let p = glGetString(name);
+            if p.is_null() { String::from("?") } else { std::ffi::CStr::from_ptr(p as _).to_string_lossy().into_owned() }
+        };
+        format!("{} ({}), OpenGL {}", get(GL_RENDERER), get(GL_VENDOR), get(GL_VERSION))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn gpu_name(&self) -> String {
+        format!("WebGL, OpenGL {}", self.ctx.info().gl_version_string)
+    }
+
+    /// PROFILE=1: start timing frames on the GPU, where the driver can.
+    pub fn time_gpu(&mut self) {
+        self.gpu_timer = GpuTimer::new(&self.ctx.info().gl_version_string);
     }
 
     fn sync(&mut self, eng: &Engine) {
@@ -497,6 +592,9 @@ impl Renderer {
         alpha.sort_by(|a, b| b.0.total_cmp(&a.0));
         self.draw_calls = 0;
         self.triangles = 0;
+        if let Some(t) = &mut self.gpu_timer {
+            t.begin();
+        }
 
         // 1. Shadow map.
         if shadows {
@@ -600,6 +698,9 @@ impl Renderer {
         }
         self.draw_hud(eng);
         self.ctx.end_render_pass();
+        if let Some(t) = &mut self.gpu_timer {
+            t.end();
+        }
     }
 
     fn draw_hud(&mut self, eng: &Engine) {

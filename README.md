@@ -738,8 +738,11 @@ areas at 26.
 
 `PROFILE=1` prints where the frames' time goes every two seconds: frames per second, ticks per
 frame (Lua and physics), the Lua `frame` event, drawing (CPU side, with draw calls and
-triangles), and the rest of the frame, waiting for the GPU and the display. If the wait is large
-and everything else is small, the GPU is the limit. Under each line: the worst single frame of
+triangles), the GPU's own time per frame (GL timer queries, OpenGL 3.3 and up; "gpu not timed"
+where the driver has none), and the rest of the frame, waiting for the GPU and the display. If
+the GPU time is close to the whole frame, the GPU is the limit. The first report names the GPU
+and driver (`profile: GPU ...`) and says so when that is a software renderer such as llvmpipe:
+then the game is drawn by the CPU and no setting will make it smooth. Under each line: the worst single frame of
 those two seconds, split the same way, with how many frames took over 50 ms, and the three Lua
 handlers slowest in one call (event and file:line). With `--headless` each tick counts as a frame.
 `PROFILE_DRIVE=1` puts a robot at the wheel of the player's car, across the map at city speed with
