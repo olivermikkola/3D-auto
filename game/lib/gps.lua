@@ -222,8 +222,9 @@ function M.set_waypoint(x, z)
 end
 function M.clear_waypoint() M.waypoint = nil end
 
--- What the GPS heads for: the player's waypoint, else the nearest blip that
--- isn't a mission's start marker; nil if neither.
+-- What the GPS heads for: the player's waypoint, else the nearest goal (a
+-- blip that isn't a mission's start marker, nor `ambient`: a cash van or a
+-- racer waiting by the road, which only count with no goal); nil if none.
 function M.target()
   if M.waypoint then return M.waypoint end
   local starts = {}
@@ -236,7 +237,7 @@ function M.target()
   for _, m in ipairs(G.markers or {}) do
     if not starts[m.id] and engine.exists(m.id) then
       local x, _, z = engine.pos(m.id)
-      local d = U.dist2d(x, z, px, pz)
+      local d = U.dist2d(x, z, px, pz) + (m.ambient and 1e9 or 0)
       if d < bd then best, bd = m, d end
     end
   end

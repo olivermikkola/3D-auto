@@ -139,6 +139,14 @@ local function script()
   check(not f.rider and engine.exists(f.marker), "the passenger got in; the drop is marked")
   gps.update()
   check(gps.target() and gps.target().id == f.marker, "the GPS leads to the drop")
+  -- A cash van turning up nearer doesn't take the GPS off the fare.
+  local px, _, pz = engine.pos(G.vehicle)
+  local van = engine.spawn{mesh = "marker", pos = {px + 5, 0, pz}, scale = 1}
+  local vblip = {id = van, color = {0.2, 0.95, 0.4}, ambient = true}
+  G.markers[#G.markers + 1] = vblip
+  gps.update()
+  check(gps.target() and gps.target().id == f.marker, "a cash van's blip nearer doesn't take the GPS off the fare")
+  engine.despawn(van)
   H.damage(G.vehicle, 1)
   check(f.tip < 1, "a knock cuts the tip")
   t0 = engine.time()
