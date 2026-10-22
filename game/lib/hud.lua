@@ -407,7 +407,13 @@ engine.on("frame", function(dt)
   end
 
   local m = G.mission
-  if not m and G.errand then centered(G.errand, 110, 18, 1, 0.9, 0.5) end -- a free-roam job's (taxi fares)
+  if not m and G.errand then -- a free-roam job's (taxi fares, ambulance calls)
+    centered(G.errand, 110, 18, 1, 0.9, 0.5)
+    if G.errand_deadline then
+      local left = math.max(0, G.errand_deadline - engine.time())
+      centered(string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60)), 140, 24, 1, left < 10 and 0.3 or 1, left < 10 and 0.3 or 1)
+    end
+  end
   if m then
     if m.objective then centered(m.objective, 110, 18, 1, 0.9, 0.5) end
     if m.deadline then

@@ -35,6 +35,7 @@ require "systems.cashvan"
 require "systems.heli"
 require "systems.racer"
 require "systems.fares"
+require "systems.ambulance"
 require "lib.menu"
 require "lib.shop"
 
@@ -102,6 +103,7 @@ engine.on("init", function()
   require("systems.paintshop").build()
   require("systems.dealer").build()
   require("systems.cashvan").build()
+  require("systems.ambulance").build()
   require("systems.heli").build()
   engine.grab_mouse(true)
 end)
@@ -176,6 +178,7 @@ if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end
 if os.getenv("FARES_TEST") then require "test.fares_probe" end
 if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
+if os.getenv("AMBULANCE_TEST") then require "test.ambulance_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

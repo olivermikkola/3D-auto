@@ -73,6 +73,17 @@ function P.van_parts(c)
   return parts
 end
 
+-- Ambulance: the van in yellow with a green band, and a blue light bar on
+-- the roof (its paint doesn't change with the colour it's given).
+function P.ambulance_parts()
+  local parts = P.van_parts({0.95, 0.82, 0.12})
+  parts[#parts + 1] = {mesh = "cube", pos = {0, -0.15, -0.1}, size = {2.13, 0.32, 4.86}, color = {0.1, 0.5, 0.25}}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 1.18, 0.9}, size = {1.5, 0.16, 0.3}, color = {0.15, 0.35, 1}, emissive = 1}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 0.55, -2.53}, size = {0.5, 0.14, 0.02}, color = {0.85, 0.1, 0.1}}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 0.55, -2.53}, size = {0.14, 0.5, 0.02}, color = {0.85, 0.1, 0.1}}
+  return parts
+end
+
 -- Taxi: the car with a lit TAKSI sign on the roof.
 function P.cab_parts(c)
   local parts = P.car_parts(c)
@@ -87,6 +98,7 @@ P.CAR_KINDS = {
   sports = {size = {2.0, 1.2, 4.6}, mass = 1100, lift = 0.65, parts = P.sports_parts},
   van = {size = {2.1, 2.2, 5.0}, mass = 1900, lift = 1.15, parts = P.van_parts},
   cab = {size = {2.0, 1.4, 4.4}, mass = 1200, lift = 0.75, parts = P.cab_parts},
+  ambulance = {size = {2.1, 2.2, 5.0}, mass = 2000, lift = 1.15, parts = P.ambulance_parts},
 }
 
 -- "car", "sports", "van" or "cab" for a mesh like "van3"; nil for others.
