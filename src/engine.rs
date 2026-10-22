@@ -123,6 +123,8 @@ pub struct Engine {
     pub screen: (f32, f32),
     /// HUD triangles for this frame: x, y, r, g, b, a per vertex, in pixels.
     pub hud: Vec<f32>,
+    /// While set, HUD rects and quads are cut to this rectangle (x0, y0, x1, y1).
+    pub hud_clip: Option<[f32; 4]>,
     pub time: f64,
     pub tick: u64,
     pub quit: bool,
@@ -225,6 +227,7 @@ impl Engine {
             mouse_grab: false,
             screen: (1280.0, 720.0),
             hud: Vec::new(),
+            hud_clip: None,
             time: 0.0,
             tick: 0,
             quit: false,
@@ -423,8 +426,31 @@ impl Engine {
     }
 
     pub fn hud_rect(&mut self, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]) {
-        for (px, py) in [(x, y), (x + w, y), (x + w, y + h), (x, y), (x + w, y + h), (x, y + h)] {
+        let (mut x0, mut y0, mut x1, mut y1) = (x, y, x + w, y + h);
+        if let Some([cx0, cy0, cx1, cy1]) = self.hud_clip {
+            (x0, y0, x1, y1) = (x0.max(cx0), y0.max(cy0), x1.min(cx1), y1.min(cy1));
+            if x1 <= x0 || y1 <= y0 {
+                return;
+            }
+        }
+        for (px, py) in [(x0, y0), (x1, y0), (x1, y1), (x0, y0), (x1, y1), (x0, y1)] {
             self.hud.extend_from_slice(&[px, py, c[0], c[1], c[2], c[3]]);
+        }
+    }
+
+    /// A convex quad (corners in order), cut to the clip rectangle if one is set.
+    pub fn hud_quad(&mut self, pts: [(f32, f32); 4], c: [f32; 4]) {
+        let mut poly: Vec<(f32, f32)> = pts.to_vec();
+        if let Some(clip) = self.hud_clip {
+            poly = clip_to_rect(poly, clip);
+            if poly.len() < 3 {
+                return;
+            }
+        }
+        for i in 1..poly.len() - 1 {
+            for (px, py) in [poly[0], poly[i], poly[i + 1]] {
+                self.hud.extend_from_slice(&[px, py, c[0], c[1], c[2], c[3]]);
+            }
         }
     }
 
@@ -499,5 +525,67 @@ mod tests {
         e.unblend(saved);
         assert_eq!(e.get(a).unwrap().pos, v3(10.0, 0.0, 0.0), "back to the ticked pose");
         assert_eq!(e.get(b).unwrap().pos, v3(7.0, 0.0, 0.0), "a move made during the frame stays");
+    }
+}
+
+/// A convex polygon cut to an axis-aligned rectangle (x0, y0, x1, y1), one
+/// edge at a time (Sutherland-Hodgman).
+pub fn clip_to_rect(poly: Vec<(f32, f32)>, r: [f32; 4]) -> Vec<(f32, f32)> {
+    // Each edge: which axis (0 x, 1 y), the bound, and whether inside is >= it.
+    let edges = [(0, r[0], true), (0, r[2], false), (1, r[1], true), (1, r[3], false)];
+    let mut out = poly;
+    for (axis, bound, ge) in edges {
+        if out.is_empty() {
+            break;
+        }
+        let inside = |p: (f32, f32)| {
+            let v = if axis == 0 { p.0 } else { p.1 };
+            if ge { v >= bound } else { v <= bound }
+        };
+        let input = std::mem::take(&mut out);
+        for i in 0..input.len() {
+            let a = input[i];
+            let b = input[(i + 1) % input.len()];
+            let (ia, ib) = (inside(a), inside(b));
+            if ia {
+                out.push(a);
+            }
+            if ia != ib {
+                let (va, vb) = if axis == 0 { (a.0, b.0) } else { (a.1, b.1) };
+                let t = (bound - va) / (vb - va);
+                out.push((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod clip_tests {
+    use super::clip_to_rect;
+
+    fn area(p: &[(f32, f32)]) -> f32 {
+        let mut a = 0.0;
+        for i in 0..p.len() {
+            let (x0, y0) = p[i];
+            let (x1, y1) = p[(i + 1) % p.len()];
+            a += x0 * y1 - x1 * y0;
+        }
+        a.abs() / 2.0
+    }
+
+    #[test]
+    fn inside_is_kept_outside_is_dropped() {
+        let sq = vec![(1.0, 1.0), (2.0, 1.0), (2.0, 2.0), (1.0, 2.0)];
+        assert_eq!(clip_to_rect(sq.clone(), [0.0, 0.0, 10.0, 10.0]), sq);
+        assert!(clip_to_rect(sq, [5.0, 5.0, 10.0, 10.0]).is_empty());
+    }
+
+    #[test]
+    fn a_diamond_over_a_corner_is_cut() {
+        // A diamond round (0, 0) with radius 2, cut to x, y >= 0: a quarter of its area.
+        let d = vec![(2.0, 0.0), (0.0, 2.0), (-2.0, 0.0), (0.0, -2.0)];
+        let c = clip_to_rect(d, [0.0, 0.0, 10.0, 10.0]);
+        assert!((area(&c) - 2.0).abs() < 1e-5, "area {}", area(&c));
     }
 }

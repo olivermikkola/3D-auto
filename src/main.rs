@@ -309,6 +309,7 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
             profile.physics += physics;
         }
         eng.borrow_mut().hud.clear();
+        eng.borrow_mut().hud_clip = None;
         let t = now();
         s.emit(&eng, "frame", frame_dt(&eng, (1.0 / TICK_HZ) as f32));
         profile.frame_lua += now() - t;
@@ -466,6 +467,7 @@ impl EventHandler for App {
             let mut e = self.eng.borrow_mut();
             e.screen = (w, h);
             e.hud.clear();
+            e.hud_clip = None;
         }
         // Draw between the last two ticks, as far along as the clock is
         // toward the next (screenshots step whole ticks, so are always at one).
