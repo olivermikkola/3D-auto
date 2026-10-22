@@ -62,3 +62,9 @@ add{id = "patient_saved_tyks", on = "patient_saved", map = "turku", cooldown = 9
     text = "RADIO: TYKS reports another patient in, and another ambulance with a new dent."}
 add{id = "patient_lost", on = "patient_lost", cooldown = 600,
     text = "RADIO: An ambulance near {street} was called off. The patient says they're fine, really."}
+add{id = "suspect_caught", on = "suspect_caught", cooldown = 600,
+    text = "RADIO: Someone in a police car near {street} is making arrests. The police say it isn't one of theirs."}
+add{id = "suspect_caught_streak", on = "suspect_caught", cooldown = 900, when = function(_, level) return (level or 0) >= 4 end,
+    text = "RADIO: Crime around {area} has dropped this afternoon. Nobody at the station knows why."}
+add{id = "suspect_escaped", on = "suspect_escaped", cooldown = 600,
+    text = "RADIO: A speeding car got away from a police car on {street}. Witnesses say the police car was driving worse."}

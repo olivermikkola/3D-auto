@@ -71,6 +71,9 @@ engine.on("contact", function(a, b, speed)
   if not me or (a ~= me and b ~= me) or speed < 6 then return end
   if math.abs(require("lib.vehicle").speed(me)) < 5 then return end
   local other = a == me and b or a
+  -- Ramming a suspect from a police car (systems/vigilante) is the job.
+  local vigilante = package.loaded["systems.vigilante"]
+  if vigilante and vigilante.is_suspect(other) then return end
   local now = engine.time()
   if (recent[other] or 0) > now then return end
   recent[other] = now + 1.5
