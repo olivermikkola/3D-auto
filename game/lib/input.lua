@@ -79,7 +79,7 @@ local function game_key(k, down)
 end
 
 local MENU = {pad_a = "enter", pad_b = "escape", pad_start = "escape", pad_up = "up", pad_down = "down",
-              pad_left = "left", pad_right = "right"}
+              pad_left = "left", pad_right = "right", pad_x = "backspace", pad_y = "y"}
 
 engine.on("key", function(k, down)
   local mapped = k:sub(1, 4) == "pad_" and game_key(k, down)

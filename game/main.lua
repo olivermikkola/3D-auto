@@ -175,6 +175,7 @@ if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end
 if os.getenv("FARES_TEST") then require "test.fares_probe" end
+if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

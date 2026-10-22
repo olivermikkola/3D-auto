@@ -547,12 +547,16 @@ changes**, which is the point of the kernel:
   plus $40 a km by road, and up to half again as a tip for a quick ride, cut by every knock
   the cab takes. A star or leaving the cab calls the fare off. `FARES_TEST=1` drives one
   through by the GPS.
-- **GPS:** the nearest blip that isn't a mission's start marker (a mission's goal, the cash van,
-  the racer's finish) gets a route line on the minimap, the shortest way by road with one-way
-  streets the right way round, and the distance left in its corner (`lib/gps.lua`). One search
-  out backwards from the goal (about 3 ms on Turku) is kept while the goal stays put; the line
-  is redrawn from wherever you are every 0.4 s. `GPS_TEST=1` drives a car along it to a goal
+- **GPS:** where you're going gets a route line on the minimap, the shortest way by road with
+  one-way streets the right way round, and the distance left in its corner (`lib/gps.lua`):
+  your own waypoint if you've set one, else the nearest blip that isn't a mission's start
+  marker (a mission's goal, the cash van, the racer's finish, a taxi fare). One search out
+  backwards from the goal (about 3 ms on Turku) is kept while the goal stays put; the line is
+  redrawn from wherever you are every 0.4 s. `GPS_TEST=1` drives a car along it to a goal
   1-2 km off.
+- **Waypoint:** on the map (**M**), click a spot or put the crosshair on it and press **Enter**
+  (pad **A**); **Backspace** (pad **X**) clears it, and so does getting there. The map shows the
+  route too. `WAYPOINT_TEST=1` sets one and drives there.
 
 ## Shops
 
