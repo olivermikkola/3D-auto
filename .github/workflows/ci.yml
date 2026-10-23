@@ -1,8 +1,12 @@
 name: ci
+# Changes only to docs or the browser build (pages.yml checks that) don't
+# play the game: the tests would take 15+ minutes to prove nothing.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", "web/**", ".github/workflows/pages.yml"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "web/**", ".github/workflows/pages.yml"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
