@@ -641,8 +641,10 @@ wanted drivers must lose the cops first. Repairs don't restore player health or 
   pressing `E` in the menu doesn't get you out of a car. Keys held when you pause are released
   to the game first, so a held trigger or accelerator doesn't stick.
 - **Settings:** volume, mouse sensitivity, invert mouse Y, field of view, fullscreen, the
-  help overlay (`F1` changes it too), and for slower GPUs shadows and view distance (a share of
-  the map's fog distance; nothing past it is drawn). They're saved in the `settings` save as you change them
+  help overlay (`F1` changes it too), shadows, and view distance (40-200 % of the map's fog
+  distance; nothing past it is drawn: lower it on a slow GPU, raise it to see the city to the
+  horizon; on a Radeon 890M Turku at 200 % costs about 0.3 ms GPU and 1.2 ms CPU a frame more
+  than at 100 %). They're saved in the `settings` save as you change them
   and applied on the next start. The menu works with arrows/WASD + Enter, or the mouse.
 - **Quit Game** in the menu saves progress like closing the window does.
 

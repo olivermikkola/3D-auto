@@ -11,9 +11,15 @@ use crate::math::{Mat4, Vec3, v3};
 use miniquad::*;
 
 pub const MAX_LIGHTS: usize = 16;
+// 4096 texels over 340 m: twice the reach of the old 2048 over 170 m at the
+// same sharpness (8 cm a texel). The Beelink's Radeon 890M draws Turku in
+// 2-4 ms a frame either way. Browsers keep 2048 (some WebGL caps it).
+#[cfg(not(target_arch = "wasm32"))]
+const SHADOW_RES: u32 = 4096;
+#[cfg(target_arch = "wasm32")]
 const SHADOW_RES: u32 = 2048;
-const SHADOW_SIZE: f32 = 170.0; // meters covered by the shadow map
-const SHADOW_DEPTH: f32 = 420.0;
+const SHADOW_SIZE: f32 = if SHADOW_RES >= 4096 { 340.0 } else { 170.0 }; // meters covered by the shadow map
+const SHADOW_DEPTH: f32 = 800.0;
 
 const PRECISION: &str = "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n";
 
@@ -70,7 +76,9 @@ float shadow(float ndl) {
             lit += step(p.z - bias, unpack(texture2D(shadow_map, p.xy + vec2(float(x), float(y)) * params.w)));
         }
     }
-    return lit / 9.0;
+    // Fade out over the map's outer tenth, so shadows don't end in a line.
+    vec2 c = abs(p.xy - 0.5) * 2.0;
+    return mix(lit / 9.0, 1.0, smoothstep(0.8, 1.0, max(c.x, c.y)));
 }
 
 void main() {
