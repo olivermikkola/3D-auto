@@ -99,7 +99,7 @@ function A.cast(x, z, seed)
 end
 
 local function stop_siren()
-  if call and call.siren then engine.stop(call.siren); call.siren = nil end
+  if call and call.siren then errand.siren_off(call.siren); call.siren = nil end
 end
 
 local function clear()
@@ -160,7 +160,7 @@ local function load()
   local h = call.hospital
   call.marker, call.blip = errand.mark(h[1], h[2], HOSPITAL_COLOR)
   call.stop = {h[1], h[2]}
-  call.siren = engine.play("siren", {loop = true, follow = G.vehicle})
+  call.siren = errand.siren()
   state = "ride"
   G.errand = "Ambulance: get them to " .. h[3] .. "."
   U.message("\"" .. call.line .. "\"", 3)

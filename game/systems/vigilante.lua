@@ -70,6 +70,7 @@ function V.is_suspect(id) return suspect ~= nil and suspect.id == id end
 
 local function clear()
   if suspect then
+    errand.siren_off(suspect.siren)
     errand.forget(suspect.blip)
     local c = traffic.cars[suspect.id]
     -- Back to plain traffic, recycled out of sight like the rest.
@@ -117,7 +118,8 @@ function V.call(x, z)
   if a and b and (a[1] ~= b[1] or a[2] ~= b[2]) then engine.orient(id, math.atan(b[1] - a[1], b[2] - a[2])) end
   local blip = {id = id, color = {1, 0.15, 0.15}}
   G.markers[#G.markers + 1] = blip
-  suspect = {id = id, crime = kind[1], blip = blip, deadline = engine.time() + V.CLOCK, pinned = 0, cruise = cruise}
+  suspect = {id = id, crime = kind[1], blip = blip, deadline = engine.time() + V.CLOCK, pinned = 0, cruise = cruise,
+             siren = errand.siren()}
   state = "chase"
   local street = city.street(jx, jz)
   G.errand = "Vigilante: stop the suspect" .. (street and (" (" .. street .. ")") or "") .. "."

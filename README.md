@@ -578,6 +578,20 @@ changes**, which is the point of the kernel:
   grows, up to twice the size and twice the hosing. $100 plus $2 for each second left, and $300
   for every third in a row. Too late (it burns down), a star or leaving the engine calls it off.
   `FIRE_TEST=1` drives to one by the GPS and puts it out.
+- **Pull over for a siren:** while your siren is on (an ambulance with a patient, a fire engine
+  on its way, a police car on a vigilante chase), a car ahead going your way within 45 m moves
+  1.6 m over to the right and slows to 3 m/s, and goes back to its lane once you're by or the
+  siren is off (`systems/traffic.lua`, sirens through `errand.siren`). A suspect on the run
+  doesn't. `YIELD_TEST=1` checks it behind, oncoming and with no siren.
+- **Pöli bus driver:** on a map with bus stops (Turku: 703 real, named stops from OSM, put in
+  with `osm_import.py turku --only-pois`, which now takes `highway=bus_stop` from the map's own
+  cache), a Pöli bus stands at the bus station nearest the taxi rank, a yellow square on the
+  minimap (`systems/busroute.lua`). Drive it in free roam and you get a route of four real stops,
+  each 250-700 m on, never a name twice, with one to three people waiting. Stop within 14 m and
+  stand for 2 s with the doors open: they get on, $25 each, or 40 % of that when you're past
+  the stop's time in the timetable (the drive at 7 m/s plus 25 s). The whole route pays $150,
+  half if any stop was late. Leaving the bus, a star or a mission ends the route. `BUS_TEST=1`
+  drives the first stop by the GPS.
 - **GPS:** where you're going gets a route line on the minimap, the shortest way by road with
   one-way streets the right way round, and the distance left in its corner (`lib/gps.lua`):
   your own waypoint if you've set one, else the nearest blip that isn't a mission's start

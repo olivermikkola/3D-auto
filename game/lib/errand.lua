@@ -79,6 +79,27 @@ function E.park_spot(x, z, nth)
   return jx + fx * 12 + rx * lane, jz + fz * 12 + rz * lane, yaw
 end
 
+-- The player's siren (an ambulance with a patient, a fire engine on its
+-- way, a police car on a chase): a looping sound on their vehicle. While
+-- one is on, traffic ahead pulls over (systems/traffic).
+local sirens = {}
+function E.siren()
+  local h = engine.play("siren", {loop = true, follow = G.vehicle})
+  sirens[h] = G.vehicle
+  return h
+end
+
+function E.siren_off(h)
+  if h then engine.stop(h); sirens[h] = nil end
+end
+
+-- The vehicle with its siren on, or nil.
+function E.siren_on()
+  for _, id in pairs(sirens) do
+    if id == G.vehicle and engine.exists(id) then return id end
+  end
+end
+
 -- A marker at (x, z) with its blip on the minimap: entity id, blip.
 function E.mark(x, z, color)
   local id = engine.spawn{mesh = "marker", pos = {x, 2.5 + U.ground(x, z), z}, scale = 4, color = {color[1], color[2], color[3], 0.35}}
