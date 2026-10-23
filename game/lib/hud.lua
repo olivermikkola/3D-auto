@@ -137,46 +137,87 @@ local function radar(sw, sh, L)
   local x0, y0 = map_corner(sw, sh, S, S)
   mapx, mapy = x0, y0
   local k = S / (2 * RADAR)
+  -- Up on the radar is north, or (the setting) the way the camera looks:
+  -- world offsets turned into radar ones (u right, v down).
+  local turns = settings.get("radar_turns")
+  local fx, fz, rx, rz = 0, -1, 1, 0
+  if turns then
+    fx, fz = U.forward(G.cam_yaw or 0)
+    rx, rz = U.right(G.cam_yaw or 0)
+  end
+  local function uv(wx, wz)
+    local dx, dz = wx - px, wz - pz
+    return dx * rx + dz * rz, -(dx * fx + dz * fz)
+  end
   -- Anything off the radar is pinned to its edge, so blips still point the way.
   local function map(wx, wz)
-    local u = math.max(-RADAR, math.min(RADAR, wx - px))
-    local v = math.max(-RADAR, math.min(RADAR, wz - pz))
+    local u, v = uv(wx, wz)
+    u = math.max(-RADAR, math.min(RADAR, u))
+    v = math.max(-RADAR, math.min(RADAR, v))
     return x0 + (u + RADAR) * k, y0 + (v + RADAR) * k
+  end
+  local function inside(wx, wz)
+    local u, v = uv(wx, wz)
+    return math.abs(u) < RADAR and math.abs(v) < RADAR
   end
   engine.rect(x0 - 4, y0 - 4, S + 8, S + 8, 0, 0, 0, 0.55)
   engine.rect(x0, y0, S, S, COLORS.land[1], COLORS.land[2], COLORS.land[3], 0.9)
   -- Rects span several cells; each is drawn once a frame, marked with the
-  -- frame's stamp (no table a frame for the garbage collector).
+  -- frame's stamp (no table a frame for the garbage collector). Turned, a
+  -- rect is a quad, cut to the radar's square by the engine.
   local cells = radar_rects(L)
   stamp = stamp + 1
-  for i = math.floor((px - RADAR) / CELL), math.floor((px + RADAR) / CELL) do
-    for j = math.floor((pz - RADAR) / CELL), math.floor((pz + RADAR) / CELL) do
+  local reach = turns and RADAR * 1.42 or RADAR -- (the square's corners, turned)
+  engine.clip(x0, y0, S, S)
+  for i = math.floor((px - reach) / CELL), math.floor((px + reach) / CELL) do
+    for j = math.floor((pz - reach) / CELL), math.floor((pz + reach) / CELL) do
       for _, r in ipairs(cells[i * 100003 + j] or {}) do
         if r[6] ~= stamp then
           r[6] = stamp
-          local a = math.max(r[1], px - RADAR)
-          local b = math.max(r[2], pz - RADAR)
-          local c = math.min(r[3], px + RADAR)
-          local d = math.min(r[4], pz + RADAR)
-          if c > a and d > b then
-            local col = r[5]
-            engine.rect(x0 + (a - px + RADAR) * k, y0 + (b - pz + RADAR) * k, (c - a) * k, (d - b) * k, col[1], col[2], col[3], 0.9)
+          local col = r[5]
+          if turns then
+            local cx, cy = x0 + RADAR * k, y0 + RADAR * k
+            local w, h = r[3] - r[1], r[4] - r[2]
+            if w < 14 and h < 14 then
+              -- A road's dot: too small to see turned; a square where its middle goes (four times cheaper).
+              local u, v = uv((r[1] + r[3]) / 2, (r[2] + r[4]) / 2)
+              if math.abs(u) < RADAR + 10 and math.abs(v) < RADAR + 10 then
+                local s = math.max(w, h) * k
+                engine.rect(cx + u * k - s / 2, cy + v * k - s / 2, s, s, col[1], col[2], col[3], 0.9)
+              end
+            elseif r[3] > px - reach and r[1] < px + reach and r[4] > pz - reach and r[2] < pz + reach then
+              local u1, v1 = uv(r[1], r[2])
+              local u2, v2 = uv(r[3], r[2])
+              local u3, v3 = uv(r[3], r[4])
+              local u4, v4 = uv(r[1], r[4])
+              engine.quad(cx + u1 * k, cy + v1 * k, cx + u2 * k, cy + v2 * k, cx + u3 * k, cy + v3 * k, cx + u4 * k, cy + v4 * k,
+                          col[1], col[2], col[3], 0.9)
+            end
+          else
+            local a = math.max(r[1], px - RADAR)
+            local b = math.max(r[2], pz - RADAR)
+            local c = math.min(r[3], px + RADAR)
+            local d = math.min(r[4], pz + RADAR)
+            if c > a and d > b then
+              engine.rect(x0 + (a - px + RADAR) * k, y0 + (b - pz + RADAR) * k, (c - a) * k, (d - b) * k, col[1], col[2], col[3], 0.9)
+            end
           end
         end
       end
     end
   end
+  engine.clip()
   local dots, col = gps.dots()
   for i = 1, dots and #dots or 0, 2 do
     local x, z = dots[i], dots[i + 1]
-    if math.abs(x - px) < RADAR and math.abs(z - pz) < RADAR then
+    if inside(x, z) then
       local bx, by = map(x, z)
       engine.rect(bx - 2, by - 2, 4, 4, col[1], col[2], col[3], 0.95)
     end
   end
   for _, id in ipairs(engine.find("car")) do
     local x, _, z = engine.pos(id)
-    if math.abs(x - px) < RADAR and math.abs(z - pz) < RADAR then
+    if inside(x, z) then
       local bx, by = map(x, z)
       engine.rect(bx - 1.5, by - 1.5, 3, 3, 0.4, 0.6, 1.0, 1)
     end
@@ -189,14 +230,27 @@ local function radar(sw, sh, L)
     end
   end
   for _, lm in ipairs(L.labels or {}) do
-    if math.abs(lm.x - px) < RADAR and math.abs(lm.z - pz) < RADAR then
+    if inside(lm.x, lm.z) then
       local bx, by = map(lm.x, lm.z)
       engine.rect(bx - 4, by - 4, 8, 8, 1, 1, 1, 1)
       engine.text(lm.letter, bx + 6, by - 6, 10, 1, 1, 1, 1)
     end
   end
   engine.emit("minimap", map)
-  engine.rect(x0 + S / 2 - 3, y0 + S / 2 - 3, 6, 6, 1, 1, 1, 1)
+  -- You, and which way you face; turned, an N on the edge marks north.
+  local cx, cy = x0 + S / 2, y0 + S / 2
+  engine.rect(cx - 3, cy - 3, 6, 6, 1, 1, 1, 1)
+  local yaw = U.player_yaw()
+  if yaw then
+    local hx, hz = U.forward(yaw)
+    local u, v = uv(px + hx, pz + hz)
+    engine.rect(cx + u * 7 - 1.5, cy + v * 7 - 1.5, 3, 3, 1, 1, 1, 1)
+  end
+  if turns then
+    local nx, ny = map(px, pz - 1e5)
+    engine.rect(nx - 6, ny - 6, 12, 12, 0, 0, 0, 0.7)
+    engine.text("N", nx - 3, ny - 4, 10, 1, 1, 1, 1)
+  end
 end
 
 -- How far the GPS route has left, in the minimap's top left corner.

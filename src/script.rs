@@ -840,6 +840,22 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("rect", |e, _lua, (x, y, w, h, r, g, b, a): (f32, f32, f32, f32, f32, f32, f32, Option<f32>)| {
         Ok(e.hud_rect(x, y, w, h, [r, g, b, a.unwrap_or(1.0)]))
     });
+    // A convex quad by its corners in order, for things drawn turned
+    // (plain numbers, no table: the radar draws hundreds a frame).
+    f!(
+        "quad",
+        |e, _lua, (x1, y1, x2, y2, x3, y3, x4, y4, r, g, b, a): (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, Option<f32>)| {
+            Ok(e.hud_quad([(x1, y1), (x2, y2), (x3, y3), (x4, y4)], [r, g, b, a.unwrap_or(1.0)]))
+        }
+    );
+    // While set, rects and quads are cut to this rectangle; no arguments clears it.
+    f!("clip", |e, _lua, (x, y, w, h): (Option<f32>, Option<f32>, Option<f32>, Option<f32>)| {
+        e.hud_clip = match (x, y, w, h) {
+            (Some(x), Some(y), Some(w), Some(h)) => Some([x, y, x + w, y + h]),
+            _ => None,
+        };
+        Ok(())
+    });
     f!(
         "text",
         |e, _lua, (s, x, y, size, r, g, b, a): (String, f32, f32, Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>)| {

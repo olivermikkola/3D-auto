@@ -19,6 +19,9 @@ M.list = {
   {key = "view", label = "VIEW DISTANCE", min = 40, max = 100, step = 10, default = 100, fmt = "%d%%"},
   -- Clouds and rain now and then (lib/weather); off keeps it clear.
   {key = "weather", label = "WEATHER", default = true},
+  -- On a town shown as a radar, up is the way you're looking (as in GTA);
+  -- off, up is north.
+  {key = "radar_turns", label = "RADAR TURNS WITH YOU", default = true},
 }
 local by_key, values, watchers = {}, {}, {}
 for _, s in ipairs(M.list) do by_key[s.key] = s end

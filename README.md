@@ -150,6 +150,7 @@ engine.cursor() -> x,y      -- mouse position in pixels, for clicking on menus
 engine.pad() -> {name, lx, ly, rx, ry, lt, rt} | nil   -- sticks -1..1 (up/right +), triggers 0..1
 engine.pause(bool)  engine.paused()   engine.fullscreen([bool]) -> bool
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
+engine.quad(x1,y1, x2,y2, x3,y3, x4,y4, r,g,b[,a])  engine.clip(x,y,w,h) / engine.clip()
 
 -- saves (one plain value per key: tables, strings, numbers, booleans; see "Saves")
 engine.save(key, value) -> true | nil, err     -- value nil deletes the key
@@ -563,6 +564,10 @@ changes**, which is the point of the kernel:
   backwards from the goal (about 3 ms on Turku) is kept while the goal stays put; the line is
   redrawn from wherever you are every 0.4 s. `GPS_TEST=1` drives a car along it to a goal
   1-2 km off.
+- **Radar turns with you:** on a town shown as a radar, up is the way the camera looks (as in
+  GTA), with an N on the edge for north and a tick for the way you face; the setting RADAR
+  TURNS WITH YOU (on by default) puts north up again. The engine draws it with `engine.quad`
+  (four corners) and `engine.clip` (cut what's drawn to a rectangle).
 - **Waypoint:** on the map (**M**), click a spot or put the crosshair on it and press **Enter**
   (pad **A**); **Backspace** (pad **X**) clears it, and so does getting there. The map shows the
   route too. `WAYPOINT_TEST=1` sets one and drives there.
