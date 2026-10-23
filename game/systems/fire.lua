@@ -101,7 +101,7 @@ end
 
 local function clear()
   if fire then
-    if fire.siren then engine.stop(fire.siren) end
+    errand.siren_off(fire.siren)
     if fire.light then engine.remove_light(fire.light) end
     if fire.marker and engine.exists(fire.marker) then engine.despawn(fire.marker) end
     errand.forget(fire.blip)
@@ -139,7 +139,7 @@ function F.call(x, z)
   fire = {where = where, line = line, x = fx, z = fz, y = fy, stop = {sx, sz}, size = 1, left = 1, clock = clock,
           deadline = engine.time() + clock, marker = marker, blip = blip,
           light = engine.light{pos = {fx, fy + 2, fz}, radius = 16, intensity = 2.5, color = {1, 0.55, 0.2}},
-          siren = engine.play("siren", {loop = true, follow = G.vehicle}), puff_t = 0}
+          siren = errand.siren(), puff_t = 0}
   state = "call"
   G.errand = "Fire: get to " .. where .. "."
   G.errand_deadline = fire.deadline
@@ -236,7 +236,7 @@ engine.on("tick", function(dt)
   show(dt)
   if F.spraying() then
     if fire.siren then
-      engine.stop(fire.siren); fire.siren = nil
+      errand.siren_off(fire.siren); fire.siren = nil
       engine.set_visible(fire.marker, false) -- (there: the stop marker would sit on the engine; the blip stays)
     end
     fire.left = fire.left - dt / (F.PUT_OUT * fire.size)

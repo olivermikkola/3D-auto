@@ -564,12 +564,28 @@ def pois_of(els, P, inside):
         x, z = P(c["lat"], c["lon"])
         if not inside(x, z): continue
         keep = {k: t[k] for k in POI_TAGS if k in t}
+        if t.get("highway") == "bus_stop": keep["highway"] = "bus_stop"
         key = (round(x), round(z), tuple(sorted(keep.items())))
         if key in seen: continue  # the same place as a node and as its building
         seen.add(key)
         pois.append((x, z, keep))
     pois.sort(key=lambda p: (p[2].get("name", ""), round(p[0]), round(p[1])))
     return pois
+
+
+def bus_stops_of(els):
+    """Named bus stops from the map's own data (nodes, or platforms drawn as
+    areas: their middle), as POIs: where a bus driver stops."""
+    out = []
+    for el in els:
+        t = el.get("tags", {})
+        if t.get("highway") != "bus_stop" or "name" not in t: continue
+        if "lat" in el:
+            out.append(el)
+        elif el.get("geometry"):
+            g = el["geometry"]
+            out.append({"tags": t, "center": {"lat": sum(p["lat"] for p in g) / len(g), "lon": sum(p["lon"] for p in g) / len(g)}})
+    return out
 
 
 def poi_lines(pois, f, q):
@@ -683,7 +699,10 @@ def main():
     s, w, n, e = cfg["bbox"]
     if args.only_pois:
         P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
-        splice_pois(dest, fetch_pois(cache, cfg, args.fetch), P,
+        els = fetch_pois(cache, cfg, args.fetch)
+        # Bus stops come from the map's own data (the POI query has none).
+        if cache.exists(): els = els + bus_stops_of(json.loads(cache.read_text())["elements"])
+        splice_pois(dest, els, P,
                     lambda v: f"{v:.1f}".rstrip("0").rstrip("."), lambda v: json.dumps(v, ensure_ascii=False))
         return
     if args.fetch:

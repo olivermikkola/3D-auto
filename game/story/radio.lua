@@ -74,3 +74,9 @@ add{id = "fire_out_streak", on = "fire_out", cooldown = 900, when = function(_, 
     text = "RADIO: A busy day for the fire brigade around {area}. Please, people, the sauna stove is not for drying socks."}
 add{id = "fire_lost", on = "fire_lost", cooldown = 600,
     text = "RADIO: A fire near {street} was put out by the neighbours with garden hoses. They want to know where the fire brigade was."}
+add{id = "bus_route_done", on = "bus_route_done", cooldown = 600, when = function(_, _, late) return (late or 1) == 0 end,
+    text = "RADIO: A Pöli bus around {area} ran on time today. Pöli is looking into how that happened."}
+add{id = "bus_route_late", on = "bus_route_done", cooldown = 900, when = function(_, _, late) return (late or 0) >= 2 end,
+    text = "RADIO: Pöli apologises for the delays near {street}. The driver says every traffic light was red. Every one."}
+add{id = "bus_route_lost", on = "bus_route_lost", cooldown = 600,
+    text = "RADIO: Passengers on {street} were left waiting for a bus that never came. Business as usual, say regulars."}

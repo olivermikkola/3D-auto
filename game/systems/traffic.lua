@@ -16,6 +16,11 @@ local function route(c)
   c.path, c.wp, c.lane = city.path(c.from, c.to), 2, city.lane(c.from, c.to)
 end
 
+-- A siren behind (the player's ambulance, fire engine or police car,
+-- lib/errand): within YIELD m, going the same way, a car moves PULL m over
+-- to the right and slows to YIELD_SPEED, as the law says.
+local YIELD, PULL, YIELD_SPEED, PULL_AHEAD = 45, 1.6, 3, 15
+
 local function lane_target(c)
   local a, b = c.path[c.wp - 1], c.path[c.wp]
   local ax, az, bx, bz = a[1], a[2], b[1], b[2]
@@ -23,12 +28,11 @@ local function lane_target(c)
   local rx, rz = U.right(yaw)
   -- Aim a little before the junction (or bend) so turns cut the corner.
   local fx, fz = U.forward(yaw)
-  local lane = c.lane or LANE
+  local lane = (c.lane or LANE) + (c.pull or 0) * PULL
   return bx + rx * lane - fx * LANE, bz + rz * lane - fz * LANE
 end
 
 local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
-
 -- At a dead end (the shore, the park) turning back is the only way on.
 -- A one-way street that just ends (cut off at the map's edge) has no way
 -- on at all: the car is lost, and gets moved to another street.
@@ -173,6 +177,8 @@ engine.on("vehicle_enter", function(id)
   end
 end)
 
+local siren -- the player's vehicle with its siren on, this tick
+
 local function update(id, c, dt)
     local x, y, z = engine.pos(id)
     local tx, tz = lane_target(c)
@@ -181,11 +187,35 @@ local function update(id, c, dt)
       if c.lost then c.speed = 0 end
       tx, tz = lane_target(c)
     end
+    -- Pulling over: the bend can be far off, so aim PULL_AHEAD m on from
+    -- here, on the moved-over lane, or the car would hardly move over.
+    if (c.pull or 0) > 0 then
+      local a = c.path[c.wp - 1]
+      local ax, az = a[1], a[2]
+      local yaw = math.atan(tx - ax, tz - az)
+      local fx, fz = U.forward(yaw)
+      local along = (x - ax) * fx + (z - az) * fz + PULL_AHEAD
+      if along < U.dist2d(ax, az, tx, tz) then
+        local rx, rz = U.right(yaw)
+        local lane = (c.lane or LANE) + c.pull * PULL
+        tx, tz = ax + fx * along + rx * lane, az + fz * along + rz * lane
+      end
+    end
     local yaw = engine.yaw(id)
     local turn = U.angle_diff(yaw, math.atan(tx - x, tz - z))
     local fx, fz = U.forward(yaw)
     -- Brake for anything solid ahead that isn't scenery.
     local want = (c.cruise or CRUISE) * (1 - math.min(math.abs(turn), 1) * 0.6)
+    -- A siren behind: pull over and let it by (not a suspect on the run).
+    local yielding = false
+    if siren and not c.choose then
+      local sx, _, sz = engine.pos(siren)
+      local dx, dz = sx - x, sz - z
+      local d = math.sqrt(dx * dx + dz * dz)
+      yielding = d < YIELD and (dx * fx + dz * fz) < -2 and math.cos(U.angle_diff(yaw, engine.yaw(siren))) > 0.5
+    end
+    c.pull = U.clamp((c.pull or 0) + (yielding and dt or -dt), 0, 1)
+    if yielding then want = math.min(want, YIELD_SPEED) end
     local hit, d = engine.raycast(x + fx * 2.3, y, z + fz * 2.3, fx, 0, fz, 12, id)
     if hit then
       local tag = engine.tag(hit)
@@ -226,6 +256,7 @@ end
 
 engine.on("tick", function(dt)
   if not G.city then return end
+  siren = require("lib.errand").siren_on()
   for id, c in pairs(T.cars) do
     if engine.exists(id) then update(id, c, dt) else T.cars[id] = nil end
   end
