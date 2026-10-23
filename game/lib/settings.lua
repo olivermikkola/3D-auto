@@ -14,9 +14,10 @@ M.list = {
   -- saved as on by everyone who ever changed any setting.)
   {key = "help_on", label = "HELP OVERLAY", default = false},
   -- For slower GPUs: no shadow pass, and a shorter view (a share of the
-  -- map's own fog distance; nothing past it is drawn).
+  -- map's own fog distance; nothing past it is drawn). Faster ones can see
+  -- twice as far (measured cheap on a Radeon 890M: docs/ROADMAP.md).
   {key = "shadows", label = "SHADOWS", default = true},
-  {key = "view", label = "VIEW DISTANCE", min = 40, max = 100, step = 10, default = 100, fmt = "%d%%"},
+  {key = "view", label = "VIEW DISTANCE", min = 40, max = 200, step = 10, default = 100, fmt = "%d%%"},
   -- Clouds and rain now and then (lib/weather); off keeps it clear.
   {key = "weather", label = "WEATHER", default = true},
 }
