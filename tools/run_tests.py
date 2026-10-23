@@ -8,10 +8,12 @@ anything on disk.
 
     python tools/run_tests.py            # one worker per CPU
     python tools/run_tests.py --jobs 2   # fewer, e.g. on a quiet evening
+    python tools/run_tests.py --only "test_*_sweep.py"   # or --skip the same
 
 Prints each file's time; a failing file's full output is printed at the end.
 """
 import argparse
+import fnmatch
 import os
 import subprocess
 import sys
@@ -33,8 +35,12 @@ def run(name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
+    ap.add_argument("--only", help="just the files matching this pattern")
+    ap.add_argument("--skip", help="leave out the files matching this pattern")
     args = ap.parse_args()
-    files = sorted(p.name for p in TOOLS.glob("test_*.py"))
+    files = sorted(p.name for p in TOOLS.glob("test_*.py")
+                   if (not args.only or fnmatch.fnmatch(p.name, args.only))
+                   and not (args.skip and fnmatch.fnmatch(p.name, args.skip)))
     failed = []
     start = time.monotonic()
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
