@@ -36,6 +36,7 @@ require "systems.heli"
 require "systems.racer"
 require "systems.fares"
 require "systems.ambulance"
+require "systems.vigilante"
 require "lib.menu"
 require "lib.shop"
 
@@ -179,6 +180,7 @@ if os.getenv("GPS_TEST") then require "test.gps_probe" end
 if os.getenv("FARES_TEST") then require "test.fares_probe" end
 if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
 if os.getenv("AMBULANCE_TEST") then require "test.ambulance_probe" end
+if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.

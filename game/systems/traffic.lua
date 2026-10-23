@@ -44,7 +44,9 @@ local function pick_next(c)
     if n ~= c.from then opts[#opts + 1] = n else back = true end
   end
   if #opts == 0 and not back then c.lost = true; return end
-  c.from, c.to = c.to, opts[math.random(#opts)] or c.from
+  -- A car with its own mind (a suspect on the run: systems/vigilante) picks.
+  local pick = #opts > 0 and c.choose and c.choose(c, opts)
+  c.from, c.to = c.to, pick or opts[math.random(#opts)] or c.from
   route(c)
 end
 
@@ -124,6 +126,7 @@ end
 -- Hand a car to the traffic AI. It should stand on a junction; it drives
 -- off down one of its roads. Missions use it for cars they want to see wander town:
 -- `keep` ones are never recycled out of sight, and `cruise` sets their pace.
+-- A car's `choose(c, opts)`, if set, picks the next junction from opts.
 function T.adopt(id, opts)
   local x, y, z = engine.pos(id)
   local at = city.nearest(x, z, y)
