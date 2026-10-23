@@ -168,6 +168,18 @@ local function station_exit(px, pz)
   return rx, rz, math.atan(px - rx, pz - rz)
 end
 
+-- A unit on the street at (x, z) facing yaw: lights, siren, in P.cops.
+local function add_unit(x, z, yaw, y, launch, mesh)
+  local id = vehicle.spawn(x, z, yaw, nil, mesh, "cop", y)
+  vehicle.headlights(id)
+  local c = {id = id, stuck = 0, reverse = 0, launch = launch, is_pasi = (mesh == "pasi")}
+  c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
+  c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}
+  c.siren = engine.play("siren", {loop = true, follow = id})
+  P.cops[id] = c
+  return id
+end
+
 local function spawn_cop()
   local px, _, pz = U.player_pos()
   local x, z, yaw, launch, y
@@ -188,13 +200,83 @@ local function spawn_cop()
   if not x then x, z, yaw, y, launch = spawn_point() end
   if not x then return end
   local mesh = (is_military_pasi and city.has and city.has("heist_start")) and "pasi" or "cop"
-  local id = vehicle.spawn(x, z, yaw, nil, mesh, "cop", y)
-  vehicle.headlights(id)
-  local c = {id = id, stuck = 0, reverse = 0, launch = launch, is_pasi = (mesh == "pasi")}
-  c.red = engine.spawn{mesh = "beacon", color = {1, 0.1, 0.1}}
-  c.blue = engine.spawn{mesh = "beacon", color = {0.1, 0.2, 1}}
-  c.siren = engine.play("siren", {loop = true, follow = id})
-  P.cops[id] = c
+  return add_unit(x, z, yaw, y, launch, mesh)
+end
+
+-- ---- the convoy ------------------------------------------------------------
+-- From CONVOY_STARS up, every CONVOY_EVERY s, CONVOY units come at once in a
+-- column down one road, CONVOY_GAP m apart, CONVOY_NEAR to CONVOY_FAR m off
+-- and heading the player's way, on top of COPS_PER_LEVEL. At five stars a
+-- Pasi leads it.
+local CONVOY_STARS, CONVOY_EVERY, CONVOY, CONVOY_GAP = 4, 40, 3, 11
+local CONVOY_NEAR, CONVOY_FAR = 100, 220
+local next_convoy = 0
+
+-- The convoy's leader's spot and its road heading (a to b), or nil: a
+-- stretch of road between bends long enough for the column, in range, on
+-- the player's level, pointing their way, with nothing on it.
+local function convoy_spot(px, py, pz)
+  -- Junctions in range (one pass over the map), then their roads out.
+  local near = {}
+  for _, j in ipairs(city.junctions()) do
+    local x, z = city.pos(j)
+    local d = U.dist2d(x, z, px, pz)
+    if d >= CONVOY_NEAR - 40 and d <= CONVOY_FAR + 40 then near[#near + 1] = j end
+  end
+  if #near == 0 then return end
+  local need = CONVOY_GAP * (CONVOY - 1) + 6
+  for _ = 1, 30 do
+    local j = near[math.random(#near)]
+    local links = city.links(j) or {}
+    if #links > 0 then
+      local n = links[math.random(#links)]
+      local path = city.path(j, n)
+      local i = math.random(2, #path)
+      local a, b = path[i - 1], path[i]
+      local len = U.dist2d(a[1], a[2], b[1], b[2])
+      if len >= need + 4 then
+        local yaw = math.atan(b[1] - a[1], b[2] - a[2])
+        local fx, fz = U.forward(yaw)
+        local rx, rz = U.right(yaw)
+        local lane = city.lane(j, n)
+        -- The leader as far down the stretch as there's room behind it for.
+        local along = need + math.random() * (len - need - 4)
+        local x, z = a[1] + fx * along + rx * lane, a[2] + fz * along + rz * lane
+        local d = U.dist2d(x, z, px, pz)
+        local toward = ((px - x) * fx + (pz - z) * fz) / math.max(d, 1)
+        local y = city.height_on(j, n, x, z)
+        if d >= CONVOY_NEAR and d <= CONVOY_FAR and toward > 0.3
+            and not (py and y and math.abs(y - py) >= 4) then
+          local free = true
+          for k = 0, CONVOY - 1 do
+            if occupied(x - fx * CONVOY_GAP * k, z - fz * CONVOY_GAP * k) then free = false break end
+          end
+          if free then return x, z, yaw, {j, n} end
+        end
+      end
+    end
+  end
+end
+
+-- Send a convoy now, if there's room for it under the cap. Its units, or nil.
+function P.convoy()
+  local px, py, pz = U.player_pos()
+  if not px or wanted.stars() < CONVOY_STARS then return end
+  -- It comes on top of the level's usual units (at most once a convoy's worth).
+  if P.count() > COPS_PER_LEVEL[wanted.stars()] then return end
+  local x, z, yaw, r = convoy_spot(px, py, pz)
+  if not x then return end
+  local fx, fz = U.forward(yaw)
+  local ids = {}
+  for k = 0, CONVOY - 1 do
+    local cx, cz = x - fx * CONVOY_GAP * k, z - fz * CONVOY_GAP * k
+    local mesh = (k == 0 and wanted.stars() >= 5) and "pasi" or "cop"
+    -- Time enough to get here from the far end before it may be recycled.
+    ids[#ids + 1] = add_unit(cx, cz, yaw, city.height_on(r[1], r[2], cx, cz), 35, mesh)
+    P.cops[ids[#ids]].convoy = true
+  end
+  engine.emit("convoy", #ids, wanted.stars())
+  return ids
 end
 
 local function remove(id)
@@ -731,6 +813,10 @@ engine.on("tick", function(dt)
 
   -- Keep the right number of units on the street.
   spawn_timer = spawn_timer - dt
+  if wanted.stars() >= CONVOY_STARS and engine.time() >= next_convoy then
+    -- (Tried again in a few seconds if there's no room or no road for it.)
+    next_convoy = engine.time() + (P.convoy() and CONVOY_EVERY or 3)
+  end
   if spawn_timer <= 0 and P.count() < COPS_PER_LEVEL[wanted.stars()] then
     spawn_timer = 1.5
     spawn_cop()

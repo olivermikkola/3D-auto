@@ -520,6 +520,9 @@ changes**, which is the point of the kernel:
   110–220 m ahead (two on a street, up to four on an avenue) with officers posted behind
   them, at most one block every 30 s. Ram through or turn off; once you're past or gone
   another way, they join the chase. `ROADBLOCK_TEST=1` checks one.
+- **Convoys:** from four stars, every 40 s, three squad cars come at once in a column down one
+  road 100-220 m off, heading your way, on top of the level's usual units; at five stars a
+  Pasi leads them, on any map (`systems/police.lua`, `police.convoy()`). `CONVOY_TEST=1`.
 - **Helicopter:** from four stars a police helicopter flies in and hangs 40 m over you, its
   searchlight on you at night. It sees you wherever the sky is open over you, so in the open the
   cops never lose you; get under a roof, a bridge or into a tunnel. It leaves under four stars.
