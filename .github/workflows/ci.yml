@@ -33,7 +33,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m unittest discover -s tools -p "test_*.py"
+      # Side by side, one process per test file (25-33 min one at a time).
+      - run: python tools/run_tests.py
       # Render Turku's landmarks and check the pixels: a landmark that is
       # black, buried or somewhere else fails here, before it is merged.
       - name: Landmark render checks (software GL)
