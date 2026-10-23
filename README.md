@@ -35,7 +35,7 @@ cargo run --release -- my_game   # any directory with a main.lua
 
 Controls: `WASD` move/drive · `Shift` run · `Space` jump/handbrake · `E` enter/exit car · `H` horn · click or `F` fire · `1`/`2`/`3`/`Q` weapons · `N` skip 3 hours · `Tab` progress · `R` shops and the garage ·
 mouse or arrow keys for the camera · `F5` reload · `F1` help · `Esc` pause and settings.
-A gamepad works too (see [Gamepads](#gamepads)), and so does a touch screen in the browser build (see `web/README.md`).
+A gamepad works too (see [Gamepads](#gamepads)), and so does a touch screen in the browser build: play it at https://olivermikkola.github.io/3D-auto/ (see `web/README.md`).
 
 ## Design
 

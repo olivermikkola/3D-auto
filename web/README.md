@@ -39,7 +39,20 @@ installed game starts without a connection. `build.sh` stamps the worker with th
 so each build replaces the stored copy and nobody is left on an old one. Browsers allow this only
 over https or on localhost. Checked in headless Chrome: the manifest has no errors, all seven
 files are stored, and the game starts again with the network off. Not yet installed on a real
-phone, and not deployed anywhere.
+phone.
+
+## Play it on a phone
+
+`.github/workflows/pages.yml` builds this folder on every push to main and publishes it at
+**https://olivermikkola.github.io/3D-auto/** (pull requests get the same build and browser
+check, without publishing). `?map=raisio` picks Raisio; Turku is the default.
+
+- **Android (Chrome):** open the address, then ⋮ → *Add to Home screen* / *Install app*.
+- **iPhone (Safari):** open the address, then Share → *Add to Home Screen*. Turku needs about
+  530 MiB of wasm memory, which older iPhones may refuse; try `?map=raisio` (about 450 MiB).
+
+Hold the phone sideways. Once installed it starts from the phone's own copy, also offline; a new
+build replaces that copy the next time it starts with a connection.
 
 ## Measuring without mixing metrics
 

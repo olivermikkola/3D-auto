@@ -4,14 +4,21 @@
 use std::fs;
 use std::path::Path;
 
+// Left out like the desktop release (.github/workflows/release.yml), so the
+// city menu has Turku first and the game opens there without ?map=.
+const SKIP: &[&str] = &["game/maps/manhattan.lua", "game/maps/harbor.lua", "game/maps/archive"];
+
 fn walk(dir: &Path, base: &Path, out: &mut Vec<u8>, n: &mut usize) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).collect();
     entries.sort();
     for p in entries {
+        let name = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+        if SKIP.contains(&name.as_str()) {
+            continue;
+        }
         if p.is_dir() {
             walk(&p, base, out, n);
         } else {
-            let name = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
             let data = fs::read(&p).unwrap();
             for chunk in [name.as_bytes(), &data[..]] {
                 out.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
