@@ -67,15 +67,18 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 
 ## Next
 
-1. **Measure the GPU.** A `PROFILE=1` line from a real machine in Turku, driving. Everything
-   CPU-side is a few ms; what the GPU costs at 1.4k draw calls is unknown.
-2. **Playtest the new jobs** (#138-#142): is the ambulance clock (the drive at 8 m/s plus
-   45 s) fair with traffic, is a taxi's pay worth the drive, does the turning radar help.
-   Numbers to tune are at the top of `systems/fares.lua` and `systems/ambulance.lua`.
+1. **GPU: measured, not the limit.** Beelink (Radeon 890M, radeonsi), Turku at 1920x1080, a
+   two-minute robot drive with a two-star chase (2026-10-23, `PROFILE=1` with the GPU timer
+   from #143): a steady 60 fps (vsync), GPU 2-4 ms a frame, CPU about 5 ms, worst frame 27 ms,
+   no frame over 50 ms. There is room to spend on looks (shadow reach, view distance, more
+   traffic) before anything needs culling.
+2. **Playtest the new jobs** (#138-#145): is the ambulance clock (the drive at 8 m/s plus
+   45 s) fair with traffic, is a taxi's pay worth the drive, does the turning radar help, is
+   a fleeing suspect catchable in 100 s, is a fire's clock fair. Numbers to tune are at the
+   top of `systems/fares.lua`, `ambulance.lua`, `vigilante.lua` and `fire.lua`.
 3. **More free-roam events**, picked from a closed list by game state, never made up (cash
-   vans, night street racers, taxi fares and ambulance calls are in). Open questions for
-   Oliver: a vigilante job in a police car (taking one is a star, so it would start after
-   losing the cops, as in GTA), a fire engine for burning wrecks, a convoy at four stars.
+   vans, night street racers, taxi fares, ambulance calls, vigilante shifts in a stolen police
+   car and the fire brigade are in). Still open: a convoy at four stars.
 4. **Templates:** "across the river" is in (`across_water`; Turku only, Raisio has no water
    raster). Next: the map-specific missions (Pansio heist, Föli, archipelago) where it makes
    sense.
