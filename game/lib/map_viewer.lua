@@ -2,6 +2,7 @@
 local U = require "lib.util"
 local G = require "lib.state"
 local city = require "lib.city"
+local gps = require "lib.gps"
 
 local V = {
   pan_x = 0,
@@ -59,7 +60,25 @@ function V.key(k)
   elseif k == "d" or k == "right" then V.pan_x = V.pan_x + speed
   elseif k == "=" or k == "+" or k == "e" then V.zoom = math.min(1.8, V.zoom * 1.25)
   elseif k == "-" or k == "_" or k == "q" then V.zoom = math.max(0.04, V.zoom / 1.25)
-  elseif k == "space" or k == "enter" then V.recenter()
+  elseif k == "space" or k == "y" then V.recenter()
+  elseif k == "enter" then V.toggle_waypoint(V.pan_x, V.pan_z) -- at the crosshair
+  elseif k == "backspace" then gps.clear_waypoint()
+  end
+end
+
+-- The world point under screen point (sx, sy), as drawn last.
+local view = {x = 20, y = 64, w = 920, h = 424}
+function V.to_world(sx, sy)
+  return V.pan_x + (sx - view.x - view.w / 2) / V.zoom, V.pan_z + (sy - view.y - view.h / 2) / V.zoom
+end
+
+-- A waypoint at (x, z) for the GPS; on (or right by) the one there is, off.
+function V.toggle_waypoint(x, z)
+  local w = gps.waypoint
+  if w and U.dist2d(w.x, w.z, x, z) * V.zoom < 14 then
+    gps.clear_waypoint()
+  else
+    gps.set_waypoint(x, z)
   end
 end
 
@@ -82,6 +101,11 @@ function V.frame()
     V.pan_z = V.drag_pan_z - (cy - V.drag_start_y) / math.max(0.01, V.zoom)
     if not engine.key("mouse1") then
       V.dragging = false
+      -- A click, not a drag: a waypoint there.
+      if math.abs(cx - V.drag_start_x) + math.abs(cy - V.drag_start_y) < 5 then
+        V.pan_x, V.pan_z = V.drag_pan_x, V.drag_pan_z
+        V.toggle_waypoint(V.to_world(cx, cy))
+      end
     end
   end
 end
@@ -98,7 +122,7 @@ function V.draw(sw, sh)
   -- 2. Top Header
   engine.rect(0, 0, sw, 52, 0.08, 0.09, 0.12, 1)
   engine.rect(0, 52, sw, 2, COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-  local title = string.upper(cur_map.name or "CITY") .. " — SATELLITE MAP"
+  local title = string.upper(cur_map.name or "CITY") .. " - MAP" -- (the font has no dashes but -)
   engine.text(title, 24, 16, 20, COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
 
   -- Top right: current street / area or back button
@@ -108,7 +132,7 @@ function V.draw(sw, sh)
     if L and L.network then
       street, area = require("lib.roadnet").where(px, pz)
     end
-    local loc_str = (street or "DISTRICT") .. (area and (" (" .. area .. ")") or "")
+    local loc_str = street and (street .. (area and (" (" .. area .. ")") or "")) or area or ""
     local tw = engine.text_width(string.upper(loc_str), 12)
     engine.text(string.upper(loc_str), sw - 140 - tw, 20, 12, 0.8, 0.82, 0.85, 1)
   end
@@ -119,6 +143,7 @@ function V.draw(sw, sh)
   -- 3. Viewport setup
   local vx, vy = 20, 64
   local vw, vh = sw - 40, sh - 116
+  view.x, view.y, view.w, view.h = vx, vy, vw, vh
   engine.rect(vx, vy, vw, vh, COLORS.viewport[1], COLORS.viewport[2], COLORS.viewport[3], 1)
 
   local function to_screen(wx, wz)
@@ -146,35 +171,6 @@ function V.draw(sw, sh)
       local ch = math.min(vy + vh, ry + rh) - cy
       if cw > 0 and ch > 0 then
         engine.rect(cx, cy, cw, ch, COLORS.water[1], COLORS.water[2], COLORS.water[3], 0.95)
-      end
-    end
-  end
-
-  -- 5. Aurajoki River corridor if in Turku
-  if cur_map.id == "turku" then
-    local river_pts = {
-      {450, -320}, {280, -180}, {120, -70}, {-60, 40},
-      {-280, 180}, {-520, 340}, {-800, 520}, {-1200, 780}, {-1600, 1050}
-    }
-    local rsize = math.max(8, 46 * V.zoom)
-    for i = 2, #river_pts do
-      local p0, p1 = river_pts[i - 1], river_pts[i]
-      local ax, ay = to_screen(p0[1], p0[2])
-      local bx, by = to_screen(p1[1], p1[2])
-      local dist = math.sqrt((bx - ax)^2 + (by - ay)^2)
-      local steps = math.max(1, math.floor(dist / 8))
-      for k = 0, steps do
-        local rx = ax + (bx - ax) * k / steps
-        local ry = ay + (by - ay) * k / steps
-        if in_view(rx, ry, rsize) then
-          local cx = math.max(vx, rx - rsize / 2)
-          local cy = math.max(vy, ry - rsize / 2)
-          local cw = math.min(vx + vw, rx + rsize / 2) - cx
-          local ch = math.min(vy + vh, ry + rsize / 2) - cy
-          if cw > 0 and ch > 0 then
-            engine.rect(cx, cy, cw, ch, COLORS.water[1], COLORS.water[2], COLORS.water[3], 0.95)
-          end
-        end
       end
     end
   end
@@ -249,6 +245,35 @@ function V.draw(sw, sh)
     end
   end
 
+  -- The GPS route and the waypoint.
+  gps.update()
+  local dots, col = gps.dots()
+  local ds = math.max(3, math.min(6, 10 * V.zoom))
+  for i = 1, dots and #dots or 0, 2 do
+    local dx, dy = to_screen(dots[i], dots[i + 1])
+    if dx >= vx and dx + ds <= vx + vw and dy >= vy and dy + ds <= vy + vh then
+      engine.rect(dx - ds / 2, dy - ds / 2, ds, ds, col[1], col[2], col[3], 0.95)
+    end
+  end
+  local w = gps.waypoint
+  if w then
+    local wx, wy = to_screen(w.x, w.z)
+    if in_view(wx, wy, 0) then
+      engine.rect(wx - 8, wy - 8, 16, 16, 0, 0, 0, 0.9)
+      engine.rect(wx - 6, wy - 6, 12, 12, w.color[1], w.color[2], w.color[3], 1)
+      local left = gps.left()
+      local label = left and (left < 1000 and string.format("%d M", math.floor(left / 10 + 0.5) * 10)
+        or string.format("%.1f KM", left / 1000)) or "WAYPOINT"
+      engine.text(label, wx + 11, wy - 5, 11, w.color[1], w.color[2], w.color[3], 1)
+    end
+  end
+  -- The crosshair (Enter puts a waypoint under it).
+  local chx, chy = vx + vw / 2, vy + vh / 2
+  engine.rect(chx - 9, chy - 1, 6, 2, 1, 1, 1, 0.7)
+  engine.rect(chx + 3, chy - 1, 6, 2, 1, 1, 1, 0.7)
+  engine.rect(chx - 1, chy - 9, 2, 6, 1, 1, 1, 0.7)
+  engine.rect(chx - 1, chy + 3, 2, 6, 1, 1, 1, 0.7)
+
   -- 9. Landmarks and Labels
   if L then
     for _, lm in ipairs(L.labels or {}) do
@@ -293,7 +318,9 @@ function V.draw(sw, sh)
   -- 11. Bottom Controls Footer
   engine.rect(0, sh - 48, sw, 48, 0.08, 0.09, 0.12, 1)
   engine.rect(0, sh - 48, sw, 1, 0.20, 0.25, 0.30, 1)
-  engine.text("WASD / ARROWS: PAN    +/-: ZOOM    SPACE: RECENTER    ESC: RETURN", 24, sh - 30, 11, 0.75, 0.75, 0.75, 1)
+  local help = require("lib.input").connected() and "D-PAD: PAN    A: WAYPOINT    X: CLEAR IT    Y: RECENTER    B: RETURN"
+    or "DRAG/WASD: PAN   +/-: ZOOM   CLICK/ENTER: WAYPOINT   BACKSPACE: CLEAR   SPACE: RECENTER   ESC: BACK"
+  engine.text(help, 24, sh - 30, 11, 0.75, 0.75, 0.75, 1)
   local zoom_pct = string.format("ZOOM: %d%%", math.floor(V.zoom / 0.35 * 100))
   engine.text(zoom_pct, sw - 24 - engine.text_width(zoom_pct, 11), sh - 30, 11, COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
 end

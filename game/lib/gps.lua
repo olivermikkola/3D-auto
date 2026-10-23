@@ -1,7 +1,8 @@
 -- The GPS: the shortest way by road to where you're going, drawn on the
--- minimap like GTA's route line. Where you're going is the nearest blip
--- that isn't a mission's start marker (a mission's goal, the cash van, the
--- street racer's finish); with none, there's no route.
+-- minimap like GTA's route line. Where you're going is the waypoint you set
+-- on the map (M), else the nearest blip that isn't a mission's start marker
+-- (a mission's goal, the cash van, the street racer's finish); with
+-- neither, there's no route.
 --
 -- Distances to the goal come from one search out backwards from it (one-way
 -- streets the right way round), kept while the goal stays on the same
@@ -211,9 +212,20 @@ end
 
 local cur = {} -- {id, color, goal, dist, nxt, route, dots, at}
 
--- The blip the GPS heads for: the nearest one that isn't a mission's
--- start marker, or nil.
+-- A waypoint of the player's own (set on the map), or nil: {id = "waypoint",
+-- x, z, color}. It goes before every blip, and is cleared on getting there.
+local WAYPOINT_COLOR = {0.85, 0.35, 1}
+local ARRIVED = 20 -- m
+function M.set_waypoint(x, z)
+  M.waypoint = {id = "waypoint", x = x, z = z, color = WAYPOINT_COLOR}
+  cur.at = nil -- redraw at once
+end
+function M.clear_waypoint() M.waypoint = nil end
+
+-- What the GPS heads for: the player's waypoint, else the nearest blip that
+-- isn't a mission's start marker; nil if neither.
 function M.target()
+  if M.waypoint then return M.waypoint end
   local starts = {}
   for _, def in ipairs(require("lib.mission").defs) do
     if def.marker then starts[def.marker] = true end
@@ -237,11 +249,18 @@ function M.update()
   local m = M.target()
   if not m then cur = {}; return nil end
   local now = engine.time()
-  if cur.id == m.id and now < (cur.at or 0) + REDRAW then return cur.route end
+  if cur.id == m.id and cur.at and now < cur.at + REDRAW then return cur.route end
   local px, py, pz = U.player_pos()
-  local gx, gy, gz = engine.pos(m.id)
-  local goal = attach(gx, gz, gy - 2)
+  if not px then return nil end
+  local gx, gy, gz
+  if m == M.waypoint then gx, gz = m.x, m.z else gx, gy, gz = engine.pos(m.id); gy = gy - 2 end
+  local goal = attach(gx, gz, gy)
   if not goal then cur = {}; return nil end
+  if m == M.waypoint and (U.dist2d(px, pz, gx, gz) < ARRIVED or U.dist2d(px, pz, goal.x, goal.z) < ARRIVED) then
+    M.waypoint, cur = nil, {}
+    U.message("WAYPOINT REACHED", 2)
+    return M.update()
+  end
   -- A new search only when the goal moves to another stretch of road (or
   -- along it; the cash van drives).
   if cur.id ~= m.id or not cur.goal or cur.goal.edge ~= goal.edge or math.abs(cur.goal.s - goal.s) > 15
@@ -255,6 +274,15 @@ function M.update()
   cur.dots = cur.route and dots(cur.route.pts)
   return cur.route
 end
+
+-- The waypoint on the minimap (an off-radar one pinned to its edge).
+engine.on("minimap", function(map)
+  local w = M.waypoint
+  if not w then return end
+  local x, y = map(w.x, w.z)
+  engine.rect(x - 5, y - 5, 10, 10, 0, 0, 0, 0.8)
+  engine.rect(x - 4, y - 4, 8, 8, w.color[1], w.color[2], w.color[3], 1)
+end)
 
 -- The route's dots (flat: x1, z1, x2, z2, ...) and colour, for the
 -- minimap; nil with no route.
