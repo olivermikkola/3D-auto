@@ -22,6 +22,7 @@ M.KINDS = {
   sports = {top = 46, accel = 24, brake = 34, reverse = 10},
   van = {top = 34, accel = 12, brake = 24, reverse = 8},
   ambulance = {top = 40, accel = 15, brake = 26, reverse = 8}, -- a van that's in a hurry: about 100 km/h
+  firetruck = {top = 36, accel = 12, brake = 24, reverse = 7}, -- heavier with the water: about 95 km/h
 }
 
 function M.class(id)

@@ -56,6 +56,7 @@ if phase == 1 then
 
     -- Earn some progress the way the game does.
     G.cash = 777
+    G.stats.patients, G.stats.fire_calls, G.stats.suspects_caught = 3, 5, 2
     engine.emit("stunt", 2.46, 10, 1.5)
     engine.emit("mission_passed", joyride())
   end
@@ -71,6 +72,9 @@ elseif phase == 2 then
     check(G.cash == 778, "cash survives a restart, including a change made just before quitting ($" .. G.cash .. ")")
     check(G.passed["01_joyride"] and joyride().passed, "passed missions survive a restart (marker turns green)")
     check(G.stats.stunts == 1 and G.stats.best_air == 2.5 and G.stats.best_flips == 1, "stunt records survive a restart")
+    check(G.stats.patients == 3 and G.stats.fire_calls == 5 and G.stats.suspects_caught == 2,
+          "job counts survive a restart (they also seed the next call)")
+    for k, v in pairs(G.stats) do check(math.type(v) ~= nil, "stat " .. k .. " is a number") end
     check(same(engine.load("roundtrip"), SAMPLE), "every awkward value survives the disk")
     local keys = engine.saves()
     check(#keys == 2 and keys[1] == "progress" and keys[2] == "roundtrip", "engine.saves lists the keys")

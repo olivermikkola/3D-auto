@@ -84,6 +84,25 @@ function P.ambulance_parts()
   return parts
 end
 
+-- Fire engine: the van in fire-brigade red with a white band, a ladder on
+-- the roof and a blue light bar (its paint doesn't change either).
+function P.firetruck_parts()
+  local parts = P.van_parts({0.78, 0.08, 0.06})
+  local white, steel = {0.92, 0.92, 0.9}, {0.7, 0.72, 0.74}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, -0.15, -0.1}, size = {2.13, 0.22, 4.86}, color = white}
+  parts[#parts + 1] = {mesh = "cube", pos = {0, 1.18, 1.0}, size = {1.6, 0.16, 0.3}, color = {0.15, 0.35, 1}, emissive = 1}
+  -- The ladder: two rails and rungs, lying along the roof.
+  for _, x in ipairs{0.45, -0.45} do
+    parts[#parts + 1] = {mesh = "cube", pos = {x, 1.2, -0.7}, size = {0.08, 0.08, 3.6}, color = steel}
+  end
+  for k = 0, 7 do
+    parts[#parts + 1] = {mesh = "cube", pos = {0, 1.2, -2.3 + k * 0.45}, size = {0.9, 0.05, 0.05}, color = steel}
+  end
+  -- A hose reel at the back.
+  parts[#parts + 1] = {mesh = "cylinder", axis = "x", pos = {0, 0.3, -2.45}, size = {1.2, 0.6, 0.6}, color = {0.85, 0.75, 0.2}}
+  return parts
+end
+
 -- Taxi: the car with a lit TAKSI sign on the roof.
 function P.cab_parts(c)
   local parts = P.car_parts(c)
@@ -99,6 +118,7 @@ P.CAR_KINDS = {
   van = {size = {2.1, 2.2, 5.0}, mass = 1900, lift = 1.15, parts = P.van_parts},
   cab = {size = {2.0, 1.4, 4.4}, mass = 1200, lift = 0.75, parts = P.cab_parts},
   ambulance = {size = {2.1, 2.2, 5.0}, mass = 2000, lift = 1.15, parts = P.ambulance_parts},
+  firetruck = {size = {2.1, 2.2, 5.0}, mass = 3200, lift = 1.15, parts = P.firetruck_parts},
 }
 
 -- "car", "sports", "van" or "cab" for a mesh like "van3"; nil for others.
