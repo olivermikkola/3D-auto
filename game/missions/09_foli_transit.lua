@@ -5,6 +5,8 @@ local U = require "lib.util"
 local vehicle = require "lib.vehicle"
 
 local is_turku = city.map().id == "turku" or city.map().name == "Turku"
+-- Its lines are Turku's and Raisio's own streets; elsewhere they'd be nowhere.
+if not is_turku and city.map().id ~= "raisio" then return false end
 
 local start_pos = is_turku and {-180, 80} or {870, -1700}
 local stops = is_turku and {

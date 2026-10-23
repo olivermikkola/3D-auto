@@ -35,6 +35,8 @@ function Mission:timer(seconds) self.deadline = engine.time() + seconds end
 function Mission:clear_timer() self.deadline = nil end
 function Mission:fail(reason) coroutine.yield("fail", reason) end
 function Mission:in_car() return G.vehicle ~= nil end
+-- In that vehicle (the one the mission gave you), not just any.
+function Mission:in_vehicle(id) return id ~= nil and G.vehicle == id end
 function Mission:wanted(stars) require("lib.wanted").set(stars) end
 function Mission:stars() return require("lib.wanted").stars() end
 
@@ -45,8 +47,11 @@ end
 
 function Mission:defer(fn) self.cleanup[#self.cleanup + 1] = fn end
 
+-- Spawn t (a table, as engine.spawn takes) or take on an entity already
+-- spawned (a vehicle from vehicle.spawn): either way it goes when the
+-- mission ends.
 function Mission:spawn(t)
-  local id = engine.spawn(t)
+  local id = type(t) == "table" and engine.spawn(t) or t
   self.owned[#self.owned + 1] = id
   return id
 end
@@ -86,7 +91,11 @@ local function prune_markers()
 end
 
 local function finish(m, passed, reason)
-  for _, id in ipairs(m.owned) do engine.despawn(id) end
+  -- (Not the vehicle you're in: the bus, the Pasi or the boat stays in town
+  -- with you in it, as an ordinary vehicle.)
+  for _, id in ipairs(m.owned) do
+    if id ~= G.vehicle and engine.exists(id) then engine.despawn(id) end
+  end
   for _, fn in ipairs(m.cleanup) do fn() end
   G.mission = nil
   if passed then
