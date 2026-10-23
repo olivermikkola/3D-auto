@@ -174,6 +174,27 @@ engine.on("init", function()
     map, ok3, SEEDS, nr, nd, lo3, hi3))
   assert(ok3 == SEEDS, "07_smuggler: every seed gives a playable run")
 
+  -- Pöli Transit: three named stops on a line, every seed.
+  local foli
+  for _, d in ipairs(mission.defs) do if d.id == "09_foli_transit" then foli = d end end
+  assert(foli and foli.cast, "Pöli Transit is cast from the map's places")
+  local ok4, lines, lo4, hi4 = 0, {}, math.huge, 0
+  for seed = 1, SEEDS do
+    local stops, seconds = foli.cast(seed)
+    if stops then
+      assert(#stops == 3, "three stops")
+      for _, p in ipairs(stops) do assert(p.name and p.road and p.drive < math.huge, "a stop a bus can reach") end
+      ok4 = ok4 + 1
+      lines[stops[1].name .. "|" .. stops[2].name .. "|" .. stops[3].name] = true
+      lo4, hi4 = math.min(lo4, seconds), math.max(hi4, seconds)
+    end
+  end
+  local nl = 0
+  for _ in pairs(lines) do nl = nl + 1 end
+  print(string.format("TEMPLATE_PROBE %s: Pöli Transit: %d/%d seeds playable, %d different lines, timer %d-%d s",
+    map, ok4, SEEDS, nl, lo4, hi4))
+  assert(ok4 == SEEDS, "09_foli_transit: every seed gives a playable run")
+
   -- Play it: unlock, walk into the start marker, then onto each red marker.
   G.passed["02_checkpoints"] = true
   for _, d in ipairs(mission.defs) do if d.id == "02_checkpoints" then d.passed = true end end
