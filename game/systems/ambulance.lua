@@ -43,30 +43,7 @@ local state, call, next_at, on_duty, streak = nil, nil, nil, nil, 0
 
 local function hospital_spot()
   local hx, hz = city.place("hospital")
-  if city.network() then
-    local roadnet = require "lib.roadnet"
-    local e, _, rx, rz = roadnet.nearest_edge(hx, hz, true)
-    if e then
-      local w = roadnet.net().edges[e].width
-      local dx, dz = hx - rx, hz - rz
-      local l = math.max(math.sqrt(dx * dx + dz * dz), 1e-3)
-      -- At the kerb on the hospital's side, along the road.
-      local p = roadnet.net().edges[e].pts
-      local yaw = math.atan(p[#p][1] - p[1][1], p[#p][2] - p[1][2])
-      return rx + dx / l * (w / 2 - 1.3), rz + dz / l * (w / 2 - 1.3), yaw
-    end
-  end
-  -- A grid: in the lane of the road out of the nearest junction, 12 m on.
-  local j = city.nearest(hx, hz)
-  local jx, jz = city.pos(j)
-  local n = city.links(j)[1]
-  if not n then return hx, hz, 0 end
-  local nx, nz = city.pos(n)
-  local yaw = math.atan(nx - jx, nz - jz)
-  local fx, fz = U.forward(yaw)
-  local rx, rz = U.right(yaw)
-  local lane = city.lane(j, n)
-  return jx + fx * 12 + rx * lane, jz + fz * 12 + rz * lane, yaw
+  return errand.park_spot(hx, hz)
 end
 
 -- The ambulance, parked by the hospital.

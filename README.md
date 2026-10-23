@@ -567,6 +567,17 @@ changes**, which is the point of the kernel:
   each, up to 21) and takes more beating. One that gets away keeps the level. Leaving the car,
   a star or a mission ends the shift and starts the level over. `VIGILANTE_TEST=1` plays it
   through.
+- **Fire brigade:** a fire engine (red, a white band, a ladder on the roof) stands by the fire
+  station nearest the hospital, a real one on maps with places (Turku and Raisio have them in
+  OSM), a red square on the minimap (`systems/fire.lua`). Drive it in free roam and fires break
+  out at real places near you, picked by the hour from a closed list (a restaurant's fryer, a
+  sauna stove, a disposable grill in a park, a bar's kitchen at night, cardboard behind a
+  supermarket, a car on a garage's lift, the chemistry class), or a car on fire on a street
+  corner on a map without places. Get there before the clock runs out (the drive at 9 m/s plus
+  40 s) and stop within 20 m: the hose puts it out in 7 s at its first size. A fire left alone
+  grows, up to twice the size and twice the hosing. $100 plus $2 for each second left, and $300
+  for every third in a row. Too late (it burns down), a star or leaving the engine calls it off.
+  `FIRE_TEST=1` drives to one by the GPS and puts it out.
 - **GPS:** where you're going gets a route line on the minimap, the shortest way by road with
   one-way streets the right way round, and the distance left in its corner (`lib/gps.lua`):
   your own waypoint if you've set one, else the nearest blip that isn't a mission's start

@@ -30,13 +30,15 @@ function FX.puff(x, y, z, color, size, rise, life, glow)
       grow = glow and -0.8 or 1.2, s = size}
 end
 
--- A thin glowing streak from a to b, gone in a blink.
-function FX.tracer(ax, ay, az, bx, by, bz)
+-- A thin glowing streak from a to b, gone in a blink (a bullet's, or the
+-- colour given: a fire hose's water).
+function FX.tracer(ax, ay, az, bx, by, bz, color, width)
   local dx, dy, dz = bx - ax, by - ay, bz - az
   local len = math.sqrt(dx * dx + dy * dy + dz * dz)
   if len < 0.1 then return end
-  local id = engine.spawn{mesh = "cube", pos = {(ax + bx) / 2, (ay + by) / 2, (az + bz) / 2}, size = {0.03, 0.03, len},
-                          color = {1, 0.9, 0.5, 0.8}, glow = 1.5}
+  local w = width or 0.03
+  local id = engine.spawn{mesh = "cube", pos = {(ax + bx) / 2, (ay + by) / 2, (az + bz) / 2}, size = {w, w, len},
+                          color = color or {1, 0.9, 0.5, 0.8}, glow = color and 0.3 or 1.5}
   engine.orient(id, math.atan(dx, dz), -math.asin(dy / len))
   add{id = id, vx = 0, vy = 0, vz = 0, g = 0, die = engine.time() + 0.05}
 end

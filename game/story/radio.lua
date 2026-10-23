@@ -68,3 +68,9 @@ add{id = "suspect_caught_streak", on = "suspect_caught", cooldown = 900, when = 
     text = "RADIO: Crime around {area} has dropped this afternoon. Nobody at the station knows why."}
 add{id = "suspect_escaped", on = "suspect_escaped", cooldown = 600,
     text = "RADIO: A speeding car got away from a police car on {street}. Witnesses say the police car was driving worse."}
+add{id = "fire_out", on = "fire_out", cooldown = 600,
+    text = "RADIO: Firefighters put out a fire near {street} in record time. The fire engine took a shortcut over a lawn."}
+add{id = "fire_out_streak", on = "fire_out", cooldown = 900, when = function(_, _, streak) return (streak or 0) >= 3 end,
+    text = "RADIO: A busy day for the fire brigade around {area}. Please, people, the sauna stove is not for drying socks."}
+add{id = "fire_lost", on = "fire_lost", cooldown = 600,
+    text = "RADIO: A fire near {street} was put out by the neighbours with garden hoses. They want to know where the fire brigade was."}

@@ -49,6 +49,36 @@ function E.kerb(p)
   return rx, rz, rx + dx / l * (w / 2 + 1.2), rz + dz / l * (w / 2 + 1.2)
 end
 
+-- Where to park a vehicle by (x, z): at the kerb on that side of the
+-- nearest road, along it (x, z, yaw). On a grid, in the lane of the
+-- nearest junction's nth road (1 if left out), 12 m on.
+function E.park_spot(x, z, nth)
+  local city = require "lib.city"
+  if city.network() then
+    local roadnet = require "lib.roadnet"
+    local e, _, rx, rz = roadnet.nearest_edge(x, z, true)
+    if e then
+      local w = roadnet.net().edges[e].width
+      local dx, dz = x - rx, z - rz
+      local l = math.max(math.sqrt(dx * dx + dz * dz), 1e-3)
+      local p = roadnet.net().edges[e].pts
+      local yaw = math.atan(p[#p][1] - p[1][1], p[#p][2] - p[1][2])
+      return rx + dx / l * (w / 2 - 1.3), rz + dz / l * (w / 2 - 1.3), yaw
+    end
+  end
+  local j = city.nearest(x, z)
+  local jx, jz = city.pos(j)
+  local links = city.links(j)
+  local n = links[math.min(nth or 1, #links)]
+  if not n then return x, z, 0 end
+  local nx, nz = city.pos(n)
+  local yaw = math.atan(nx - jx, nz - jz)
+  local fx, fz = U.forward(yaw)
+  local rx, rz = U.right(yaw)
+  local lane = city.lane(j, n)
+  return jx + fx * 12 + rx * lane, jz + fz * 12 + rz * lane, yaw
+end
+
 -- A marker at (x, z) with its blip on the minimap: entity id, blip.
 function E.mark(x, z, color)
   local id = engine.spawn{mesh = "marker", pos = {x, 2.5 + U.ground(x, z), z}, scale = 4, color = {color[1], color[2], color[3], 0.35}}
