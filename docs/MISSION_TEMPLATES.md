@@ -62,8 +62,9 @@ from OSM, so the text says "Pick up the bag at Mikaelinkirkko".
    conditions, straight-line and by-road distances between roles (Dijkstra
    over the junctions, one-way streets the right way; a place cars can't
    reach is never picked), relax steps, weights, places to avoid, and no
-   place in two roles. Not yet: "across the river" (needs the water as a
-   line to test against).
+   place in two roles, and "across the river": `across_water = "role"`
+   (the straight line between the two crosses at least 12 m of the map's
+   water, a bridge over it included; straits and bays count too).
 3. **Port 2-3 missions** (Häsburger Express first: `amenity=fast_food,
    brand=Hesburger`) and add a seed test: each template at N seeds on Turku
    and Raisio, reporting how many versions have every role filled, a

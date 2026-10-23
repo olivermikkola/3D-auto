@@ -407,7 +407,13 @@ engine.on("frame", function(dt)
   end
 
   local m = G.mission
-  if not m and G.errand then centered(G.errand, 110, 18, 1, 0.9, 0.5) end -- a free-roam job's (taxi fares)
+  if not m and G.errand then -- a free-roam job's (taxi fares, ambulance calls)
+    centered(G.errand, 110, 18, 1, 0.9, 0.5)
+    if G.errand_deadline then
+      local left = math.max(0, G.errand_deadline - engine.time())
+      centered(string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60)), 140, 24, 1, left < 10 and 0.3 or 1, left < 10 and 0.3 or 1)
+    end
+  end
   if m then
     if m.objective then centered(m.objective, 110, 18, 1, 0.9, 0.5) end
     if m.deadline then
@@ -439,7 +445,7 @@ engine.on("frame", function(dt)
     -- Touch buttons say what they do; the keyboard and pad help doesn't apply.
   elseif help_shown() then
     local lines = require("lib.input").connected() and
-      "L STICK MOVE/STEER  R STICK CAMERA  RT ACCELERATE/FIRE  LT BRAKE\nA JUMP/HANDBRAKE  B RUN/HORN  Y ENTER/EXIT CAR  X SHOPS\nLB/RB WEAPONS  BACK PROGRESS  START PAUSE/SETTINGS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nF1 HIDE HELP" or "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nTAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC PAUSE/SETTINGS"
+      "L STICK MOVE/STEER  R STICK CAMERA  RT ACCELERATE/FIRE  LT BRAKE\nA JUMP/HANDBRAKE  B RUN/HORN  Y ENTER/EXIT CAR  X SHOPS\nLB/RB WEAPONS  BACK PROGRESS  START PAUSE/SETTINGS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nF1 HIDE HELP" or "WASD MOVE/DRIVE  SHIFT RUN  SPACE JUMP/HANDBRAKE\nE ENTER/EXIT CAR  H HORN  MOUSE/ARROWS CAMERA\nCLICK/F FIRE  1/2/3/Q WEAPONS\nYELLOW MARKERS: MISSIONS  ORANGE RAMPS: STUNT PARK\nM MAP/WAYPOINT  TAB PROGRESS  N SKIP 3 HOURS  F5 RELOAD  F1 HIDE HELP  ESC PAUSE/SETTINGS"
     engine.rect(14, 14, engine.text_width(lines, 12) + 16, 93, 0, 0, 0, 0.45)
     engine.text(lines, 22, 22, 12, 0.9, 0.9, 0.9, 1)
   elseif engine.time() < HINT then

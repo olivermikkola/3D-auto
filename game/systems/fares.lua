@@ -10,8 +10,8 @@ local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
 local template = require "lib.template"
-local vehicle = require "lib.vehicle"
 local wanted = require "lib.wanted"
+local errand = require "lib.errand"
 
 local F = {
   FIRST = 6,      -- seconds in a cab before the first call
@@ -48,38 +48,19 @@ local DROPS = {
 local state, fare, next_at, on_duty
 -- fare = {pickup, drop, rider (entity), marker, blip, at (s), drive (m), tip (0..1), knocked}
 
-local function hours_ok(h)
-  if not h then return true end
-  local now = require("lib.daynight").hour
-  if h[1] < h[2] then return now >= h[1] and now < h[2] end
-  return now >= h[1] or now < h[2]
-end
-
--- The kinds that fit the hour, heaviest first by a seeded draw.
-local function kinds(list, seed)
-  local out = {}
-  for i, k in ipairs(list) do
-    if hours_ok(k[2]) then out[#out + 1] = {k, ((seed * 7919 + i * 104729) % 1000) / 1000 * k[3]} end
-  end
-  table.sort(out, function(a, b) return a[2] > b[2] end)
-  for i, k in ipairs(out) do out[i] = k[1] end
-  return out
-end
-
-local function role(name, kind, extra)
-  local r = {name, name = true}
-  for k, v in pairs(kind[1]) do r[k] = v end
-  for k, v in pairs(extra) do r[k] = v end
-  return r
+-- A ride over the river (a bridge, the Föri's water) is twice as likely.
+local function across_river(p, cast)
+  return require("lib.roadnet").across_water(cast.pickup.x, cast.pickup.z, p.x, p.z) and 2 or 1
 end
 
 -- A pickup near (x, z) and a drop from there, or nil.
 function F.cast(x, z, seed)
-  for _, pk in ipairs(kinds(PICKUPS, seed)) do
-    for _, dk in ipairs(kinds(DROPS, seed + 1)) do
+  for _, pk in ipairs(errand.kinds(PICKUPS, seed)) do
+    for _, dk in ipairs(errand.kinds(DROPS, seed + 1)) do
       local c = template.cast{seed = seed, from = {x, z}, roles = {
-        role("pickup", pk, {min_dist = 80, max_dist = 600, drive_max = 1200, relax = {{max_dist = 1000, drive_max = 2000}}}),
-        role("drop", dk, {from = "pickup", drive_min = 700, drive_max = 2500, relax = {{drive_min = 400, drive_max = 4000}}}),
+        errand.role("pickup", pk, {min_dist = 80, max_dist = 600, drive_max = 1200, relax = {{max_dist = 1000, drive_max = 2000}}}),
+        errand.role("drop", dk, {from = "pickup", drive_min = 700, drive_max = 2500, relax = {{drive_min = 400, drive_max = 4000}},
+                                 weight = across_river}),
       }}
       if c then return c.pickup, c.drop, pk end
     end
@@ -94,15 +75,11 @@ function F.in_cab()
   return require("lib.prefabs").car_kind(mesh) == "cab" or mesh == "taxi"
 end
 
-local function forget(blip)
-  for i, b in ipairs(G.markers) do if b == blip then table.remove(G.markers, i) break end end
-end
-
 local function clear()
   if fare then
     if fare.rider and engine.exists(fare.rider) then engine.despawn(fare.rider) end
     if fare.marker and engine.exists(fare.marker) then engine.despawn(fare.marker) end
-    forget(fare.blip)
+    errand.forget(fare.blip)
   end
   state, fare, G.errand = nil, nil, nil
   next_at = engine.time() + F.EVERY
@@ -114,24 +91,6 @@ local function cancel(why)
   clear()
 end
 
--- Where a car stops for place p, and a spot on the pavement beside it on
--- the place's side.
-local function kerb(p)
-  local rx, rz = p.road[1], p.road[2]
-  local dx, dz = p.x - rx, p.z - rz
-  local l = math.max(math.sqrt(dx * dx + dz * dz), 1e-3)
-  local e = require("lib.roadnet").nearest_edge(rx, rz)
-  local w = e and require("lib.roadnet").net().edges[e].width or 8
-  return rx, rz, rx + dx / l * (w / 2 + 1.2), rz + dz / l * (w / 2 + 1.2)
-end
-
-local function mark(x, z, color)
-  local id = engine.spawn{mesh = "marker", pos = {x, 2.5 + U.ground(x, z), z}, scale = 4, color = {color[1], color[2], color[3], 0.35}}
-  local blip = {id = id, color = color}
-  G.markers[#G.markers + 1] = blip
-  return id, blip
-end
-
 local PICK_COLOR, DROP_COLOR = {1, 0.85, 0.1}, {0.3, 0.8, 1}
 
 -- A fare calls from near (x, z). Returns true if one did.
@@ -139,11 +98,11 @@ function F.call(x, z)
   G.stats.fares_called = (G.stats.fares_called or 0) + 1
   local pickup, drop, kind = F.cast(x, z, G.stats.fares_called)
   if not pickup then return false end
-  local sx, sz, wx, wz = kerb(pickup)
+  local sx, sz, wx, wz = errand.kerb(pickup)
   local rider = engine.spawn{mesh = "ped" .. (G.stats.fares_called % 12 + 1), pos = {wx, 1.15 + U.ground(wx, wz), wz},
                              size = {0.7, 1.8, 0.7}, tag = "rider"}
   engine.orient(rider, math.atan(sx - wx, sz - wz))
-  local marker, blip = mark(sx, sz, PICK_COLOR)
+  local marker, blip = errand.mark(sx, sz, PICK_COLOR)
   fare = {pickup = pickup, drop = drop, rider = rider, marker = marker, blip = blip, at = engine.time(), line = kind[4], stop = {sx, sz}}
   state = "pickup"
   G.errand = "Fare: pick up at " .. pickup.name .. "."
@@ -153,18 +112,13 @@ function F.call(x, z)
   return true
 end
 
-local function stopped_at(x, z, r)
-  local px, _, pz = U.player_pos()
-  return px and U.dist2d(px, pz, x, z) < r and math.abs(vehicle.speed(G.vehicle)) < 2
-end
-
 local function board()
   engine.despawn(fare.rider)
   fare.rider = nil
   engine.despawn(fare.marker)
-  forget(fare.blip)
-  local sx, sz = kerb(fare.drop)
-  fare.marker, fare.blip = mark(sx, sz, DROP_COLOR)
+  errand.forget(fare.blip)
+  local sx, sz = errand.kerb(fare.drop)
+  fare.marker, fare.blip = errand.mark(sx, sz, DROP_COLOR)
   fare.stop = {sx, sz}
   local px, _, pz = U.player_pos()
   fare.drive = template.drive(px, pz, fare.drop)
@@ -226,10 +180,10 @@ engine.on("tick", function()
   if wanted.stars() > 0 then return cancel(state == "ride" and "THE PASSENGER JUMPED OUT" or "FARE OFF: COPS") end
   if state == "pickup" then
     if now > fare.at + F.WAIT then return cancel("THE FARE TOOK ANOTHER CAB") end
-    if stopped_at(fare.stop[1], fare.stop[2], 9) then board() end
+    if errand.stopped_at(fare.stop[1], fare.stop[2], 9) then board() end
   elseif state == "ride" then
     if now > fare.at + 3 * (fare.drive / F.HURRY + 15) then return cancel("THE PASSENGER GAVE UP AND WALKED") end
-    if stopped_at(fare.stop[1], fare.stop[2], 9) then pay() end
+    if errand.stopped_at(fare.stop[1], fare.stop[2], 9) then pay() end
   end
 end)
 

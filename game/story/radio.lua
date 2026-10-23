@@ -56,3 +56,9 @@ add{id = "fare_paid", on = "fare_paid", cooldown = 600, when = function(_, _, ti
     text = "RADIO: A taxi passenger in {area} says they've never got there so fast. They're still a bit pale."}
 add{id = "fare_lost", on = "fare_lost", cooldown = 600,
     text = "RADIO: A taxi passenger on {street} is looking for another ride. And a calmer driver."}
+add{id = "patient_saved", on = "patient_saved", cooldown = 600, when = function(_, _, streak) return (streak or 0) >= 2 end,
+    text = "RADIO: An ambulance crew around {area} is having quite a shift. Mind the sirens."}
+add{id = "patient_saved_tyks", on = "patient_saved", map = "turku", cooldown = 900,
+    text = "RADIO: TYKS reports another patient in, and another ambulance with a new dent."}
+add{id = "patient_lost", on = "patient_lost", cooldown = 600,
+    text = "RADIO: An ambulance near {street} was called off. The patient says they're fine, really."}

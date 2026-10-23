@@ -92,7 +92,7 @@ function V.spawn(x, z, name)
   -- Facing the way it drives off.
   local a, b = c.path[1], c.path[2]
   if a and b and (a[1] ~= b[1] or a[2] ~= b[2]) then engine.orient(id, math.atan(b[1] - a[1], b[2] - a[2])) end
-  blip = {id = id, color = {0.2, 0.95, 0.4}}
+  blip = {id = id, color = {0.2, 0.95, 0.4}, ambient = true} -- (the GPS takes a job's goal first)
   G.markers[#G.markers + 1] = blip
   U.message("A LUMIS CASH VAN IS LEAVING " .. (name and name:upper() or "THE BANK"), 4)
   engine.emit("cashvan", name)

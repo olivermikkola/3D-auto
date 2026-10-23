@@ -92,10 +92,14 @@ end
 -- A driver that follows the GPS line (lib/gps) as it's redrawn and stops
 -- where it ends. d.inputs(car) -> throttle, steer, handbrake, for
 -- input.drive; d.arrived once stopped within 6 m of the line's end. It
--- backs up for 1.5 s when stuck for 2.
+-- backs up for 1.5 s when stuck for 2. Stuck within 15 m of one spot for
+-- 12 s all told, it's towed 15 m on along the line (at most twice; the
+-- spot is printed: a place on the map a car gets stuck), so a test of a
+-- job isn't a test of the robot's driving.
+local TOW_AFTER, TOW_MAX = 12, 2
 function R.gps_driver(fast, slow)
   local gps = require "lib.gps"
-  local g = {redraws = 0, still = 0, arrived = false}
+  local g = {redraws = 0, still = 0, arrived = false, tows = 0, stuck_for = 0}
   local inner, last
   function g.inputs(car)
     local route = gps.update()
@@ -114,6 +118,34 @@ function R.gps_driver(fast, slow)
       return 0, 0, true
     end
     g.arrived = false
+    -- Towed on, stuck at one spot for too long.
+    local x, y, z = engine.pos(car)
+    if not g.spot or U.dist2d(x, z, g.spot[1], g.spot[2]) > 15 then g.spot, g.stuck_for = {x, z}, 0 end
+    g.stuck_for = g.stuck_for + 1 / 60
+    if g.stuck_for > TOW_AFTER and g.tows < TOW_MAX and #route.pts >= 2 then
+      local d, k, tx, tz, yaw = 0, 2
+      while k <= #route.pts do
+        local p, q = route.pts[k - 1], route.pts[k]
+        local l = U.dist2d(p[1], p[2], q[1], q[2])
+        if d + l >= 15 then
+          local t = (15 - d) / math.max(l, 1e-3)
+          tx, tz, yaw = p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t, math.atan(q[1] - p[1], q[2] - p[2])
+          break
+        end
+        d, k = d + l, k + 1
+      end
+      if tx then
+        g.tows = g.tows + 1
+        print(string.format("ROBOT: stuck at %.0f, %.0f (y %.1f) for %d s: towed 15 m on (%s)", x, z, y, TOW_AFTER,
+          city.network() and require("lib.roadnet").where(x, z) or "?"))
+        engine.set_pos(car, tx, y + 0.5, tz)
+        engine.set_rot(car, 0, 0, 0, 1)
+        engine.set_yaw(car, yaw)
+        engine.set_vel(car, 0, 0, 0)
+        engine.set_angvel(car, 0, 0, 0)
+        g.spot, g.stuck_for, inner.backing = nil, 0, 0
+      end
+    end
     g.still = speed < 1 and g.still + 1 / 60 or 0
     if g.still > 2 then inner.backing, g.still = 1.5, 0 end
     if inner.backing > 0 then inner.backing = inner.backing - 1 / 60 end

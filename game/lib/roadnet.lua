@@ -3028,6 +3028,36 @@ function R.water_level(x, z)
   end
 end
 
+-- Is (x, z) on the surveyed water at all (a bridge or pier over it too)?
+function R.water_at(x, z)
+  local rows = water_rows()
+  if not rows then return false end
+  for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
+    if x >= st[1] and x <= st[3] then return true end
+  end
+  return false
+end
+
+-- Does the straight line from (ax, az) to (bx, bz) cross water: a run of
+-- it at least `min` m long (default 12), with land at both ends? A river,
+-- a strait, a bay; a bridge over it still counts.
+function R.across_water(ax, az, bx, bz, min)
+  min = min or 12
+  local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+  local n = math.max(1, math.ceil(len / 3))
+  local run = 0
+  for k = 0, n do
+    local t = k / n
+    if R.water_at(ax + (bx - ax) * t, az + (bz - az) * t) then
+      run = run + len / n
+    else
+      if run >= min then return true end
+      run = 0
+    end
+  end
+  return false
+end
+
 function R.wet(x, z)
   local rows = water_rows()
   if not rows then return false end

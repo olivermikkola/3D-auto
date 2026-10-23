@@ -94,7 +94,7 @@ function R.start(px, pz, seed)
   car = vehicle.spawn(x, z, math.atan(a - x, b - z), 7, "sports")
   vehicle.headlights(car)
   state, finish, R.way, until_at = "waiting", fin, way, engine.time() + R.WAIT
-  blip = {id = car, color = {1, 0.55, 0.1}}
+  blip = {id = car, color = {1, 0.55, 0.1}, ambient = true} -- (the GPS takes a job's goal first)
   G.markers[#G.markers + 1] = blip
   local street = city.street(x, z)
   U.message("STREET RACER" .. (street and (" ON " .. street:upper()) or ""), 5)

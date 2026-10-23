@@ -543,10 +543,19 @@ changes**, which is the point of the kernel:
   in free roam, you go on duty and fares call (`systems/fares.lua`). A passenger waits by a
   real place 80-600 m off, picked by the hour from a closed list (hotels, the hospital,
   stations and ferry terminals, malls by day, theatres in the evening, pubs and bars at
-  night), going to another 0.7-2.5 km away by road. Stop by them, then take them there: $15
+  night), going to another 0.7-2.5 km away by road (one across the river twice as likely). Stop by them, then take them there: $15
   plus $40 a km by road, and up to half again as a tip for a quick ride, cut by every knock
   the cab takes. A star or leaving the cab calls the fare off. `FARES_TEST=1` drives one
   through by the GPS.
+- **Ambulance calls:** an ambulance (yellow, a green band, a blue light bar) stands by the
+  hospital, a white square with a red cross on the minimap (`systems/ambulance.lua`). Drive it in
+  free roam and calls come: someone's hurt at a real place near you, picked by the hour from a
+  closed list (a footballer on a pitch, a jogger in a park, a pupil at school by day, a bar
+  stool at night), or on a street corner on a map without places. Stop by them, then get them
+  to the nearest hospital by road before the clock runs out (the drive at 8 m/s plus 45 s;
+  every knock costs 4 s). $80 plus $2 for each second left, and $400 for every fourth in a
+  row. Too late, a star, or leaving it calls it off. A lost ambulance is back at the hospital
+  a minute later. `AMBULANCE_TEST=1` plays a call through. Free-roam jobs share `lib/errand.lua`.
 - **GPS:** where you're going gets a route line on the minimap, the shortest way by road with
   one-way streets the right way round, and the distance left in its corner (`lib/gps.lua`):
   your own waypoint if you've set one, else the nearest blip that isn't a mission's start
