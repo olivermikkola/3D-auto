@@ -12,7 +12,12 @@ local KEY, DELAY, RESET_HOLD = "progress", 2, 3
 local AMMO = {pistol = 36, smg = 0} -- what a new game starts with
 
 local function blank()
-  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0, mission_runs = 0},
+  -- Every stat the game keeps has to be here, or a restart drops it. The
+  -- *_calls and suspects counts also seed the next job, so without them
+  -- every session's first fare, call, fire and suspect were the same.
+  return {cash = 0, missions = {}, stats = {stunts = 0, best_air = 0, best_flips = 0, busted = 0, wasted = 0, mission_runs = 0,
+                                            fares = 0, fares_called = 0, patients = 0, ambulance_calls = 0,
+                                            suspects = 0, suspects_caught = 0, fires_out = 0, fire_calls = 0},
           ammo = {pistol = AMMO.pistol, smg = AMMO.smg}, car = nil}
 end
 
@@ -141,6 +146,10 @@ engine.on("frame", function(dt)
     {"STUNTS", tostring(s.stunts)},
     {"BEST AIRTIME", string.format("%.1f S", s.best_air)},
     {"MOST FLIPS", tostring(s.best_flips)},
+    {"TAXI FARES", tostring(s.fares)},
+    {"PATIENTS SAVED", tostring(s.patients)},
+    {"SUSPECTS CAUGHT", tostring(s.suspects_caught)},
+    {"FIRES PUT OUT", tostring(s.fires_out)},
     {"BUSTED", tostring(s.busted)},
     {"WASTED", tostring(s.wasted)},
   }
