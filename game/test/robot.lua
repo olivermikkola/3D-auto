@@ -73,4 +73,56 @@ function R.driver(pts, fast, slow)
   return d
 end
 
+-- The GPS line moved over into the right-hand lane: 1.8 m, the middle of
+-- it on a narrow two-way street (2.5 put the car's side into the lamps
+-- along a 7.3 m one).
+local function keep_right(pts)
+  local out = {}
+  for i = 2, #pts do
+    local p, q = pts[i - 1], pts[i]
+    if U.dist2d(p[1], p[2], q[1], q[2]) > 0.5 then
+      local rx, rz = U.right(math.atan(q[1] - p[1], q[2] - p[2]))
+      out[#out + 1] = {p[1] + rx * 1.8, p[2] + rz * 1.8}
+      out[#out + 1] = {q[1] + rx * 1.8, q[2] + rz * 1.8}
+    end
+  end
+  return out
+end
+
+-- A driver that follows the GPS line (lib/gps) as it's redrawn and stops
+-- where it ends. d.inputs(car) -> throttle, steer, handbrake, for
+-- input.drive; d.arrived once stopped within 6 m of the line's end. It
+-- backs up for 1.5 s when stuck for 2.
+function R.gps_driver(fast, slow)
+  local gps = require "lib.gps"
+  local g = {redraws = 0, still = 0, arrived = false}
+  local inner, last
+  function g.inputs(car)
+    local route = gps.update()
+    if not route then return 0, 0, true end
+    if route ~= last then
+      if not inner or g.redraws % 5 == 0 then
+        local backing = inner and inner.backing or 0
+        inner = R.driver(keep_right(route.pts), fast or 14, slow or 6)
+        inner.backing = backing
+      end
+      last, g.redraws = route, g.redraws + 1
+    end
+    local speed = math.abs(require("lib.vehicle").speed(car))
+    if route.length < 12 then -- there: stop
+      g.arrived = speed < 1
+      return 0, 0, true
+    end
+    g.arrived = false
+    g.still = speed < 1 and g.still + 1 / 60 or 0
+    if g.still > 2 then inner.backing, g.still = 1.5, 0 end
+    if inner.backing > 0 then inner.backing = inner.backing - 1 / 60 end
+    -- Slow down for the end.
+    local throttle, steer = inner.inputs(car)
+    if route.length < 40 and speed > route.length / 3 + 2 then throttle = -1 end
+    return throttle, steer, false
+  end
+  return g
+end
+
 return R

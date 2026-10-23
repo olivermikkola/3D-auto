@@ -34,6 +34,7 @@ require "systems.garage"
 require "systems.cashvan"
 require "systems.heli"
 require "systems.racer"
+require "systems.fares"
 require "lib.menu"
 require "lib.shop"
 
@@ -173,6 +174,7 @@ if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end
+if os.getenv("FARES_TEST") then require "test.fares_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
 
 -- Click to recapture the mouse after Escape.
