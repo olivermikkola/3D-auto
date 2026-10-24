@@ -78,8 +78,39 @@ at(50, function()
   check(G.player and not G.vehicle, "EXIT gets out")
   tap("II")
 end)
+-- A tap in the middle of item `label`'s row.
+local function tap_row(label)
+  local menu = require "lib.menu"
+  for i, r in pairs(menu.layout().rows) do
+    if menu.items()[i].label == label then
+      local x, y = r.x + r.w / 2, r.y + r.h / 2
+      t("start", 8, x, y); t("end", 8, x, y)
+      return
+    end
+  end
+  check(false, "the menu shows " .. label)
+end
+
 at(55, function()
-  check(engine.paused() and touch.button_center("OK") and touch.button_center("UP"), "II pauses, and the menu has its buttons")
+  local menu = require "lib.menu"
+  check(engine.paused() and touch.button_center("BACK") and not touch.button_center("UP"), "II pauses, and the menu has BACK")
+  local labels = {}
+  for _, item in ipairs(menu.items()) do labels[item.label] = true end
+  check(not labels["QUIT GAME"], "no QUIT GAME on a phone")
+  tap_row("SETTINGS")
+  check(menu.page == "settings", "tapping SETTINGS opens it")
+  tap("BACK")
+  check(menu.page == "main", "BACK goes back")
+  tap_row("MAP")
+  check(menu.page == "map" and touch.button_center("+"), "tapping MAP opens it, with + and - to zoom")
+  local mv = require "lib.map_viewer"
+  local zoom, px = mv.zoom, mv.pan_x
+  tap("+")
+  check(mv.zoom > zoom, "+ zooms in")
+  t("start", 8, 400, 300); t("move", 8, 460, 300); t("move", 8, 520, 300); t("end", 8, 520, 300)
+  check(mv.pan_x < px, "a drag pans the map")
+  tap("BACK")
+  check(menu.page == "main", "BACK leaves the map")
   tap("BACK")
 end)
 at(60, function()
