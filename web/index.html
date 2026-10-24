@@ -17,11 +17,18 @@
            font: 12px/1.35 ui-monospace, monospace; color: #ddd; background: rgba(0, 0, 0, 0.6);
            padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; pointer-events: none; }
     #log:empty { display: none; }
+    /* The game is played sideways; held upright, a phone shows this instead. */
+    #turn { display: none; position: fixed; inset: 0; z-index: 2; background: #111; color: #eee;
+            font: 20px/1.4 system-ui, sans-serif; text-align: center;
+            align-items: center; justify-content: center; flex-direction: column; }
+    #turn b { font-size: 64px; display: block; transform: rotate(90deg); margin-bottom: 24px; }
+    @media (orientation: portrait) and (pointer: coarse) { #turn { display: flex; } }
   </style>
 </head>
 <body>
   <canvas id="glcanvas" tabindex="1"></canvas>
   <div id="log">Loading…</div>
+  <div id="turn"><b>&#x1F4F1;</b>Turn your phone sideways</div>
   <script src="gl.js"></script>
   <script>
     // Lines the game prints, also on the page: there is no console on a phone.
@@ -58,6 +65,15 @@
     load("auto.wasm");
     // Installable, and playable offline once installed (sw.js). Browsers only
     // allow this over https or on localhost.
+    // On the first tap: full screen and locked sideways where the browser
+    // allows it (Android; an iPhone ignores both, and #turn covers that).
+    // Browsers only grant these from a tap, and touchend is one.
+    document.addEventListener("touchend", () => {
+      const lock = () => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {});
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({navigationUI: "hide"}).then(lock, lock);
+      else lock();
+    }, {once: true});
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => show("offline cache: " + e.message));
   </script>
 </body>

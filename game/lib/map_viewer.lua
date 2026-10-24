@@ -90,6 +90,14 @@ function V.mouse_down(x, y)
   V.drag_pan_z = V.pan_z
 end
 
+-- Touch: a finger dragged d pixels pans the map with it, and a tap (the
+-- touch never moved far) sets or clears a waypoint there.
+function V.pan_by(dx, dy)
+  V.pan_x = V.pan_x - dx / math.max(0.01, V.zoom)
+  V.pan_z = V.pan_z - dy / math.max(0.01, V.zoom)
+end
+function V.tap(x, y) V.toggle_waypoint(V.to_world(x, y)) end
+
 function V.mouse_up()
   V.dragging = false
 end
@@ -318,7 +326,8 @@ function V.draw(sw, sh)
   -- 11. Bottom Controls Footer
   engine.rect(0, sh - 48, sw, 48, 0.08, 0.09, 0.12, 1)
   engine.rect(0, sh - 48, sw, 1, 0.20, 0.25, 0.30, 1)
-  local help = require("lib.input").connected() and "D-PAD: PAN    A: WAYPOINT    X: CLEAR IT    Y: RECENTER    B: RETURN"
+  local help = require("lib.touch").active and "DRAG: PAN    TAP: WAYPOINT (TAP IT AGAIN TO CLEAR)"
+    or require("lib.input").connected() and "D-PAD: PAN    A: WAYPOINT    X: CLEAR IT    Y: RECENTER    B: RETURN"
     or "DRAG/WASD: PAN   +/-: ZOOM   CLICK/ENTER: WAYPOINT   BACKSPACE: CLEAR   SPACE: RECENTER   ESC: BACK"
   engine.text(help, 24, sh - 30, 11, 0.75, 0.75, 0.75, 1)
   local zoom_pct = string.format("ZOOM: %d%%", math.floor(V.zoom / 0.35 * 100))

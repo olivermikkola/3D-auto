@@ -105,9 +105,14 @@ Headless mode does not exercise GPU uploads or rendered frame pacing.
 ## Touch
 
 On a phone or tablet the controls appear once the screen is touched (`game/lib/touch.lua`): a
-stick under the left thumb, buttons on the right for what you're doing (on foot, in a car, in
-the menu), a drag elsewhere on the right to look, and pause at the top. They act as a gamepad, so
-nothing else in the game needs to know. Checked with real touch events in headless Chrome as an
+stick under the left thumb, buttons on the right for what you're doing (on foot, in a car), a
+drag elsewhere on the right to look, and pause at the top. They act as a gamepad, so nothing else
+in the game needs to know. In the pause menu a tap picks a row and a drag scrolls a page taller
+than the screen; on the map a drag pans, a tap sets a waypoint, and + and - zoom.
+`TOUCH_SHOT=foot|car|menu|settings|map` with `--screenshot` pictures each (`game/test/touch_shot.lua`).
+
+The game is played sideways. Held upright, a phone shows "Turn your phone sideways" instead; on
+Android the first tap also asks for full screen locked sideways (an iPhone allows neither). Checked with real touch events in headless Chrome as an
 844×390 phone; not yet on a real iPhone or Android phone.
 
 ## Not yet

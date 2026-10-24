@@ -3,7 +3,9 @@
 --
 --   left thumb       a stick wherever it lands: walk, or steer and drive
 --   right side       buttons for what you're doing; drag elsewhere to look
---   top right        pause (the menus get up, down, OK and back buttons)
+--   top middle       pause; in the menus a tap picks a row, a drag scrolls a
+--                    long page, and on the map a drag pans and a tap sets a
+--                    waypoint (BACK, and + and - to zoom it)
 --
 -- The buttons are the pad's (pad_a, pad_rt...), pressed the way the engine
 -- presses a real pad's, and input.lua adds the sticks and triggers to a
@@ -27,13 +29,19 @@ local SETS = {
     {"EXIT", "pad_y", 0, 1}, {"HORN", "pad_b", 1, 1},
   },
   menu = {
-    {"OK", "pad_a", 0, 0}, {"BACK", "pad_b", 1, 0}, {"DOWN", "pad_down", 0, 1}, {"UP", "pad_up", 0, 2},
+    {"BACK", "pad_b", 0, 0},
+  },
+  map = {
+    {"BACK", "pad_b", 0, 0}, {"+", "pad_rb", 0, 1}, {"-", "pad_lb", 0, 2},
   },
 }
 local PAUSE = {"II", "pad_start"}
 
 local function mode()
-  if engine.paused() then return "menu" end
+  if engine.paused() then
+    local menu = package.loaded["lib.menu"]
+    return menu and menu.open and menu.page == "map" and "map" or "menu"
+  end
   return G.vehicle and "car" or "foot"
 end
 
@@ -41,7 +49,7 @@ end
 local function layout()
   local w, h = engine.screen()
   local u = math.min(w, h) / 10
-  return w, h, u, 1.35 * u -- screen, unit, button size
+  return w, h, u, 1.6 * u -- screen, unit, button size (about a thumb)
 end
 
 -- Where button b of the current set is: x, y, w, h.
@@ -104,6 +112,22 @@ function M.release_all()
   for id in pairs(touches) do release(id) end
 end
 
+-- A finger moving in a menu: past a few pixels it's a drag, not a tap. On the
+-- map it pans; on a page too long for the screen each row's height scrolls.
+local function menu_drag(t, x, y)
+  local menu = require "lib.menu"
+  if math.abs(x - t.x0) + math.abs(y - t.y0) > 12 then t.dragged = true end
+  if not t.dragged then return end
+  if menu.page == "map" then
+    require("lib.map_viewer").pan_by(x - t.x, y - t.y)
+  else
+    t.dy = t.dy + (y - t.y)
+    local row = menu.row_height()
+    while t.dy >= row do menu.scroll(-1); t.dy = t.dy - row end
+    while t.dy <= -row do menu.scroll(1); t.dy = t.dy + row end
+  end
+end
+
 engine.on("touch", function(phase, id, x, y)
   M.active = true
   if phase == "start" then
@@ -112,14 +136,23 @@ engine.on("touch", function(phase, id, x, y)
     local w = engine.screen()
     local t = {x0 = x, y0 = y, x = x, y = y}
     if b then t.role, t.button = "button", b
+    elseif engine.paused() then t.role, t.dy = "menu", 0 -- a tap or a drag, decided when it ends
     elseif x < w * 0.45 then t.role = "move"
     else t.role = "look" end
     touches[id] = t
     if b then press(b[2], true) end
   elseif phase == "move" then
     local t = touches[id]
-    if t then t.x, t.y = x, y end
+    if t then
+      if t.role == "menu" then menu_drag(t, x, y) end
+      t.x, t.y = x, y
+    end
   else -- end, cancel
+    local t = touches[id]
+    if t and t.role == "menu" and phase == "end" and not t.dragged then
+      local menu = require "lib.menu"
+      menu.tap(x, y, true)
+    end
     release(id)
   end
   update_axes()
@@ -157,25 +190,32 @@ function M.holding() return next(touches) ~= nil end
 -- ---- drawing -----------------------------------------------------------------------
 local function draw_button(b, x, y, w, h)
   local on = held[b[2]]
-  if on then engine.rect(x, y, w, h, 1, 0.85, 0.3, 0.55) else engine.rect(x, y, w, h, 0.1, 0.1, 0.12, 0.35) end
+  if on then engine.rect(x, y, w, h, 1, 0.85, 0.3, 0.55) else engine.rect(x, y, w, h, 0.1, 0.1, 0.12, 0.55) end
   local size = math.max(11, math.floor(h * 0.24))
   engine.text(b[1], x + (w - engine.text_width(b[1], size)) / 2, y + (h - size) / 2, size, 1, 1, 1, on and 1 or 0.85)
 end
 
-engine.on("frame", function()
+-- The buttons and sticks. While a menu is open the menu draws them after
+-- itself, so they stay on top (the map covers the whole screen).
+function M.draw()
   if not M.active then return end
   for _, b in ipairs(SETS[mode()]) do draw_button(b, rect(b)) end
   draw_button(PAUSE, pause_rect())
   -- The sticks where the thumbs are.
   local _, _, u = layout()
   for _, t in pairs(touches) do
-    if t.role ~= "button" then
+    if t.role == "move" or t.role == "look" then
       local r = 1.2 * u
       engine.rect(t.x0 - r, t.y0 - r, 2 * r, 2 * r, 1, 1, 1, 0.12)
       local dx, dy = stick(t)
       engine.rect(t.x0 + dx * r - 0.4 * u, t.y0 - dy * r - 0.4 * u, 0.8 * u, 0.8 * u, 1, 1, 1, 0.4)
     end
   end
+end
+
+engine.on("frame", function()
+  local menu = package.loaded["lib.menu"]
+  if not (menu and menu.open) then M.draw() end
 end)
 
 return M
