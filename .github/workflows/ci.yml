@@ -1,8 +1,12 @@
 name: ci
+# Changes only to docs or the browser build (pages.yml checks that) don't
+# play the game: the tests would take 15+ minutes to prove nothing.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", "web/**", ".github/workflows/pages.yml"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "web/**", ".github/workflows/pages.yml"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,7 +37,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m unittest discover -s tools -p "test_*.py"
+      # Side by side, one process per test file (25-33 min one at a time).
+      # The map sweeps run in their own job below.
+      - run: python tools/run_tests.py --skip "test_*_sweep.py"
       # Render Turku's landmarks and check the pixels: a landmark that is
       # black, buried or somewhere else fails here, before it is merged.
       - name: Landmark render checks (software GL)
@@ -74,3 +80,18 @@ jobs:
           name: headless-results-${{ matrix.os }}
           path: headless-results
           if-no-files-found: ignore
+
+  # The sweeps drive every map's roads (12-14 min each): map data and the
+  # game's own physics, the same on every OS, so Linux only and beside the
+  # rest instead of after it.
+  sweeps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/run_tests.py --only "test_*_sweep.py"
