@@ -446,17 +446,49 @@ mod backend {
     }
 }
 
-// The browser: silent for now (WebAudio to come).
+// The browser: the page's WebAudio pulls mixed sound from `auto_audio_mix`
+// (web/index.html). Everything runs on the page's one thread, so the mixer
+// is never locked by the game while the page asks for sound.
 #[cfg(target_arch = "wasm32")]
 mod backend {
     use super::Mixer;
+    use std::cell::RefCell;
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Mutex};
 
     pub type Started = (Option<std::thread::JoinHandle<()>>, Option<Box<dyn std::any::Any>>);
 
-    pub fn start(_mixer: Arc<Mutex<Mixer>>, _stop: Arc<AtomicBool>) -> Result<Started, String> {
-        Err("no sound in the browser yet".into())
+    /// The game's mixer, and the buffer the page reads each pull from.
+    type Out = (Option<Arc<Mutex<Mixer>>>, Vec<f32>);
+
+    thread_local! {
+        static OUT: RefCell<Out> = const { RefCell::new((None, Vec::new())) };
+    }
+
+    pub fn start(mixer: Arc<Mutex<Mixer>>, _stop: Arc<AtomicBool>) -> Result<Started, String> {
+        let rate = crate::web::audio_rate();
+        if rate == 0 {
+            return Err("this browser has no WebAudio".into());
+        }
+        mixer.lock().unwrap().out_rate = rate;
+        OUT.with(|o| o.borrow_mut().0 = Some(mixer));
+        Ok((None, None))
+    }
+
+    /// The next `frames` stereo frames, interleaved, for the page to play.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn auto_audio_mix(frames: u32) -> *const f32 {
+        OUT.with(|o| {
+            let (mixer, buf) = &mut *o.borrow_mut();
+            buf.clear();
+            buf.resize(frames as usize * 2, 0.0);
+            if let Some(m) = mixer
+                && let Ok(mut m) = m.try_lock()
+            {
+                m.mix(buf);
+            }
+            buf.as_ptr()
+        })
     }
 }
 

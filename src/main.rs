@@ -121,7 +121,7 @@ fn plain_path(p: PathBuf) -> PathBuf {
 /// or overwrite real progress, unless `--save-dir` names a folder.
 fn save_store(o: &Opts) -> save::Store {
     if cfg!(target_arch = "wasm32") {
-        return save::Store::default(); // for now: gone when the page closes
+        return save::Store::browser();
     }
     let dir = match &o.save_dir {
         Some(d) => Some(d.clone()),
