@@ -1305,6 +1305,8 @@ function R.build(map, kit)
   for _, name in ipairs(t.classes) do
     for _, c in ipairs(COVER) do if c[1] == name then palette[#palette + 1] = c[2] end end
   end
+  -- Then the ground's colours from an aerial photo, where the importer took them.
+  for _, c in ipairs(t.aerial or {}) do palette[#palette + 1] = c end
   classify(map)
   engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
                  roads = road_surface(), kerb = KERB}
@@ -2430,7 +2432,7 @@ build = function(map, kit)
       clear = clear and not R.on_carriageway(p[1], p[2], 0.5)
     end
     if clear then
-      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -2447,6 +2449,14 @@ build = function(map, kit)
     end
   end
   local count, yards = 0, {}
+  -- A box building's roof in its real colour (the aerial photo's, from the
+  -- importer): a thin slab on the mesh's flat top. Baked a chunk at a time.
+  local roofs = chunked()
+  local function roof_on(x, z, w, d, yaw, top, color)
+    if color then
+      roofs.add(x, z, {mesh = "cube", pos = {x, (BASE or 0) + top + 0.02, z}, yaw = yaw, size = {w, 0.04, d}, color = color, abs = true})
+    end
+  end
   -- A building the map data cut into a few boxes comes as a run of them
   -- with the same height, kind and turn, and so do a block's stairwells
   -- mapped one by one: one building, so one colour and one style (not a
@@ -2599,6 +2609,7 @@ build = function(map, kit)
         kit.static{mesh = kit.building_mesh(glass and "glass" or "brick", floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z},
                    yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
                    tag = "building"}
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9])
       elseif kind == "shed" then
         -- A garden shed in a house's colours; a big one (a garage deck
         -- between blocks of flats, a depot) is concrete.
@@ -2619,6 +2630,7 @@ build = function(map, kit)
         local color = kind == "church" and {0.94, 0.93, 0.9} or (style == "balconies" and FINNISH_FLATS[1 + i % #FINNISH_FLATS]) or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9])
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
@@ -2639,7 +2651,7 @@ build = function(map, kit)
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true})
-      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = ROOF, abs = true})
+      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
       local floors = o.kind == "works" and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
         local a, b = o.pts[k], o.pts[k % n + 1]
@@ -2660,6 +2672,7 @@ build = function(map, kit)
     end
   end
   walls.bake("outline", "outline")
+  roofs.bake("roofs_", "outline")
   -- A tree or two in the yards round homes, once every building stands.
   pine_mesh()
   local planted = 0
