@@ -39,6 +39,8 @@ jobs:
           python3 -m pip install --quiet playwright
           python3 -m playwright install --with-deps chromium
           python3 tools/web_check.py --browser chromium --size 844x390 --query "map=turku&seed=1337&hour=12" --wait 60 --report web-turku.json --shot web-turku.png
+      - name: Saves and sound in the browser
+        run: python3 tools/web_saves_sound.py --shot web-saves.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -46,6 +48,7 @@ jobs:
           path: |
             web-turku.json
             web-turku.png
+            web-saves.png
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
