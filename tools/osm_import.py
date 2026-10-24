@@ -51,6 +51,8 @@ AREAS = {
         "bbox": (60.425, 22.21, 60.480, 22.325),
         "origin": (60.45150, 22.27000),
         "first": "Aninkaistenkatu / Eerikinkatu",
+        # Roof and ground colours from the city's aerial photo (tools/aerial.py).
+        "aerial": "turku",
         "coverage_kind": "regional_first_slice",
         "terrain_source": {
             "dataset": "MML Elevation model 2 m",
@@ -510,11 +512,12 @@ def wall_colour(t):
     return named_colour(t.get("building:colour", "")) or MATERIALS.get(t.get("building:material", "").strip().lower())
 
 
-def outlines_of(els, P, inside):
+def outlines_of(els, P, inside, roof_of=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
-    (height, kind, wall colour or None, points). The game draws these as
-    they are and keeps the boxes only to collide with."""
+    (height, kind, wall colour or None, points, roof colour or None). The
+    game draws these as they are and keeps the boxes only to collide with.
+    `roof_of(points)` gives an untagged roof its colour (the aerial photo)."""
     out = []
     for el in els:
         t = el.get("tags", {})
@@ -529,15 +532,18 @@ def outlines_of(els, P, inside):
             wall = wall_colour(t)
             if len(boxes_of(poly)) < 2 and not wall: continue
             pts = simplify(poly, 0.3)  # open: the closing side is implied
-            if len(pts) >= 3: out.append((height_of(t, kind, A), kind, wall, pts))
+            if len(pts) >= 3:
+                roof = roof_colour(t) or (roof_of and roof_of(pts))
+                out.append((height_of(t, kind, A), kind, wall, pts, roof))
     return out
 
 
 def outline_lines(outlines, f):
-    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points...}", "  outlines = {"]
-    for h, kind, wall, pts in outlines:
+    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour}", "  outlines = {"]
+    for h, kind, wall, pts, roof in outlines:
         w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
-        L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+        r = ", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else ""
+        L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L
 
@@ -660,6 +666,7 @@ def main():
     ap.add_argument("area", choices=sorted(AREAS))
     ap.add_argument("--fetch", action="store_true", help="download fresh data from Overpass first")
     ap.add_argument("--cache", type=Path)
+    ap.add_argument("--no-aerial", action="store_true", help="leave the aerial photo's colours out")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--only-railways", action="store_true",
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
@@ -764,6 +771,15 @@ def main():
         X1, Z1 = math.floor(min(-X0, X1)), math.floor(min(-Z0, Z1))
         X0, Z0 = -X1, -Z1
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    # Colours from an aerial photo (tools/aerial.py), when the area names
+    # one: untagged roofs, and the ground no survey class covers.
+    aerial = None
+    if cfg.get("aerial") and not args.no_aerial:
+        import aerial as aerial_mod
+        aerial = aerial_mod.Aerial(args.area, origin, (X0, Z0, X1, Z1), source=cfg["aerial"])
+        if not aerial.cached():
+            print(f"aerial: no photo cached for {args.area}; run tools/aerial.py {args.area} --fetch", file=sys.stderr)
+            aerial = None
     if args.only_railways:
         splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."))
         return
@@ -985,7 +1001,8 @@ def main():
                         continue
                     x, z, bw, bd = best
                     trimmed += 1
-                footprints.append((x, z, bw, bd, ang, h, kind, name, roof_colour(t)))
+                roof = roof_colour(t) or (aerial and aerial.roof_of_box(x, z, bw, bd, ang))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -1236,7 +1253,16 @@ def main():
                     h = min(h, ground(x, z) - 1.5)
                 hgt.append(max(-327, min(327, h)))
                 cls.append(k)
-        terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels}
+        # Ground no survey class covers takes its colour from the aerial
+        # photo: a palette after the classes, each point the nearest colour.
+        ground_palette = []
+        if aerial:
+            land = [n_ for n_, k in enumerate(cls) if k == 0]
+            ground_palette, idx = aerial.ground([X0 + (n_ % tw) * STEP for n_ in land], [Z0 + (n_ // tw) * STEP for n_ in land], STEP)
+            for n_, k in zip(land, idx.tolist()):
+                if k >= 0: cls[n_] = len(DRAW_ORDER) + 1 + k
+            print(f"aerial: {len(land)} ground points coloured from the photo, {len(ground_palette)} colours", file=sys.stderr)
+        terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "palette": ground_palette}
         tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
         import struct
         tdest.write_bytes(struct.pack(f"<{tw * td}h", *(round(h * 100) for h in hgt)) + bytes(cls))
@@ -1300,7 +1326,7 @@ def main():
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f))
-    L.extend(outline_lines(outlines_of(els, P, inside), f))
+    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
@@ -1320,7 +1346,11 @@ def main():
         L.append(f"  -- the ground's height every {f(STEP)} m from (x0, z0), in {terrain['file'].name} (Maanmittauslaitos")
         L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")
         L.append(f"  terrain = {{x0 = {X0}, z0 = {Z0}, step = {f(STEP)}, w = {terrain['w']}, d = {terrain['d']}, "
-                 f"file = {q('maps/' + terrain['file'].name)}, classes = {{{', '.join(q(c) for c in DRAW_ORDER)}}}}},")
+                 f"file = {q('maps/' + terrain['file'].name)}, classes = {{{', '.join(q(c) for c in DRAW_ORDER)}}}"
+                 + (", aerial = {" + ", ".join("{" + ", ".join(f"{v:.3f}" for v in c) + "}" for c in terrain["palette"]) + "}"
+                    if terrain["palette"] else "") + "},")
+        if terrain["palette"]:
+            L.append("  -- points past the classes take the aerial colours (Turku's aerial photo, via tools/aerial.py)")
     L.append("  -- {x0, z0, x1, z1} strips; water's have its level too")
     L.append("  cover = {")
     for cls, out in strips.items():
