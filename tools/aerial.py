@@ -203,7 +203,10 @@ class Aerial:
         lum = samples.sum(axis=2)
         order = np.argsort(np.where(np.isnan(lum), -np.inf, lum), axis=1)[:, ::-1]
         lit = np.take_along_axis(samples, order[:, :, None], axis=1)[:, :10]
-        cols = np.nanmedian(lit, axis=1)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # cells all off the photo: NaN, as meant
+            cols = np.nanmedian(lit, axis=1)
         ok = ~np.isnan(cols[:, 0])
         idx = np.full(len(xs), -1, dtype=int)
         if not ok.any():
