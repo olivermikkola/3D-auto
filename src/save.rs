@@ -16,11 +16,13 @@ pub const MAX_KEYS: usize = 64;
 const MAX_DEPTH: usize = 64;
 const HEADER: &str = "-- auto save data: plain Lua table syntax, read as data and never run.\nreturn ";
 
-/// Where saves live: a folder on disk, or (headless runs, screenshots) memory
-/// that is gone when the process exits.
+/// Where saves live: a folder on disk, the browser's localStorage, or
+/// (headless runs, screenshots) memory that is gone when the process exits.
 pub enum Store {
     Dir(PathBuf),
     Memory(HashMap<String, String>),
+    #[cfg(target_arch = "wasm32")]
+    Web,
 }
 
 impl Default for Store {
@@ -30,6 +32,14 @@ impl Default for Store {
 }
 
 impl Store {
+    /// The browser's localStorage (memory anywhere else).
+    pub fn browser() -> Store {
+        #[cfg(target_arch = "wasm32")]
+        return Store::Web;
+        #[cfg(not(target_arch = "wasm32"))]
+        Store::default()
+    }
+
     fn file(dir: &std::path::Path, key: &str) -> PathBuf {
         dir.join(format!("{key}.lua"))
     }
@@ -37,6 +47,8 @@ impl Store {
     pub fn read(&self, key: &str) -> std::io::Result<Option<String>> {
         match self {
             Store::Memory(m) => Ok(m.get(key).cloned()),
+            #[cfg(target_arch = "wasm32")]
+            Store::Web => Ok(crate::web::save_get(key)),
             Store::Dir(d) => match std::fs::read_to_string(Self::file(d, key)) {
                 Ok(s) => Ok(Some(s)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -51,6 +63,8 @@ impl Store {
         match (self, text) {
             (Store::Memory(m), Some(t)) => drop(m.insert(key.to_string(), t.to_string())),
             (Store::Memory(m), None) => drop(m.remove(key)),
+            #[cfg(target_arch = "wasm32")]
+            (Store::Web, t) => crate::web::save_set(key, t)?,
             (Store::Dir(d), Some(t)) => {
                 std::fs::create_dir_all(&*d)?;
                 let tmp = d.join(format!("{key}.lua.tmp"));
@@ -73,6 +87,14 @@ impl Store {
                 m.remove(key);
                 None
             }
+            #[cfg(target_arch = "wasm32")]
+            Store::Web => {
+                let bad = format!("{key}.bad");
+                let text = crate::web::save_get(key)?;
+                crate::web::save_set(&bad, Some(&text)).ok()?;
+                crate::web::save_set(key, None).ok()?;
+                Some(PathBuf::from(bad))
+            }
             Store::Dir(d) => {
                 let bad = d.join(format!("{key}.lua.bad"));
                 std::fs::rename(Self::file(d, key), &bad).ok().map(|_| bad)
@@ -84,6 +106,8 @@ impl Store {
     pub fn keys(&self) -> Vec<String> {
         let mut k: Vec<String> = match self {
             Store::Memory(m) => m.keys().cloned().collect(),
+            #[cfg(target_arch = "wasm32")]
+            Store::Web => crate::web::save_keys().into_iter().filter(|k| !k.ends_with(".bad")).collect(),
             Store::Dir(d) => std::fs::read_dir(d)
                 .map(|rd| rd.flatten().filter_map(|e| e.file_name().into_string().ok()?.strip_suffix(".lua").map(String::from)).collect())
                 .unwrap_or_default(),

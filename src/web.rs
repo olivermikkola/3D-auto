@@ -67,6 +67,53 @@ unsafe extern "C" {
     /// From web/index.html: copies the page's query string ("?a=b") into
     /// `buf` (at most `cap` bytes) and returns its full length.
     fn web_query(buf: *mut u8, cap: usize) -> usize;
+    /// From web/index.html, the saves in the browser's localStorage: the
+    /// value's full length (copied when it fits in `cap`), or -1 if none.
+    fn web_save_get(key: *const u8, key_len: usize, buf: *mut u8, cap: usize) -> i32;
+    /// Store a value, or delete the key when `val` is null. 0 when stored.
+    fn web_save_set(key: *const u8, key_len: usize, val: *const u8, val_len: usize) -> i32;
+    /// The stored keys, one per line; returns the full length like web_save_get.
+    fn web_save_keys(buf: *mut u8, cap: usize) -> usize;
+    /// The page's audio sample rate, or 0 when it has no WebAudio.
+    fn web_audio_rate() -> u32;
+}
+
+pub fn save_get(key: &str) -> Option<String> {
+    let mut buf = vec![0u8; 4096];
+    loop {
+        let n = unsafe { web_save_get(key.as_ptr(), key.len(), buf.as_mut_ptr(), buf.len()) };
+        if n < 0 {
+            return None;
+        }
+        if n as usize <= buf.len() {
+            buf.truncate(n as usize);
+            return Some(String::from_utf8_lossy(&buf).into_owned());
+        }
+        buf.resize(n as usize, 0);
+    }
+}
+
+pub fn save_set(key: &str, val: Option<&str>) -> std::io::Result<()> {
+    let (p, n) = val.map_or((std::ptr::null(), 0), |v| (v.as_ptr(), v.len()));
+    match unsafe { web_save_set(key.as_ptr(), key.len(), p, n) } {
+        0 => Ok(()),
+        _ => Err(std::io::Error::other("the browser refused to store it (storage full or blocked)")),
+    }
+}
+
+pub fn save_keys() -> Vec<String> {
+    let mut buf = vec![0u8; 1024];
+    loop {
+        let n = unsafe { web_save_keys(buf.as_mut_ptr(), buf.len()) };
+        if n <= buf.len() {
+            return String::from_utf8_lossy(&buf[..n]).lines().filter(|l| !l.is_empty()).map(String::from).collect();
+        }
+        buf.resize(n, 0);
+    }
+}
+
+pub fn audio_rate() -> u32 {
+    unsafe { web_audio_rate() }
 }
 
 pub fn log(line: &str) {

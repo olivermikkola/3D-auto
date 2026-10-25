@@ -31,6 +31,19 @@ The page's address sets the game's environment: `index.html?map=raisio&hour=22` 
   Rust side reads the same pack through `src/vfs.rs`.
 - **Graphics.** WebGL 2. The shaders were already GLSL 100.
 
+## Saves and sound
+
+- **Saves** go to the browser's `localStorage`, each key as `gta/<key>` (the same Lua-table text a
+  desktop save file holds), so progress, settings and the help-seen flag survive closing the page.
+  The page asks the browser to keep them (`navigator.storage.persist`). Clearing the site's data
+  in the browser starts a new game. They are kept per browser and per address.
+- **Sound**: the game's own mixer (`src/audio.rs`) is pulled by a WebAudio node in `index.html`
+  through `auto_audio_mix`, 4096 frames (~85 ms) at a time so a slow frame on a phone doesn't
+  starve it. Browsers allow sound only after a touch or key press, so it starts with the first
+  one, and it pauses while the page is hidden. On an iPhone the silent switch mutes it.
+
+`python3 tools/web_saves_sound.py` checks both in headless Chromium (CI runs it on every build).
+
 ## Install and offline
 
 The page is a web app: `manifest.webmanifest` (name, landscape, full screen, icons from the
@@ -117,8 +130,7 @@ Android the first tap also asks for full screen locked sideways (an iPhone allow
 
 ## Not yet
 
-- Sound (WebAudio), gamepads (the Gamepad API), and saves (localStorage). Saves last until the
-  page closes.
+- Gamepads (the Gamepad API).
 - Memory: wasm memory grows to its peak and stays there. Post-#95 sampled
   allocations on headless Chromium 151 / SwiftShader at 1280×720, seed 1337,
   hour 12 and a 12-second window: starter **24.38 MiB**, Raisio **448.62 MiB**,

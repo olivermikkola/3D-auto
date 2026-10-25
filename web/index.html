@@ -43,6 +43,39 @@
       box.textContent = lines.join("\n");
     }
     window.addEventListener("error", e => show("error: " + e.message));
+
+    // Sound: the game mixes, WebAudio plays (src/audio.rs). Browsers start
+    // audio only after a touch or a key, so the context waits for one, and
+    // it rests while the page is hidden (phone locked, another app).
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const audio = Ctx ? new Ctx({ latencyHint: "interactive" }) : null;
+    if (audio) {
+      const n = 4096; // ~85 ms: a slow frame on a phone must not starve it
+      const node = audio.createScriptProcessor(n, 0, 2);
+      node.onaudioprocess = e => {
+        const l = e.outputBuffer.getChannelData(0), r = e.outputBuffer.getChannelData(1);
+        if (typeof wasm_exports === "undefined" || !wasm_exports || !wasm_exports.auto_audio_mix) return;
+        const s = new Float32Array(wasm_memory.buffer, wasm_exports.auto_audio_mix(n), 2 * n);
+        for (let i = 0; i < n; i++) { l[i] = s[2 * i]; r[i] = s[2 * i + 1]; }
+      };
+      node.connect(audio.destination);
+      const wake = () => { if (audio.state !== "running" && !document.hidden) audio.resume(); };
+      for (const ev of ["pointerdown", "touchend", "keydown"]) window.addEventListener(ev, wake, true);
+      document.addEventListener("visibilitychange", () => document.hidden ? audio.suspend() : wake());
+    }
+
+    // Saves in localStorage, each key as "gta/<key>" (src/save.rs, src/web.rs).
+    const enc = new TextEncoder(), dec = new TextDecoder();
+    const bytes = (p, n) => new Uint8Array(wasm_memory.buffer, p, n);
+    const text = (p, n) => dec.decode(bytes(p, n).slice());
+    function put(ptr, cap, s) {
+      const b = enc.encode(s);
+      if (b.length <= cap) bytes(ptr, b.length).set(b);
+      return b.length;
+    }
+    function storage() { try { return window.localStorage; } catch (e) { return null; } }
+    // Ask the browser not to clear the saves when space runs low.
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     miniquad_add_plugin({
       name: "auto_web",
       version: 1,
@@ -55,6 +88,28 @@
           new Uint8Array(wasm_memory.buffer, ptr, Math.min(cap, q.length)).set(q.subarray(0, cap));
           return q.length;
         };
+        imports.env.web_save_get = (kp, kl, ptr, cap) => {
+          const v = storage() && storage().getItem("gta/" + text(kp, kl));
+          return v === null || v === undefined ? -1 : put(ptr, cap, v);
+        };
+        imports.env.web_save_set = (kp, kl, vp, vl) => {
+          const st = storage();
+          if (!st) return -1;
+          try {
+            const k = "gta/" + text(kp, kl);
+            if (vp === 0) st.removeItem(k); else st.setItem(k, text(vp, vl));
+            return 0;
+          } catch (e) { show("save: " + e.message); return -1; }
+        };
+        imports.env.web_save_keys = (ptr, cap) => {
+          const st = storage(), keys = [];
+          for (let i = 0; st && i < st.length; i++) {
+            const k = st.key(i);
+            if (k.startsWith("gta/")) keys.push(k.slice(4));
+          }
+          return put(ptr, cap, keys.join("\n"));
+        };
+        imports.env.web_audio_rate = () => audio ? audio.sampleRate : 0;
       },
       on_init() {
         box.textContent = "";
