@@ -635,7 +635,7 @@ def splice_pois(dest, els, P, f, q):
     print(f"{dest}: {len(pois)} points of interest", file=sys.stderr)
 
 
-def splice_railways(dest, els, P, f):
+def splice_railways(dest, els, P, f, aerial=None):
     """Put railways and platforms into an already generated map, inside its
     bounds, leaving the rest of it as it was."""
     text = dest.read_text()
@@ -643,7 +643,7 @@ def splice_railways(dest, els, P, f):
     X0, Z0, X1, Z1 = map(float, m.groups())
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
     railways, platforms = railways_of(els, P, inside)
-    outlines = outlines_of(els, P, inside)
+    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline)
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
@@ -781,7 +781,7 @@ def main():
             print(f"aerial: no photo cached for {args.area}; run tools/aerial.py {args.area} --fetch", file=sys.stderr)
             aerial = None
     if args.only_railways:
-        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."))
+        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."), aerial)
         return
 
     # ---- roads ----
