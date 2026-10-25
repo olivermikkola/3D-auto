@@ -30,10 +30,19 @@ class OutlineTests(unittest.TestCase):
     def test_an_l_is_an_outline(self):
         out = osm_import.outlines_of([building({}, *L)], P, inside)
         self.assertEqual(len(out), 1)
-        h, kind, wall, pts = out[0]
-        self.assertEqual((kind, wall), ("flats", None))
+        h, kind, wall, pts, roof, year = out[0]
+        self.assertEqual((kind, wall, roof, year), ("flats", None, None, None))
         self.assertEqual(len(pts), 6)
         self.assertAlmostEqual(osm_import.area(pts), 40 * 12 + 12 * 28, delta=5)
+
+    def test_the_photo_colours_the_roof_over_a_tag(self):
+        photo = lambda pts: (0.4, 0.3, 0.2)
+        out = osm_import.outlines_of([building({}, *L)], P, inside, photo)
+        self.assertEqual(out[0][4], (0.4, 0.3, 0.2))
+        out = osm_import.outlines_of([building({"roof:colour": "red"}, *L)], P, inside, photo)
+        self.assertEqual(out[0][4], (0.4, 0.3, 0.2))
+        out = osm_import.outlines_of([building({"roof:colour": "red"}, *L)], P, inside, lambda pts: None)
+        self.assertEqual(out[0][4], osm_import.roof_colour({"roof:colour": "red"}))
 
     def test_a_plain_box_stays_a_box(self):
         self.assertEqual(osm_import.outlines_of([building({}, *RECT)], P, inside), [])

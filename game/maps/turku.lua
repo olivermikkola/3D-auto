@@ -34,6 +34,7 @@ return {
   footbridges = osm.footbridges,
   railways = osm.railways,
   outlines = osm.outlines,
+  photo_trees = osm.photo_trees, -- street and yard trees seen in the aerial photo
   platforms = osm.platforms,
   cranes = osm.cranes,
   piers = osm.piers,

@@ -885,6 +885,27 @@ local function deck_height(e)
   end
 end
 
+-- A building's look by the year it was finished (the city model's): the
+-- stone town's plastered blocks before 1920 in their pastels, with bands
+-- between the floors; the white of classicism and functionalism; the grey
+-- concrete and pale panels of 1945-75; red and brown brick to 2000; then
+-- flats with balconies, glass for big shops and offices, else pale render.
+local ERA = {
+  {1920, "granite", {{0.88, 0.78, 0.55}, {0.86, 0.68, 0.52}, {0.82, 0.74, 0.66}, {0.9, 0.86, 0.74}, {0.78, 0.62, 0.5}, {0.72, 0.78, 0.7}}},
+  {1945, "brick", {{0.93, 0.92, 0.88}, {0.88, 0.87, 0.82}, {0.9, 0.86, 0.72}}},
+  {1975, "brick", {{0.74, 0.73, 0.7}, {0.82, 0.8, 0.74}, {0.68, 0.66, 0.64}, {0.86, 0.84, 0.8}}},
+  {2000, "brick", {{0.62, 0.34, 0.26}, {0.55, 0.38, 0.3}, {0.7, 0.45, 0.35}, {0.78, 0.74, 0.66}}},
+}
+local function era_look(year, kind, floors, i)
+  for _, e in ipairs(ERA) do
+    if year < e[1] then return e[2], e[3][1 + i % #e[3]] end
+  end
+  if kind == "flats" and floors >= 3 then return "balconies", {0.92, 0.9, 0.86} end
+  if (kind == "shop" or kind == "civic") and floors >= 4 then return "glass", {1, 1, 1} end
+  local NEW = {{0.88, 0.87, 0.84}, {0.76, 0.73, 0.68}, {0.62, 0.36, 0.28}, {0.58, 0.6, 0.62}}
+  return "brick", NEW[1 + i % #NEW] -- most new buildings are pale render or brick, not glass
+end
+
 -- Detached houses: a painted wooden box under a gable roof, the ridge
 -- running along the street. Unit footprint, real height.
 local HOUSE = {{0.72, 0.2, 0.15}, {0.9, 0.78, 0.4}, {0.88, 0.88, 0.84}, {0.45, 0.55, 0.62}, {0.6, 0.38, 0.25}, {0.78, 0.7, 0.55}}
@@ -1305,6 +1326,8 @@ function R.build(map, kit)
   for _, name in ipairs(t.classes) do
     for _, c in ipairs(COVER) do if c[1] == name then palette[#palette + 1] = c[2] end end
   end
+  -- Then the ground's colours from an aerial photo, where the importer took them.
+  for _, c in ipairs(t.aerial or {}) do palette[#palette + 1] = c end
   classify(map)
   engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
                  roads = road_surface(), kerb = KERB}
@@ -1759,7 +1782,8 @@ build = function(map, kit)
       local ch = chunked()
       for _, st in ipairs(strips) do
         local x, z = (st[1] + st[3]) / 2, (st[2] + st[4]) / 2
-        ch.add(x, z, {mesh = "cube", pos = {x, (st[5] or 0) + k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2],
+        ch.add(x, z, {mesh = "cube", pos = {x, (st[5] or 0) + k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]},
+                      color = st[6] and {st[6], st[7], st[8]} or c[2], -- water: the aerial photo's colour there
                       abs = GROUND and true or nil})
       end
       ch.bake("cover_" .. c[1], c[1] == "water" and "water" or "cover")
@@ -2430,7 +2454,7 @@ build = function(map, kit)
       clear = clear and not R.on_carriageway(p[1], p[2], 0.5)
     end
     if clear then
-      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -2447,6 +2471,24 @@ build = function(map, kit)
     end
   end
   local count, yards = 0, {}
+  -- A box building's roof in its real colour (the aerial photo's, from the
+  -- importer): a thin slab on the mesh's flat top. Baked a chunk at a time.
+  local roofs = chunked()
+  local function roof_on(x, z, w, d, yaw, top, color, pitch)
+    if pitch then
+      -- A pitched roof (the city model's) as a gable along the long side:
+      -- two wedges back to back, as a house's, in the roof's own colour.
+      if d > w then w, d, yaw = d, w, yaw + math.pi / 2 end
+      local sx, sz = math.sin(yaw), math.cos(yaw) -- the box's local +z in the world
+      for _, side in ipairs{-1, 1} do
+        roofs.add(x, z, {mesh = "wedge", pos = {x + sx * side * d / 4, (BASE or 0) + top + pitch / 2, z + sz * side * d / 4},
+                         yaw = side < 0 and yaw or yaw + math.pi, size = {w * 1.02, pitch, d / 2 * 1.02},
+                         color = color or {0.33, 0.3, 0.3}, abs = true})
+      end
+    elseif color then
+      roofs.add(x, z, {mesh = "cube", pos = {x, (BASE or 0) + top + 0.02, z}, yaw = yaw, size = {w, 0.04, d}, color = color, abs = true})
+    end
+  end
   -- A building the map data cut into a few boxes comes as a run of them
   -- with the same height, kind and turn, and so do a block's stairwells
   -- mapped one by one: one building, so one colour and one style (not a
@@ -2599,6 +2641,7 @@ build = function(map, kit)
         kit.static{mesh = kit.building_mesh(glass and "glass" or "brick", floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z},
                    yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
                    tag = "building"}
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9] or nil, f[11])
       elseif kind == "shed" then
         -- A garden shed in a house's colours; a big one (a garage deck
         -- between blocks of flats, a depot) is concrete.
@@ -2617,8 +2660,10 @@ build = function(map, kit)
         end
         local FINNISH_FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}}
         local color = kind == "church" and {0.94, 0.93, 0.9} or (style == "balconies" and FINNISH_FLATS[1 + i % #FINNISH_FLATS]) or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
+        if f[10] and kind ~= "church" then style, color = era_look(f[10], kind, floors, i) end
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9] or nil, f[11])
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
@@ -2634,12 +2679,13 @@ build = function(map, kit)
   for _, o in pairs(OUT) do
     if o.placed then
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
-      local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68}) or (o.kind == "shop" and {0.84, 0.84, 0.82})
-                    or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
+      local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
+                    or (o.year and select(2, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)))
+                    or (o.kind == "shop" and {0.84, 0.84, 0.82}) or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true})
-      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = ROOF, abs = true})
+      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
       local floors = o.kind == "works" and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
         local a, b = o.pts[k], o.pts[k % n + 1]
@@ -2660,6 +2706,7 @@ build = function(map, kit)
     end
   end
   walls.bake("outline", "outline")
+  roofs.bake("roofs_", "outline")
   -- A tree or two in the yards round homes, once every building stands.
   pine_mesh()
   local planted = 0
@@ -2742,6 +2789,27 @@ build = function(map, kit)
       end
     end
   end
+
+  -- The trees the aerial photo shows by the streets (lindens, maples,
+  -- birches: leafy), where there's room, thinned evenly to their budget.
+  local photo = map.photo_trees or {}
+  local photo_n, photo_budget = 0, map.photo_trees_max or 6000
+  local every = math.max(1, (#photo / 2) / photo_budget)
+  local next_k = 0
+  for k = 1, #photo - 1, 2 do
+    if (k - 1) / 2 >= next_k then
+      local x, z = photo[k], photo[k + 1]
+      if free(H, x, z, 2.5) and not R.on_carriageway(x, z, 1.5) and not R.wet(x, z) then
+        -- (sized by a hash, not r(): the rest of the map keeps its random draws)
+        kit.static{mesh = "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 1.5 + (k * 7919 % 101) / 120, tag = "tree"}
+        add_circle(H, x, z, 2)
+        photo_n = photo_n + 1
+        next_k = next_k + every
+        if photo_n >= photo_budget then break end
+      end
+    end
+  end
+  L.photo_trees = photo_n
 
   -- Forest wherever there's room: in the surveyed woods and parks, else
   -- anywhere, up to the map's budget.
