@@ -1122,6 +1122,7 @@ def main():
 
     # ---- terrain: real heights, with the roads graded into them ----
     terrain = None
+    photo_trees = []
     if elevation is not None or cfg.get("dem"):
         import dem
         Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
@@ -1262,6 +1263,25 @@ def main():
             for n_, k in zip(land, idx.tolist()):
                 if k >= 0: cls[n_] = len(DRAW_ORDER) + 1 + k
             print(f"aerial: {len(land)} ground points coloured from the photo, {len(ground_palette)} colours", file=sys.stderr)
+            # Trees the photo shows where the survey has no wood (the
+            # street trees, the trees in front yards) within 14 m of a street, where
+            # they are seen: a 10 m grid (a crown's width), each spot under
+            # a crown nudged off the grid by its own hash so rows don't look
+            # planted by a robot.
+            import random as random_
+            # Bare ground, and the grass strips and small parks streets are
+            # lined with (the woods get their own forest).
+            treeable = {0} | {DRAW_ORDER.index(c) + 1 for c in ("field", "park", "cemetery")}
+            def by_a_street(x, z, reach=14):
+                for ed, a, b in road_grid.near(x - reach, z - reach, x + reach, z + reach):
+                    if seg_dist((x, z), a, b) < ed["width"] / 2 + reach: return True
+                return False
+            cand = [(x, z) for z in range(int(Z0) + 5, int(Z1) - 5, 10) for x in range(int(X0) + 5, int(X1) - 5, 10)
+                    if cover_at(x, z) in treeable and by_a_street(x, z)]
+            crown = aerial.canopy([c[0] for c in cand], [c[1] for c in cand])
+            rnd = random_.Random(7)
+            photo_trees = [(x + rnd.uniform(-1.8, 1.8), z + rnd.uniform(-1.8, 1.8)) for (x, z), t in zip(cand, crown.tolist()) if t]
+            print(f"aerial: {len(photo_trees)} trees from the photo", file=sys.stderr)
         terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "palette": ground_palette}
         tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
         import struct
@@ -1342,6 +1362,9 @@ def main():
     for name, x, z, kind in areas:
         L.append(f"    {{{q(name)}, {f(x)}, {f(z)}, {q(kind)}}},")
     L.append("  },")
+    if photo_trees:
+        L.append("  -- trees the aerial photo shows outside parks and woods: x, z, x, z, ...")
+        L.append("  photo_trees = {" + ", ".join(f"{f(x)}, {f(z)}" for x, z in photo_trees) + "},")
     if terrain:
         L.append(f"  -- the ground's height every {f(STEP)} m from (x0, z0), in {terrain['file'].name} (Maanmittauslaitos")
         L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")

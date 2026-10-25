@@ -2756,6 +2756,27 @@ build = function(map, kit)
     end
   end
 
+  -- The trees the aerial photo shows by the streets (lindens, maples,
+  -- birches: leafy), where there's room, thinned evenly to their budget.
+  local photo = map.photo_trees or {}
+  local photo_n, photo_budget = 0, map.photo_trees_max or 6000
+  local every = math.max(1, (#photo / 2) / photo_budget)
+  local next_k = 0
+  for k = 1, #photo - 1, 2 do
+    if (k - 1) / 2 >= next_k then
+      local x, z = photo[k], photo[k + 1]
+      if free(H, x, z, 2.5) and not R.on_carriageway(x, z, 1.5) and not R.wet(x, z) then
+        -- (sized by a hash, not r(): the rest of the map keeps its random draws)
+        kit.static{mesh = "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 1.5 + (k * 7919 % 101) / 120, tag = "tree"}
+        add_circle(H, x, z, 2)
+        photo_n = photo_n + 1
+        next_k = next_k + every
+        if photo_n >= photo_budget then break end
+      end
+    end
+  end
+  L.photo_trees = photo_n
+
   -- Forest wherever there's room: in the surveyed woods and parks, else
   -- anywhere, up to the map's budget.
   pine_mesh()

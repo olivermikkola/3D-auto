@@ -201,7 +201,7 @@ class Aerial:
         # a yard isn't the yard's colour. (Off the photo sorts last, as NaN.)
         lum = samples.sum(axis=2)
         order = np.argsort(np.where(np.isnan(lum), -np.inf, lum), axis=1)[:, ::-1]
-        lit = np.take_along_axis(samples, order[:, :, None], axis=1)[:, :15]
+        lit = np.take_along_axis(samples, order[:, :, None], axis=1)[:, :10]
         cols = np.nanmedian(lit, axis=1)
         ok = ~np.isnan(cols[:, 0])
         idx = np.full(len(xs), -1, dtype=int)
@@ -219,6 +219,23 @@ class Aerial:
         lab = np.argmin(((data[:, None, :] - centres[None]) ** 2).sum(axis=2), axis=1)
         idx[ok] = lab
         return [game_colour(tuple(float(v) for v in c)) for c in centres], idx
+
+    def canopy(self, xs, zs):
+        """Which points are under a tree's crown: in the photo a crown is
+        green and lumpy (lit leaves and their own shadows), where a lawn is
+        green and even and a roof or a road isn't green. Looks at 7 x 7
+        pixels, a metre apart, round each point."""
+        import numpy as np
+        xs, zs = np.asarray(xs, dtype=np.float64), np.asarray(zs, dtype=np.float64)
+        offs = np.arange(-3, 4, 1.0)
+        px = np.stack([self.pixels(xs + dx, zs + dz) for dx in offs for dz in offs], axis=1)
+        r, g, b = px[..., 0], px[..., 1], px[..., 2]
+        green = (g > r * 1.08) & (g > b * 1.05)
+        lum = px.sum(axis=2) / 3
+        with np.errstate(invalid="ignore"):
+            frac = np.nanmean(green, axis=1)
+            rough = np.nanstd(lum, axis=1)
+        return (frac > 0.65) & (rough > 0.07)
 
 
 if __name__ == "__main__":
