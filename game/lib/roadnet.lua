@@ -2389,11 +2389,17 @@ build = function(map, kit)
   end
   boats.bake("boats", "cover")
 
-  -- Pads for the game's features (the lot, the stunt park...).
+  -- Pads for the game's features (the lot, the stunt park...). On real
+  -- ground the lot and the plaza go on a real open space as it is: a flat
+  -- 40 m pad stood level with its middle, sunk in the slope at one end and
+  -- up in the air at the other, and cleared every building 30 m round.
   for kind, p in pairs(map.specials or {}) do
-    kit.static{mesh = "cube", pos = {p[1], kit.CURB / 2, p[2]}, size = {40, kit.CURB, 40}, color = PAVE, tag = "sidewalk"}
-    kit.feature(kind, p[1], p[2], L)
-    add_circle(H, p[1], p[2], 30)
+    local as_is = GROUND and (kind == "lot" or kind == "plaza")
+    if not as_is then
+      kit.static{mesh = "cube", pos = {p[1], kit.CURB / 2, p[2]}, size = {40, kit.CURB, 40}, color = PAVE, tag = "sidewalk"}
+    end
+    kit.feature(kind, p[1], p[2], L, as_is)
+    add_circle(H, p[1], p[2], as_is and 18 or 30) -- (the lot's shops and cars reach 17 m from its middle)
   end
 
   -- Hand-placed buildings: the town hall, schools, the mall.

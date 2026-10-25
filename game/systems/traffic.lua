@@ -60,6 +60,18 @@ local function place(c, min_dist)
   c.lost = nil
   local roads = city.roads()
   local px, _, pz = U.player_pos()
+  -- Drawn from the roads with an end in reach: drawn from the whole of
+  -- Turku, most of the 40 tries fell kilometres off and a game began with
+  -- three or four cars about.
+  if px then
+    local near, reach = {}, NEAR + 150
+    for _, r in ipairs(roads) do
+      local ax, az = city.pos(r[1])
+      local bx, bz = city.pos(r[2])
+      if U.dist2d(ax, az, px, pz) < reach or U.dist2d(bx, bz, px, pz) < reach then near[#near + 1] = r end
+    end
+    if #near > 0 then roads = near end
+  end
   for _ = 1, 40 do
     local r = roads[math.random(#roads)]
     c.from, c.to = r[1], r[2]

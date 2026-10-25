@@ -79,7 +79,7 @@ return {
   end)(),
 
   specials = {
-    lot = {-300, -20},     -- starting lot in Puolalanpuisto park clear of roads
+    lot = {-240, 205},     -- starting lot: the public car park in the block off Eerikinkatu (OSM way 18894962), flat
     plaza = {1000, 640},   -- Kupittaanpuisto open plaza
     stunt = {1480, 600},   -- Kupittaa sports park, off Lemminkäisenkatu: flat, with pavements near for pedestrians
   },

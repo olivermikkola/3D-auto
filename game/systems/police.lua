@@ -236,35 +236,43 @@ local function convoy_spot(px, py, pz)
   end
   if #near == 0 then return end
   local need = CONVOY_GAP * (CONVOY - 1) + 6
-  for _ = 1, 30 do
-    local j = near[math.random(#near)]
-    local links = city.links(j) or {}
-    if #links > 0 then
-      local n = links[math.random(#links)]
+  -- Every stretch long enough, tried in a random order (30 random draws
+  -- missed now and then where there were good ones).
+  local cands = {}
+  for _, j in ipairs(near) do
+    for _, n in ipairs(city.links(j) or {}) do
       local path = city.path(j, n)
-      local i = math.random(2, #path)
-      local a, b = path[i - 1], path[i]
-      local len = U.dist2d(a[1], a[2], b[1], b[2])
-      if len >= need + 4 then
-        local yaw = math.atan(b[1] - a[1], b[2] - a[2])
-        local fx, fz = U.forward(yaw)
-        local rx, rz = U.right(yaw)
-        local lane = city.lane(j, n)
-        -- The leader as far down the stretch as there's room behind it for.
-        local along = need + math.random() * (len - need - 4)
-        local x, z = a[1] + fx * along + rx * lane, a[2] + fz * along + rz * lane
-        local d = U.dist2d(x, z, px, pz)
-        local toward = ((px - x) * fx + (pz - z) * fz) / math.max(d, 1)
-        local y = city.height_on(j, n, x, z)
-        if d >= CONVOY_NEAR and d <= CONVOY_FAR and toward > 0.3
-            and not (py and y and math.abs(y - py) >= 4) then
-          local free = true
-          for k = 0, CONVOY - 1 do
-            if occupied(x - fx * CONVOY_GAP * k, z - fz * CONVOY_GAP * k) then free = false break end
-          end
-          if free then return x, z, yaw, {j, n} end
+      for i = 2, #path do
+        if U.dist2d(path[i - 1][1], path[i - 1][2], path[i][1], path[i][2]) >= need + 4 then
+          cands[#cands + 1] = {j, n, path[i - 1], path[i]}
         end
       end
+    end
+  end
+  for k = #cands, 2, -1 do
+    local m = math.random(k)
+    cands[k], cands[m] = cands[m], cands[k]
+  end
+  for _, cand in ipairs(cands) do
+    local j, n, a, b = cand[1], cand[2], cand[3], cand[4]
+    local len = U.dist2d(a[1], a[2], b[1], b[2])
+    local yaw = math.atan(b[1] - a[1], b[2] - a[2])
+    local fx, fz = U.forward(yaw)
+    local rx, rz = U.right(yaw)
+    local lane = city.lane(j, n)
+    -- The leader as far down the stretch as there's room behind it for.
+    local along = need + math.random() * (len - need - 4)
+    local x, z = a[1] + fx * along + rx * lane, a[2] + fz * along + rz * lane
+    local d = U.dist2d(x, z, px, pz)
+    local toward = ((px - x) * fx + (pz - z) * fz) / math.max(d, 1)
+    local y = city.height_on(j, n, x, z)
+    if d >= CONVOY_NEAR and d <= CONVOY_FAR and toward > 0.3
+        and not (py and y and math.abs(y - py) >= 4) then
+      local free = true
+      for k = 0, CONVOY - 1 do
+        if occupied(x - fx * CONVOY_GAP * k, z - fz * CONVOY_GAP * k) then free = false break end
+      end
+      if free then return x, z, yaw, {j, n} end
     end
   end
 end
