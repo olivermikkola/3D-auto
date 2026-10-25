@@ -32,6 +32,13 @@ Commons Attribution 4.0 International (CC BY 4.0,
 https://creativecommons.org/licenses/by/4.0/), with the roads graded into
 it and its ground cover classes from the OpenStreetMap data above.
 
+The roof colours in turku_osm.lua and the ground colours in turku_terrain.bin
+are taken by tools/aerial.py from the City of Turku's aerial photo: Turun
+ilmakuva 2022 (true ortho), (c) Turun kaupunki, licensed under Creative
+Commons Attribution 4.0 International (CC BY 4.0,
+https://creativecommons.org/licenses/by/4.0/). Only averaged colours are
+kept; the photo itself is not part of the game.
+
 starter.lua is not covered by this license. Like the rest of the
 repository, it is under the MIT License in the top-level LICENSE file:
 copy it to start your own city.

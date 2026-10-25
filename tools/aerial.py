@@ -8,7 +8,8 @@ tools/osm_cache/aerial/<area>/. The game never sees the photo, only colours
 taken from it: one per roof, and one of a small palette per ground point.
 
 Sources:
-  turku  Turun kaupunki, Ilmakuva 2025 (turku.asiointi.fi WMS).
+  turku  Turun kaupunki, Turun ilmakuva 2022, true ortho (turku.asiointi.fi
+         WMS), CC BY 4.0.
 
     python3 tools/aerial.py turku --fetch       # fill the cache
     python3 tools/aerial.py turku --sample X Z  # the photo's colour at a point
@@ -23,20 +24,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "tools" / "osm_cache" / "aerial"
 TILE_M, TILE_PX = 1000, 1000
+GREY = 0.55  # where the photo's grey surfaces end up (0-1)
 
 SOURCES = {
-    "turku": ("https://turku.asiointi.fi/TeklaOGCWeb/WMS.ashx", "Ilmakuva 2025"),
+    # Turun kaupunki, Turun ilmakuva 2022 (true ortho: roofs straight over
+    # their footprints), CC BY 4.0 on avoindata.fi.
+    "turku": ("https://turku.asiointi.fi/TeklaOGCWeb/WMS.ashx", "Ilmakuva 2022 True ortho"),
 }
 
 
 def game_colour(c):
-    """A photo's colour as the game's: the photo is lit by a real sun (the
-    game lights its colours again), so a little darker. A shadow's blue cast
-    is taken out first: blue over the red and green mean is mostly sky."""
+    """A photo's colour (haze taken out) as the game's: the photo is lit by
+    a real sun and the game lights its colours again, so a little darker.
+    Shadows lose their colour (in a photo they are blue with sky light) and
+    any leftover blue over red and green goes too."""
     r, g, b = c
     b = min(b, max(r, g) + 0.02)
     m = (r + g + b) / 3
-    return tuple(max(0.0, min(1.0, (m + (v - m) * 1.1) * 0.85)) for v in (r, g, b))
+    keep = max(0.0, min(1.0, (m - 0.12) / 0.2))  # colour kept: none in deep shadow
+    return tuple(max(0.0, min(1.0, (m + (v - m) * keep) * 0.85)) for v in (r, g, b))
 
 
 class Aerial:
@@ -50,6 +56,7 @@ class Aerial:
         self.url, self.layer = SOURCES[source or area]
         self.bounds = bounds
         self.tiles = {}
+        self.levels = None
 
     def tile_keys(self):
         x0, z0, x1, z1 = self.bounds
@@ -78,12 +85,43 @@ class Aerial:
             print(f"aerial: {path.name}", file=sys.stderr)
         print(f"aerial: {len(self.tile_keys())} tiles in {self.dir}", file=sys.stderr)
 
+    def _levels(self):
+        """The photo's white balance and brightness, over every tile.
+        Asphalt, concrete and gravel are grey, so the nearly grey pixels
+        (not trees, grass or water) are made grey, which takes the air's
+        blue cast out; then a gamma brings their middle to GREY, as a
+        well-exposed photo has it (Turku 2022 is bright: 0.6)."""
+        if self.levels is None:
+            import numpy as np
+            from PIL import Image
+            px = []
+            for i, j in self.tile_keys():
+                path = self.dir / f"{i}_{j}.jpg"
+                if path.exists():
+                    a = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32)[::7, ::7].reshape(-1, 3) / 255
+                    px.append(a[a.min(axis=1) < 0.96])
+            px = np.concatenate(px)
+            grey = px[(px.max(axis=1) - px.min(axis=1) < 0.12) & (px.mean(axis=1) > 0.2)]
+            med = np.median(grey, axis=0)
+            gain = med.mean() / med
+            gamma = math.log(GREY) / math.log(float(med.mean()))
+            self.levels = (gain, gamma)
+        return self.levels
+
     def _tile(self, i, j):
         if (i, j) not in self.tiles:
             import numpy as np
             from PIL import Image
             path = self.dir / f"{i}_{j}.jpg"
-            self.tiles[i, j] = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32) / 255 if path.exists() else None
+            if path.exists():
+                a = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32) / 255
+                nodata = a.min(axis=2) >= 0.96  # outside the flight: plain white
+                gain, gamma = self._levels()
+                a = np.clip(a * gain, 0, 1) ** gamma
+                a[nodata] = np.nan
+                self.tiles[i, j] = a
+            else:
+                self.tiles[i, j] = None
         return self.tiles[i, j]
 
     def pixels(self, xs, zs):
@@ -159,7 +197,12 @@ class Aerial:
         xs, zs = np.asarray(xs, dtype=np.float64), np.asarray(zs, dtype=np.float64)
         offs = (np.arange(5) - 2) * step / 5
         samples = np.stack([self.pixels(xs + dx, zs + dz) for dx in offs for dz in offs], axis=1)
-        cols = np.nanmedian(samples, axis=1)
+        # The sunlit part of each cell decides: a wall's shadow lying across
+        # a yard isn't the yard's colour. (Off the photo sorts last, as NaN.)
+        lum = samples.sum(axis=2)
+        order = np.argsort(np.where(np.isnan(lum), -np.inf, lum), axis=1)[:, ::-1]
+        lit = np.take_along_axis(samples, order[:, :, None], axis=1)[:, :15]
+        cols = np.nanmedian(lit, axis=1)
         ok = ~np.isnan(cols[:, 0])
         idx = np.full(len(xs), -1, dtype=int)
         if not ok.any():

@@ -332,8 +332,8 @@ impl Engine {
     }
 
     /// Replace the ground heightfield (or remove it with None). It's drawn
-    /// in chunks of CHUNK cells, each cell colored by the average of its
-    /// corners' `colors` (one rgb per height, or grass), and collides
+    /// in chunks of CHUNK cells, the colour blended between its points'
+    /// `colors` (one rgb per height, or grass), and collides
     /// through an entity tagged "terrain".
     pub fn set_terrain(&mut self, terrain: Option<Terrain>, colors: Option<Vec<[f32; 3]>>) {
         const CHUNK: usize = 64;
@@ -350,12 +350,11 @@ impl Engine {
         holder.body = Some(Body::new(physics::Kind::Static, Vec3::ZERO));
         t.id = self.spawn(holder) as usize;
         let grass = [0.3, 0.42, 0.24];
-        let col = |i: usize, j: usize| colors.as_ref().map_or(grass, |c| c[j * t.w + i]);
-        let point = |i: usize, j: usize| v3(t.x0 + i as f32 * t.step, t.at(i, j), t.z0 + j as f32 * t.step);
-        let avg = |cs: [[f32; 3]; 3]| {
-            let c = |k: usize| (cs[0][k] + cs[1][k] + cs[2][k]) / 3.0;
-            v3(c(0), c(1), c(2))
+        let col = |i: usize, j: usize| {
+            let c = colors.as_ref().map_or(grass, |c| c[j * t.w + i]);
+            v3(c[0], c[1], c[2])
         };
+        let point = |i: usize, j: usize| v3(t.x0 + i as f32 * t.step, t.at(i, j), t.z0 + j as f32 * t.step);
         for cj in (0..t.d - 1).step_by(CHUNK) {
             for ci in (0..t.w - 1).step_by(CHUNK) {
                 let mut m = Mesh::default();
@@ -363,8 +362,8 @@ impl Engine {
                     for i in ci..(ci + CHUNK).min(t.w - 1) {
                         // Wound so the faces point up; the same split as Terrain::surface.
                         let (a, b, c, d) = ((i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1));
-                        m.tri(point(a.0, a.1), point(b.0, b.1), point(c.0, c.1), avg([col(a.0, a.1), col(b.0, b.1), col(c.0, c.1)]));
-                        m.tri(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), avg([col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]));
+                        m.tri_blend(point(a.0, a.1), point(b.0, b.1), point(c.0, c.1), [col(a.0, a.1), col(b.0, b.1), col(c.0, c.1)]);
+                        m.tri_blend(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), [col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]);
                     }
                 }
                 let mesh = self.add_mesh(&format!("terrain_{ci}_{cj}"), m);

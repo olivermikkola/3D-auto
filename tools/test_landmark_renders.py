@@ -31,7 +31,7 @@ W, H = 640, 360
 # Each minimum is about half of what the shot showed when it was added.
 SHOTS = {
     "kakola": ((-1250, 90, 750), (-1450, 25, 950), []),
-    "kauppatori": ((-175, 140, -150), (-175, 0, -15), [((226, 215, 203), 20, 0.30)]),
+    "kauppatori": ((-175, 140, -150), (-175, 0, -15), [((178, 174, 170), 20, 0.30)]),
     "turun_linna": ((-2330, 45, 1900), (-2265, 10, 1785), [((114, 108, 100), 16, 0.10)]),
     "tuomiokirkko": ((380, 40, -190), (455, 20, -105), [((100, 41, 28), 20, 0.022)]),
     # From above: the cathedral's copper roofs on its own site, east of the square.

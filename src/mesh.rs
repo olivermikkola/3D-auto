@@ -64,6 +64,16 @@ impl Mesh {
         self.tri_e(a, b, c, col, 0.0);
     }
 
+    /// A triangle with a colour at each corner, blended across it.
+    pub fn tri_blend(&mut self, a: Vec3, b: Vec3, c: Vec3, cols: [Vec3; 3]) {
+        let n = (b - a).cross(c - a).norm();
+        let base = self.verts.len() as u32;
+        for (p, col) in [a, b, c].into_iter().zip(cols) {
+            self.verts.push(Vertex::new(p, n, col, 0.0));
+        }
+        self.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+
     pub fn tri_e(&mut self, a: Vec3, b: Vec3, c: Vec3, col: Vec3, emissive: f32) {
         let n = (b - a).cross(c - a).norm();
         let base = self.verts.len() as u32;

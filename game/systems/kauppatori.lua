@@ -23,7 +23,7 @@ function K.build(map)
   local wood_roof = {0.84, 0.66, 0.40}
   local glass_wall = {0.25, 0.38, 0.48}
   local foundation = {0.58, 0.58, 0.60}
-  local plaza_granite = {0.72, 0.70, 0.68}
+  local plaza_granite = {0.56, 0.56, 0.57} -- grey granite (the aerial photo)
 
   -- 0. Main Kauppatori paved granite plaza (replaces bare grass ground plane).
   -- The square slopes about 2.5 m, so the slab is tilted to the ground's
