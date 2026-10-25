@@ -479,17 +479,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     f!("find", |e, _lua, tag: String| Ok(e.find(&tag)));
     f!("nearest", |e, lua, (x, y, z, r, tag, ignore): (f32, f32, f32, f32, Option<String>, Option<u32>)| {
-        let p = v3(x, y, z);
-        let best = e
-            .ents
-            .iter()
-            .enumerate()
-            .filter_map(|(i, en)| Some((i as u32, en.as_ref()?)))
-            .filter(|(i, en)| Some(*i) != ignore && tag.as_ref().is_none_or(|t| &en.tag == t))
-            .map(|(i, en)| (i, (en.pos - p).len()))
-            .filter(|&(_, d)| d <= r)
-            .min_by(|a, b| a.1.total_cmp(&b.1));
-        multi(lua, best)
+        multi(lua, e.nearest(v3(x, y, z), r, tag.as_deref(), ignore))
     });
     f!("raycast", |e, lua, (ox, oy, oz, dx, dy, dz, max, ignore): (f32, f32, f32, f32, f32, f32, Option<f32>, Option<u32>)| {
         let dir = v3(dx, dy, dz).norm();

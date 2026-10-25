@@ -90,19 +90,30 @@ local function spawn_point()
   if city.network() then
     -- Up a long dead end there may be none that near: then the nearest
     -- by road, up to twice as far.
-    local dist, cands = road_dist(city.nearest(px, pz, py), 320), {}
+    -- (Whether a spot is free is asked last, of the one drawn: each ask
+    -- looks through every entity on the map, and asking it of every
+    -- candidate took 11 ms in central Turku.)
+    local dist, j = road_dist(city.nearest(px, pz, py), 320)
     for _, far in ipairs{160, 320} do
-      for _, j in ipairs(city.junctions()) do
-        local x, z = city.pos(j)
-        local d = dist[j]
-        if d and d >= 70 and d <= far and U.dist2d(x, z, px, pz) >= 50 and not occupied(x, z) and level(j) then
-          cands[#cands + 1] = j
+      local cands = {}
+      for c, d in pairs(dist) do
+        local x, z = city.pos(c)
+        if d >= 70 and d <= far and U.dist2d(x, z, px, pz) >= 50 and level(c) then cands[#cands + 1] = c end
+      end
+      table.sort(cands) -- (pairs' order isn't fixed: the same seed, the same pick)
+      while #cands > 0 and not j do
+        local i = math.random(#cands)
+        local x, z = city.pos(cands[i])
+        if occupied(x, z) then
+          cands[i] = cands[#cands]
+          cands[#cands] = nil
+        else
+          j = cands[i]
         end
       end
-      if #cands > 0 then break end
+      if j then break end
     end
-    if #cands > 0 then
-      local j = cands[math.random(#cands)]
+    if j then
       local x, z = city.pos(j)
       -- Align police squad car along outgoing road lane rather than direct line-of-sight pointing
       local links = city.links(j)

@@ -303,6 +303,21 @@ impl Engine {
         self.tagged.get(tag).cloned().unwrap_or_default()
     }
 
+    /// The entity nearest to `p` within `r` (with `tag`, only those: looked
+    /// up by tag, not by going through every entity on the map) and how far
+    /// it is. On a tie the one spawned first.
+    pub fn nearest(&self, p: Vec3, r: f32, tag: Option<&str>, ignore: Option<u32>) -> Option<(u32, f32)> {
+        let near = |i: u32| {
+            let en = self.get(i)?;
+            let d = (en.pos - p).len();
+            (Some(i) != ignore && d <= r).then_some((i, d))
+        };
+        match tag {
+            Some(t) => self.tagged.get(t)?.iter().filter_map(|&i| near(i)).min_by(|a, b| a.1.total_cmp(&b.1)),
+            None => (0..self.ents.len() as u32).filter_map(near).min_by(|a, b| a.1.total_cmp(&b.1)),
+        }
+    }
+
     pub fn get(&self, id: u32) -> Option<&Entity> {
         self.ents.get(id as usize)?.as_ref()
     }
@@ -481,6 +496,26 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nearest_by_tag_skips_others_the_ignored_and_the_gone() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        let at = |tag: &str, x: f32| {
+            let mut en = Entity::new(v3(x, 0.0, 0.0));
+            en.tag = tag.to_string();
+            en
+        };
+        let ped = e.spawn(at("ped", 1.0));
+        let car = e.spawn(at("car", 2.0));
+        let car2 = e.spawn(at("car", 3.0));
+        assert_eq!(e.nearest(Vec3::ZERO, 10.0, None, None), Some((ped, 1.0)));
+        assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("car"), None), Some((car, 2.0)));
+        assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("car"), Some(car)), Some((car2, 3.0)));
+        assert_eq!(e.nearest(Vec3::ZERO, 2.5, Some("car"), Some(car)), None);
+        assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("lamp"), None), None);
+        e.despawn(car);
+        assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("car"), None), Some((car2, 3.0)));
+    }
 
     #[test]
     fn find_lists_live_entities_by_tag_in_spawn_order() {
