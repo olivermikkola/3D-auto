@@ -54,6 +54,8 @@ local function pick_next(c)
   route(c)
 end
 
+local near_roads -- the roads in reach of where the player was: {map, x, z, roads}
+
 -- Place car c on a random street segment between `min_dist` and NEAR from
 -- the player (anywhere in town if there's no player).
 local function place(c, min_dist)
@@ -63,14 +65,19 @@ local function place(c, min_dist)
   -- Drawn from the roads with an end in reach: drawn from the whole of
   -- Turku, most of the 40 tries fell kilometres off and a game began with
   -- three or four cars about.
+  -- (Listed again once the player is 50 m from where it was last listed:
+  -- going through every road took a few ms, and cars respawn in bunches.)
   if px then
-    local near, reach = {}, NEAR + 150
-    for _, r in ipairs(roads) do
-      local ax, az = city.pos(r[1])
-      local bx, bz = city.pos(r[2])
-      if U.dist2d(ax, az, px, pz) < reach or U.dist2d(bx, bz, px, pz) < reach then near[#near + 1] = r end
+    if not (near_roads and near_roads.map == city.map() and U.dist2d(near_roads.x, near_roads.z, px, pz) < 50) then
+      local near, reach = {}, NEAR + 200
+      for _, r in ipairs(roads) do
+        local ax, az = city.pos(r[1])
+        local bx, bz = city.pos(r[2])
+        if U.dist2d(ax, az, px, pz) < reach or U.dist2d(bx, bz, px, pz) < reach then near[#near + 1] = r end
+      end
+      near_roads = {map = city.map(), x = px, z = pz, roads = near}
     end
-    if #near > 0 then roads = near end
+    if #near_roads.roads > 0 then roads = near_roads.roads end
   end
   for _ = 1, 40 do
     local r = roads[math.random(#roads)]
