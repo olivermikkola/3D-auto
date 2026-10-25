@@ -533,7 +533,7 @@ def outlines_of(els, P, inside, roof_of=None):
             if len(boxes_of(poly)) < 2 and not wall: continue
             pts = simplify(poly, 0.3)  # open: the closing side is implied
             if len(pts) >= 3:
-                roof = roof_colour(t) or (roof_of and roof_of(pts))
+                roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
                 out.append((height_of(t, kind, A), kind, wall, pts, roof))
     return out
 
@@ -1001,7 +1001,9 @@ def main():
                         continue
                     x, z, bw, bd = best
                     trimmed += 1
-                roof = roof_colour(t) or (aerial and aerial.roof_of_box(x, z, bw, bd, ang))
+                # The photo's colour first: a roof:colour tag names a colour
+                # ("red", "green"), the photo has the weathered tile and copper.
+                roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
                 footprints.append((x, z, bw, bd, ang, h, kind, name, roof))
                 name = None  # the label goes on one box
 
@@ -1254,11 +1256,14 @@ def main():
                     h = min(h, ground(x, z) - 1.5)
                 hgt.append(max(-327, min(327, h)))
                 cls.append(k)
-        # Ground no survey class covers takes its colour from the aerial
-        # photo: a palette after the classes, each point the nearest colour.
+        # The ground takes its colour from the aerial photo: a palette after
+        # the classes, each point the nearest colour.
         ground_palette = []
         if aerial:
-            land = [n_ for n_, k in enumerate(cls) if k == 0]
+            # Not water, and not the pitches, courts and tracks, whose
+            # crisp class colours read better than a photo's.
+            photo_k = {0} | {DRAW_ORDER.index(c) + 1 for c in ("field", "forest", "park", "cemetery", "works", "parking")}
+            land = [n_ for n_, k in enumerate(cls) if k in photo_k]
             ground_palette, idx = aerial.ground([X0 + (n_ % tw) * STEP for n_ in land], [Z0 + (n_ // tw) * STEP for n_ in land], STEP)
             for n_, k in zip(land, idx.tolist()):
                 if k >= 0: cls[n_] = len(DRAW_ORDER) + 1 + k
@@ -1378,7 +1383,16 @@ def main():
     L.append("  cover = {")
     for cls, out in strips.items():
         if cls == "water" and terrain:
-            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}}}" for (a, b, c, d), y in zip(out, terrain["levels"])) + "},")
+            # With an aerial photo each strip also has the water's colour
+            # there: the Aurajoki is brown, the sea grey-blue.
+            def water_colour(a, b, c, d):
+                if not aerial: return ""
+                import numpy as np
+                X, Z = np.meshgrid(np.linspace(a, c, 8), np.linspace(b, d, 8))
+                col = aerial.robust(X.ravel(), Z.ravel())
+                return "," + ",".join(f"{v:.2f}" for v in col) if col else ""
+            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}{water_colour(a, b, c, d)}}}"
+                                            for (a, b, c, d), y in zip(out, terrain["levels"])) + "},")
         else:
             L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)}}}" for a, b, c, d in out) + "},")
     L.append("  },")

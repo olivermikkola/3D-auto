@@ -41,7 +41,8 @@ def game_colour(c):
     r, g, b = c
     b = min(b, max(r, g) + 0.02)
     m = (r + g + b) / 3
-    keep = max(0.0, min(1.0, (m - 0.12) / 0.2))  # colour kept: none in deep shadow
+    keep = 0.85 * max(0.0, min(1.0, (m - 0.12) / 0.2))  # colour kept: none in deep shadow, and the game's
+    # sun saturates a flat roof's colour again, so a little less all round
     return tuple(max(0.0, min(1.0, (m + (v - m) * keep) * 0.85)) for v in (r, g, b))
 
 
@@ -188,7 +189,7 @@ class Aerial:
             keep = inside
         return self.robust(X[keep], Z[keep]) if keep.any() else None
 
-    def ground(self, xs, zs, step, n=24, seed=1):
+    def ground(self, xs, zs, step, n=32, seed=1):
         """The ground under points `step` apart: each point's colour (the
         middle of its cell, 5 x 5 samples) sorted into a palette of `n`.
         Returns (palette as game colours, each point's index into it, or -1

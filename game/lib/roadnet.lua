@@ -1761,7 +1761,8 @@ build = function(map, kit)
       local ch = chunked()
       for _, st in ipairs(strips) do
         local x, z = (st[1] + st[3]) / 2, (st[2] + st[4]) / 2
-        ch.add(x, z, {mesh = "cube", pos = {x, (st[5] or 0) + k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]}, color = c[2],
+        ch.add(x, z, {mesh = "cube", pos = {x, (st[5] or 0) + k * 0.004 - 0.008, z}, size = {st[3] - st[1], 0.02, st[4] - st[2]},
+                      color = st[6] and {st[6], st[7], st[8]} or c[2], -- water: the aerial photo's colour there
                       abs = GROUND and true or nil})
       end
       ch.bake("cover_" .. c[1], c[1] == "water" and "water" or "cover")
