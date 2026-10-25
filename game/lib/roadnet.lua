@@ -889,7 +889,7 @@ end
 -- stone town's plastered blocks before 1920 in their pastels, with bands
 -- between the floors; the white of classicism and functionalism; the grey
 -- concrete and pale panels of 1945-75; red and brown brick to 2000; then
--- glass, and flats with balconies.
+-- flats with balconies, glass for big shops and offices, else pale render.
 local ERA = {
   {1920, "granite", {{0.88, 0.78, 0.55}, {0.86, 0.68, 0.52}, {0.82, 0.74, 0.66}, {0.9, 0.86, 0.74}, {0.78, 0.62, 0.5}, {0.72, 0.78, 0.7}}},
   {1945, "brick", {{0.93, 0.92, 0.88}, {0.88, 0.87, 0.82}, {0.9, 0.86, 0.72}}},
@@ -901,7 +901,9 @@ local function era_look(year, kind, floors, i)
     if year < e[1] then return e[2], e[3][1 + i % #e[3]] end
   end
   if kind == "flats" and floors >= 3 then return "balconies", {0.92, 0.9, 0.86} end
-  return "glass", {1, 1, 1}
+  if (kind == "shop" or kind == "civic") and floors >= 4 then return "glass", {1, 1, 1} end
+  local NEW = {{0.88, 0.87, 0.84}, {0.76, 0.73, 0.68}, {0.62, 0.36, 0.28}, {0.58, 0.6, 0.62}}
+  return "brick", NEW[1 + i % #NEW] -- most new buildings are pale render or brick, not glass
 end
 
 -- Detached houses: a painted wooden box under a gable roof, the ridge
