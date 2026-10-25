@@ -459,14 +459,15 @@ def height_of(t, kind, A):
 
 
 def model_heights(buildings):
-    """A function giving an OSM outline the height and year of the city
-    model's buildings whose points fall inside it (tools/citymodel.py): one,
-    its own; a block of several, their middle height and oldest year. None
-    without any."""
-    grid = {}
+    """A function giving an OSM outline the height, year and pitched roof
+    (eave, ridge) of the city model's buildings whose points fall inside it
+    (tools/citymodel.py): one, its own; a block of several, the middle one's
+    height and roof and the oldest year. None without any."""
+    grid = {}  # (cell) -> [(x, z, building)]: each building at its middle and its address point
     for b in buildings:
         if b[2] and b[2] > 2:
-            grid.setdefault((math.floor(b[0] / 50), math.floor(b[1] / 50)), []).append(b)
+            for x, z in [(b[0], b[1])] + list(b[6] if len(b) > 6 else []):
+                grid.setdefault((math.floor(x / 50), math.floor(z / 50)), []).append((x, z, b))
     def inside(poly, x, z):
         hit, j = False, len(poly) - 1
         for i in range(len(poly)):
@@ -477,13 +478,15 @@ def model_heights(buildings):
     def height(poly):
         x0, z0 = min(p[0] for p in poly), min(p[1] for p in poly)
         x1, z1 = max(p[0] for p in poly), max(p[1] for p in poly)
-        bs = [b for i in range(math.floor(x0 / 50), math.floor(x1 / 50) + 1)
-              for j in range(math.floor(z0 / 50), math.floor(z1 / 50) + 1)
-              for b in grid.get((i, j), ()) if x0 <= b[0] <= x1 and z0 <= b[1] <= z1 and inside(poly, b[0], b[1])]
+        found = {id(b): b for i in range(math.floor(x0 / 50), math.floor(x1 / 50) + 1)
+                 for j in range(math.floor(z0 / 50), math.floor(z1 / 50) + 1)
+                 for x, z, b in grid.get((i, j), ()) if x0 <= x <= x1 and z0 <= z <= z1 and inside(poly, x, z)}
+        bs = list(found.values())
         if not bs: return None
-        hs = sorted(b[2] for b in bs)
+        bs.sort(key=lambda b: b[2])
+        main = bs[-1] if len(bs) <= 2 else bs[len(bs) // 2]
         years = [b[4] for b in bs if b[4]]
-        return (hs[-1] if len(hs) <= 2 else hs[len(hs) // 2]), (min(years) if years else None)
+        return main[2], (min(years) if years else None), (main[5] if len(main) > 5 else None)
     return height
 
 
@@ -566,7 +569,9 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None):
             pts = simplify(poly, 0.3)  # open: the closing side is implied
             if len(pts) >= 3:
                 roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
-                h, year = (model_h and model_h(poly)) or (height_of(t, kind, A), None)
+                h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)
+                if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
+                    h = pitch[0]  # to the eaves, as its boxes have it
                 out.append((h, kind, wall, pts, roof, year))
     return out
 
@@ -821,7 +826,12 @@ def main():
         import citymodel
         cm = citymodel.CityModel(args.area, origin, (X0, Z0, X1, Z1), source=cfg["citymodel"])
         if cm.cached():
-            model_h = model_heights(cm.buildings())
+            found = cm.buildings()
+            lod2 = citymodel.CityModel(args.area, origin, (X0, Z0, X1, Z1), source=cfg["citymodel"], lod2=True)
+            if lod2.cached():  # roof shapes in the old town: LOD2 there, LOD1 elsewhere
+                lx0, lz0, lx1, lz1 = lod2.bounds
+                found = lod2.buildings() + [b for b in found if not (lx0 <= b[0] <= lx1 and lz0 <= b[1] <= lz1)]
+            model_h = model_heights(found)
         else:
             print(f"citymodel: not cached for {args.area}; run tools/citymodel.py {args.area} --fetch", file=sys.stderr)
     if args.only_railways:
@@ -991,8 +1001,12 @@ def main():
             A = area(poly)
             if A < 15: continue
             kind = "stand" if is_stand(t, poly) else building_kind(t, A)
-            measured = model_h and model_h(poly)
-            h, year = measured or (height_of(t, kind, A), None)  # measured, else from tags
+            h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)  # measured, else tags
+            # A pitched roof: the walls go up to its eaves and the game puts
+            # the roof on top (a steep spire or a flat-ish one isn't a gable).
+            roof_h = None
+            if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
+                h, roof_h = pitch[0], round(pitch[1] - pitch[0], 1)
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
             name = PARODY.get(name, name)
             roof_col = roof_colour(t)
@@ -1049,7 +1063,7 @@ def main():
                 # The photo's colour first: a roof:colour tag names a colour
                 # ("red", "green"), the photo has the weathered tile and copper.
                 roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
-                footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year, roof_h))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -1377,15 +1391,16 @@ def main():
         L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
                  + "".join(", " + a for a in look) + "},")
     L.append("  },")
-    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or false, year built or nil}: yaw turns the")
-    L.append("  -- box's w side off the x axis")
+    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or false, year built or false,")
+    L.append("  -- pitched roof's height or nil}: yaw turns the box's w side off the x axis; height is to the eaves")
     L.append("  footprints = {")
-    for x, z, bw, bd, ang, h, kind, name, roof, year in footprints:
+    for x, z, bw, bd, ang, h, kind, name, roof, year, roof_h in footprints:
         # The engine's yaw turns +z toward +x: a box whose w runs at angle
         # `ang` (from +x toward +z) has yaw = -ang.
-        tail = f", {q(name)}" if name else ""
-        if roof: tail = (tail or ", false") + ", {" + ", ".join(f(v) for v in roof) + "}"
-        if year: tail = (tail or ", false") + (", false" if not roof else "") + f", {year}"
+        extra = [q(name) if name else "false", "{" + ", ".join(f(v) for v in roof) + "}" if roof else "false",
+                 str(year) if year else "false", f(roof_h) if roof_h else "false"]
+        while extra and extra[-1] == "false": extra.pop()
+        tail = "".join(", " + v for v in extra)
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")

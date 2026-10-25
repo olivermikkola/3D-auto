@@ -9,7 +9,8 @@ block from 1890 is as tall as it is, not as tall as a guess.
 Fetched once per area in 500 m squares (EPSG:3877) and cached as small JSON
 in tools/osm_cache/citymodel/<area>/; only those few numbers are kept.
 
-    python3 tools/citymodel.py turku --fetch
+    python3 tools/citymodel.py turku --fetch          # heights and years
+    python3 tools/citymodel.py turku --fetch --lod2   # roof shapes, old town
 """
 import json
 import math
@@ -28,6 +29,9 @@ SOURCES = {
     # Turun kaupunki, Turun kaupunkitietomalli, CC BY 4.0 (avoindata.fi).
     "turku": ("https://turku.asiointi.fi/TeklaOGCWeb/WFS.ashx", "bldg:Building_LOD1", 23),
 }
+# LOD2 adds roof shapes but weighs about 140 kB a building, so it is
+# fetched only this far round the area's origin (the old town).
+LOD2_REACH = 1000
 
 
 def _consts():
@@ -65,32 +69,88 @@ def gk_inverse(E, N, lon0):
     return lat, lon
 
 
+def _rings(part):
+    """The polygon rings in a piece of CityGML, as lists of (E, N, z)."""
+    out = []
+    for ring in re.findall(r"<gml:LinearRing[^>]*>(.*?)</gml:LinearRing>", part, re.S):
+        pts = [tuple(map(float, p.split())) for p in re.findall(r"<gml:pos[^>]*>([^<]*)<", ring)]
+        lists = re.findall(r"<gml:posList[^>]*>([^<]*)<", ring)
+        for pl in lists:
+            v = list(map(float, pl.split()))
+            pts += list(zip(v[0::3], v[1::3], v[2::3]))
+        if len(pts) >= 3:
+            out.append(pts)
+    return out
+
+
+def _area(ring):
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:] + ring[:1]))) / 2
+
+
+def roof_pitch(b, ground):
+    """A building's pitched roof from its LOD2 roof surfaces: (eave, ridge)
+    above the ground if most of the roof's area slopes, else None. Weighted
+    by area, so a dormer or a low wing's flat roof doesn't decide it."""
+    total = sloped = eave = ridge = 0.0
+    for part in re.findall(r"<bldg:RoofSurface>(.*?)</bldg:RoofSurface>", b, re.S):
+        for ring in _rings(part):
+            A = _area(ring)
+            zs = [p[2] for p in ring]
+            total += A
+            if A > 0 and max(zs) - min(zs) > 0.8 and (max(zs) - min(zs)) / math.sqrt(A) > 0.12:
+                sloped, eave, ridge = sloped + A, eave + A * min(zs), ridge + A * max(zs)
+    if total <= 0 or sloped / total < 0.5:
+        return None
+    return round(eave / sloped - ground, 1), round(ridge / sloped - ground, 1)
+
+
 def parse(xml):
-    """The buildings in a GetFeature answer: dicts of E, N, height, storeys, year."""
+    """The buildings in a GetFeature answer: dicts of E, N (the middle of
+    its ground floor, or its address point), height, storeys, year, and
+    with LOD2 its pitched roof's eave and ridge."""
     out = []
     for b in xml.split("<bldg:Building gml:id")[1:]:
         attr = dict(re.findall(r'name="(\w+)">\s*<gen:value>([^<]*)', b))
         h = re.search(r"<bldg:measuredHeight[^>]*>([\d.]+)<", b)
         st = re.search(r"<bldg:storeysAboveGround>(\d+)<", b)
         yr = re.search(r"<bldg:yearOfConstruction>(\d{4})", b) or re.search(r"\d\d\.\d\d\.(\d{4})", attr.get("valmistunut", ""))
-        try:
-            E, N = float(attr["y"]), float(attr["x"])  # the model names northing x
+        # Its own middle: the parts of one property share an address point.
+        pts = [p for r in _rings(b) for p in r]
+        ground = min(p[2] for p in pts) if pts else None
+        low = [p for p in pts if p[2] < ground + 0.5] if pts else []
+        if low:
+            E, N = sum(p[0] for p in low) / len(low), sum(p[1] for p in low) / len(low)
+        else:
+            try:
+                E, N = float(attr["y"]), float(attr["x"])  # the model names northing x
+            except (KeyError, ValueError):
+                continue
+        d = {"E": round(E, 2), "N": round(N, 2), "h": float(h.group(1)) if h else None,
+             "storeys": int(st.group(1)) if st else None, "year": int(yr.group(1)) if yr else None}
+        try:  # its address point too: a U round a yard has its middle in the yard
+            d["aE"], d["aN"] = float(attr["y"]), float(attr["x"])
         except (KeyError, ValueError):
-            continue
-        out.append({"E": E, "N": N, "h": float(h.group(1)) if h else None,
-                    "storeys": int(st.group(1)) if st else None, "year": int(yr.group(1)) if yr else None})
+            pass
+        if "<bldg:RoofSurface>" in b and ground is not None:
+            d["pitch"] = roof_pitch(b, ground)
+        out.append(d)
     return out
 
 
 class CityModel:
     """The model's buildings in game coordinates (the importer's projection)."""
 
-    def __init__(self, area, origin, bounds, source=None):
+    def __init__(self, area, origin, bounds, source=None, lod2=False):
         self.url, self.layer, self.lon0 = SOURCES[source or area]
         self.lat0, self.lon00 = origin
         self.kx = 111320 * math.cos(math.radians(self.lat0))
         self.dir = CACHE / area
         self.bounds = bounds
+        if lod2:
+            self.layer = self.layer.replace("LOD1", "LOD2")
+            self.dir = CACHE / f"{area}-lod2"
+            x0, z0, x1, z1 = bounds
+            self.bounds = (max(x0, -LOD2_REACH), max(z0, -LOD2_REACH), min(x1, LOD2_REACH), min(z1, LOD2_REACH))
 
     def _tiles(self):
         x0, z0, x1, z1 = self.bounds
@@ -120,7 +180,9 @@ class CityModel:
             time.sleep(0.5)  # a city's own server: one request at a time, with a pause
 
     def buildings(self):
-        """(x, z, height or None, storeys or None, year or None) in game coordinates."""
+        """(x, z, height or None, storeys or None, year or None, pitch or None,
+        [address point]) in game coordinates; pitch is a pitched roof's
+        (eave, ridge); x, z the middle of its ground floor."""
         out = []
         for i, j in self._tiles():
             path = self.dir / f"{i}_{j}.json"
@@ -129,8 +191,13 @@ class CityModel:
             for b in json.loads(path.read_text()):
                 if not (i * TILE <= b["E"] < (i + 1) * TILE and j * TILE <= b["N"] < (j + 1) * TILE):
                     continue  # a building on a tile's edge comes back in both
-                lat, lon = gk_inverse(b["E"], b["N"], self.lon0)
-                out.append(((lon - self.lon00) * self.kx, -(lat - self.lat0) * 110574, b["h"], b["storeys"], b["year"]))
+                pts = []
+                for E, N in ((b["E"], b["N"]), (b.get("aE"), b.get("aN"))):
+                    if E:
+                        lat, lon = gk_inverse(E, N, self.lon0)
+                        pts.append(((lon - self.lon00) * self.kx, -(lat - self.lat0) * 110574))
+                out.append((pts[0][0], pts[0][1], b["h"], b["storeys"], b["year"],
+                            tuple(b["pitch"]) if b.get("pitch") else None, pts[1:]))
         return out
 
 
@@ -143,7 +210,7 @@ if __name__ == "__main__":
     s_, w_, n_, e_ = cfg["bbox"]
     kx = 111320 * math.cos(math.radians(lat0))
     bounds = ((w_ - lon0) * kx, -(n_ - lat0) * 110574, (e_ - lon0) * kx, -(s_ - lat0) * 110574)
-    m = CityModel(area, cfg["origin"], bounds, source=cfg.get("citymodel"))
+    m = CityModel(area, cfg["origin"], bounds, source=cfg.get("citymodel"), lod2="--lod2" in sys.argv)
     if "--fetch" in sys.argv:
         m.fetch()
     bs = m.buildings()

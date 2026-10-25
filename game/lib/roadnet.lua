@@ -2474,8 +2474,18 @@ build = function(map, kit)
   -- A box building's roof in its real colour (the aerial photo's, from the
   -- importer): a thin slab on the mesh's flat top. Baked a chunk at a time.
   local roofs = chunked()
-  local function roof_on(x, z, w, d, yaw, top, color)
-    if color then
+  local function roof_on(x, z, w, d, yaw, top, color, pitch)
+    if pitch then
+      -- A pitched roof (the city model's) as a gable along the long side:
+      -- two wedges back to back, as a house's, in the roof's own colour.
+      if d > w then w, d, yaw = d, w, yaw + math.pi / 2 end
+      local sx, sz = math.sin(yaw), math.cos(yaw) -- the box's local +z in the world
+      for _, side in ipairs{-1, 1} do
+        roofs.add(x, z, {mesh = "wedge", pos = {x + sx * side * d / 4, (BASE or 0) + top + pitch / 2, z + sz * side * d / 4},
+                         yaw = side < 0 and yaw or yaw + math.pi, size = {w * 1.02, pitch, d / 2 * 1.02},
+                         color = color or {0.33, 0.3, 0.3}, abs = true})
+      end
+    elseif color then
       roofs.add(x, z, {mesh = "cube", pos = {x, (BASE or 0) + top + 0.02, z}, yaw = yaw, size = {w, 0.04, d}, color = color, abs = true})
     end
   end
@@ -2631,7 +2641,7 @@ build = function(map, kit)
         kit.static{mesh = kit.building_mesh(glass and "glass" or "brick", floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z},
                    yaw = yaw, size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = glass and {0.8, 0.9, 0.92} or {0.66, 0.32, 0.24},
                    tag = "building"}
-        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9])
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9] or nil, f[11])
       elseif kind == "shed" then
         -- A garden shed in a house's colours; a big one (a garage deck
         -- between blocks of flats, a depot) is concrete.
@@ -2653,7 +2663,7 @@ build = function(map, kit)
         if f[10] and kind ~= "church" then style, color = era_look(f[10], kind, floors, i) end
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
-        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9])
+        roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9] or nil, f[11])
       end
       for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
       count = count + 1
