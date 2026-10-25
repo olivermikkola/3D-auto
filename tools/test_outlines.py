@@ -30,8 +30,8 @@ class OutlineTests(unittest.TestCase):
     def test_an_l_is_an_outline(self):
         out = osm_import.outlines_of([building({}, *L)], P, inside)
         self.assertEqual(len(out), 1)
-        h, kind, wall, pts, roof = out[0]
-        self.assertEqual((kind, wall, roof), ("flats", None, None))
+        h, kind, wall, pts, roof, year = out[0]
+        self.assertEqual((kind, wall, roof, year), ("flats", None, None, None))
         self.assertEqual(len(pts), 6)
         self.assertAlmostEqual(osm_import.area(pts), 40 * 12 + 12 * 28, delta=5)
 

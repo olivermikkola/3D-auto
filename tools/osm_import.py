@@ -53,6 +53,8 @@ AREAS = {
         "first": "Aninkaistenkatu / Eerikinkatu",
         # Roof and ground colours from the city's aerial photo (tools/aerial.py).
         "aerial": "turku",
+        # Building heights and ages from the city model (tools/citymodel.py).
+        "citymodel": "turku",
         "coverage_kind": "regional_first_slice",
         "terrain_source": {
             "dataset": "MML Elevation model 2 m",
@@ -456,6 +458,35 @@ def height_of(t, kind, A):
     return max(2.5, levels * floor)
 
 
+def model_heights(buildings):
+    """A function giving an OSM outline the height and year of the city
+    model's buildings whose points fall inside it (tools/citymodel.py): one,
+    its own; a block of several, their middle height and oldest year. None
+    without any."""
+    grid = {}
+    for b in buildings:
+        if b[2] and b[2] > 2:
+            grid.setdefault((math.floor(b[0] / 50), math.floor(b[1] / 50)), []).append(b)
+    def inside(poly, x, z):
+        hit, j = False, len(poly) - 1
+        for i in range(len(poly)):
+            (xi, zi), (xj, zj) = poly[i], poly[j]
+            if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi: hit = not hit
+            j = i
+        return hit
+    def height(poly):
+        x0, z0 = min(p[0] for p in poly), min(p[1] for p in poly)
+        x1, z1 = max(p[0] for p in poly), max(p[1] for p in poly)
+        bs = [b for i in range(math.floor(x0 / 50), math.floor(x1 / 50) + 1)
+              for j in range(math.floor(z0 / 50), math.floor(z1 / 50) + 1)
+              for b in grid.get((i, j), ()) if x0 <= b[0] <= x1 and z0 <= b[1] <= z1 and inside(poly, b[0], b[1])]
+        if not bs: return None
+        hs = sorted(b[2] for b in bs)
+        years = [b[4] for b in bs if b[4]]
+        return (hs[-1] if len(hs) <= 2 else hs[len(hs) // 2]), (min(years) if years else None)
+    return height
+
+
 def overpass(q, timeout, tries=4):
     """Run an Overpass query, trying each server a few times."""
     import time
@@ -512,10 +543,11 @@ def wall_colour(t):
     return named_colour(t.get("building:colour", "")) or MATERIALS.get(t.get("building:material", "").strip().lower())
 
 
-def outlines_of(els, P, inside, roof_of=None):
+def outlines_of(els, P, inside, roof_of=None, model_h=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
-    (height, kind, wall colour or None, points, roof colour or None). The
+    (height, kind, wall colour or None, points, roof colour or None, year
+    built or None). The
     game draws these as they are and keeps the boxes only to collide with.
     `roof_of(points)` gives an untagged roof its colour (the aerial photo)."""
     out = []
@@ -534,15 +566,17 @@ def outlines_of(els, P, inside, roof_of=None):
             pts = simplify(poly, 0.3)  # open: the closing side is implied
             if len(pts) >= 3:
                 roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
-                out.append((height_of(t, kind, A), kind, wall, pts, roof))
+                h, year = (model_h and model_h(poly)) or (height_of(t, kind, A), None)
+                out.append((h, kind, wall, pts, roof, year))
     return out
 
 
 def outline_lines(outlines, f):
-    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour}", "  outlines = {"]
-    for h, kind, wall, pts, roof in outlines:
+    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour, year = built}",
+         "  outlines = {"]
+    for h, kind, wall, pts, roof, year in outlines:
         w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
-        r = ", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else ""
+        r = (", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else "") + (f", year = {year}" if year else "")
         L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L
@@ -635,7 +669,7 @@ def splice_pois(dest, els, P, f, q):
     print(f"{dest}: {len(pois)} points of interest", file=sys.stderr)
 
 
-def splice_railways(dest, els, P, f, aerial=None):
+def splice_railways(dest, els, P, f, aerial=None, model_h=None):
     """Put railways and platforms into an already generated map, inside its
     bounds, leaving the rest of it as it was."""
     text = dest.read_text()
@@ -643,7 +677,7 @@ def splice_railways(dest, els, P, f, aerial=None):
     X0, Z0, X1, Z1 = map(float, m.groups())
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
     railways, platforms = railways_of(els, P, inside)
-    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline)
+    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h)
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
@@ -667,6 +701,7 @@ def main():
     ap.add_argument("--fetch", action="store_true", help="download fresh data from Overpass first")
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--no-aerial", action="store_true", help="leave the aerial photo's colours out")
+    ap.add_argument("--no-citymodel", action="store_true", help="leave the city model's measured heights out")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--only-railways", action="store_true",
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
@@ -780,8 +815,17 @@ def main():
         if not aerial.cached():
             print(f"aerial: no photo cached for {args.area}; run tools/aerial.py {args.area} --fetch", file=sys.stderr)
             aerial = None
+    # Measured building heights from the city model (tools/citymodel.py).
+    model_h = None
+    if cfg.get("citymodel") and not args.no_citymodel:
+        import citymodel
+        cm = citymodel.CityModel(args.area, origin, (X0, Z0, X1, Z1), source=cfg["citymodel"])
+        if cm.cached():
+            model_h = model_heights(cm.buildings())
+        else:
+            print(f"citymodel: not cached for {args.area}; run tools/citymodel.py {args.area} --fetch", file=sys.stderr)
     if args.only_railways:
-        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."), aerial)
+        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."), aerial, model_h)
         return
 
     # ---- roads ----
@@ -947,7 +991,8 @@ def main():
             A = area(poly)
             if A < 15: continue
             kind = "stand" if is_stand(t, poly) else building_kind(t, A)
-            h = height_of(t, kind, A)
+            measured = model_h and model_h(poly)
+            h, year = measured or (height_of(t, kind, A), None)  # measured, else from tags
             name = (t.get("name") or "").replace("\xad", "") or None  # no soft hyphens
             name = PARODY.get(name, name)
             roof_col = roof_colour(t)
@@ -1004,7 +1049,7 @@ def main():
                 # The photo's colour first: a roof:colour tag names a colour
                 # ("red", "green"), the photo has the weathered tile and copper.
                 roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
-                footprints.append((x, z, bw, bd, ang, h, kind, name, roof))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -1332,13 +1377,15 @@ def main():
         L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
                  + "".join(", " + a for a in look) + "},")
     L.append("  },")
-    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or nil}: yaw turns the box's w side off the x axis")
+    L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or false, year built or nil}: yaw turns the")
+    L.append("  -- box's w side off the x axis")
     L.append("  footprints = {")
-    for x, z, bw, bd, ang, h, kind, name, roof in footprints:
+    for x, z, bw, bd, ang, h, kind, name, roof, year in footprints:
         # The engine's yaw turns +z toward +x: a box whose w runs at angle
         # `ang` (from +x toward +z) has yaw = -ang.
         tail = f", {q(name)}" if name else ""
         if roof: tail = (tail or ", false") + ", {" + ", ".join(f(v) for v in roof) + "}"
+        if year: tail = (tail or ", false") + (", false" if not roof else "") + f", {year}"
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")
@@ -1351,7 +1398,7 @@ def main():
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f))
-    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline), f))
+    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")

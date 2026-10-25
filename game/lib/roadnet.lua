@@ -885,6 +885,25 @@ local function deck_height(e)
   end
 end
 
+-- A building's look by the year it was finished (the city model's): the
+-- stone town's plastered blocks before 1920 in their pastels, with bands
+-- between the floors; the white of classicism and functionalism; the grey
+-- concrete and pale panels of 1945-75; red and brown brick to 2000; then
+-- glass, and flats with balconies.
+local ERA = {
+  {1920, "granite", {{0.88, 0.78, 0.55}, {0.86, 0.68, 0.52}, {0.82, 0.74, 0.66}, {0.9, 0.86, 0.74}, {0.78, 0.62, 0.5}, {0.72, 0.78, 0.7}}},
+  {1945, "brick", {{0.93, 0.92, 0.88}, {0.88, 0.87, 0.82}, {0.9, 0.86, 0.72}}},
+  {1975, "brick", {{0.74, 0.73, 0.7}, {0.82, 0.8, 0.74}, {0.68, 0.66, 0.64}, {0.86, 0.84, 0.8}}},
+  {2000, "brick", {{0.62, 0.34, 0.26}, {0.55, 0.38, 0.3}, {0.7, 0.45, 0.35}, {0.78, 0.74, 0.66}}},
+}
+local function era_look(year, kind, floors, i)
+  for _, e in ipairs(ERA) do
+    if year < e[1] then return e[2], e[3][1 + i % #e[3]] end
+  end
+  if kind == "flats" and floors >= 3 then return "balconies", {0.92, 0.9, 0.86} end
+  return "glass", {1, 1, 1}
+end
+
 -- Detached houses: a painted wooden box under a gable roof, the ridge
 -- running along the street. Unit footprint, real height.
 local HOUSE = {{0.72, 0.2, 0.15}, {0.9, 0.78, 0.4}, {0.88, 0.88, 0.84}, {0.45, 0.55, 0.62}, {0.6, 0.38, 0.25}, {0.78, 0.7, 0.55}}
@@ -2433,7 +2452,7 @@ build = function(map, kit)
       clear = clear and not R.on_carriageway(p[1], p[2], 0.5)
     end
     if clear then
-      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -2629,6 +2648,7 @@ build = function(map, kit)
         end
         local FINNISH_FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}}
         local color = kind == "church" and {0.94, 0.93, 0.9} or (style == "balconies" and FINNISH_FLATS[1 + i % #FINNISH_FLATS]) or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
+        if f[10] and kind ~= "church" then style, color = era_look(f[10], kind, floors, i) end
         kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
         roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9])
@@ -2647,8 +2667,9 @@ build = function(map, kit)
   for _, o in pairs(OUT) do
     if o.placed then
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
-      local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68}) or (o.kind == "shop" and {0.84, 0.84, 0.82})
-                    or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
+      local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
+                    or (o.year and select(2, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)))
+                    or (o.kind == "shop" and {0.84, 0.84, 0.82}) or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true})
