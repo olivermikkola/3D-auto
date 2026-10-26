@@ -49,8 +49,10 @@ engine.on("tick", function(dt)
     return
   end
   if t > 0.5 and not G.vehicle and #pts == 0 then
-    -- Into a car on the road nearest the player, facing the way to go.
+    -- Into a car on the road nearest the taxi rank (in town, and not next
+    -- to a police station as Turku's lot is), facing the way to go.
     local x, _, z = engine.pos(G.player)
+    if city.has("taxi_rank") then x, z = city.place("taxi_rank") end
     last_j = city.nearest(x, z, U.ground(x, z))
     if not extend() then error("PROFILE_DRIVE: no road to drive from junction " .. tostring(last_j)) end
     local p, q = pts[1], pts[2]

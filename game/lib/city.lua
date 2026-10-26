@@ -911,18 +911,20 @@ end
 -- How wide a strip in the middle of the block each feature takes.
 local FEATURE_W = {lot = 36, plaza = 36, stunt = 36, carpark = 36, tower = 36, empire = 46}
 
-local function feature(kind, cx, cz, L)
+-- `as_is`: on real ground, where the place's own surface stays (no slab).
+local function feature(kind, cx, cz, L, as_is)
   local landmarks = require "lib.landmarks"
   if kind == "tower" then L.landmarks[#L.landmarks + 1] = landmarks.tower(cx, cz)
   elseif kind == "carpark" then L.landmarks[#L.landmarks + 1] = landmarks.carpark(cx, cz)
   elseif kind == "empire" then L.landmarks[#L.landmarks + 1] = landmarks.empire(cx, cz)
   elseif kind == "plaza" then
-    engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.75, 0.68, 0.55}}
+    if not as_is then engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.75, 0.68, 0.55}} end
   elseif kind == "stunt" then C.stunt_park(cx, cz)
   elseif kind == "lot" then
-    engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.3, 0.3, 0.32}}
+    if not as_is then engine.spawn{mesh = "cube", pos = {cx, CURB + 0.01, cz}, size = {32, 0.04, 32}, color = {0.3, 0.3, 0.32}} end
     for s = -3, 3 do
-      engine.spawn{mesh = "plane", pos = {cx + s * 4 + 2, CURB + 0.04, cz}, size = {0.15, 1, 6}, color = {0.9, 0.9, 0.9}}
+      local y = as_is and 0.06 or CURB + 0.04 -- (on real ground spawn puts it on the ground)
+      engine.spawn{mesh = "plane", pos = {cx + s * 4 + 2, y, cz}, size = {0.15, 1, 6}, color = {0.9, 0.9, 0.9}}
     end
   end
 end
