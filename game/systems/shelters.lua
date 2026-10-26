@@ -16,7 +16,7 @@ local quality = require "lib.quality"
 local S = {list = {}} -- list: {id, x, z, yaw, stop name}
 
 local W, H, D = 3.6, 2.5, 1.3 -- the shelter's length along the road, height, depth
-local FROM_KERB = 1.75         -- its front edge, from the kerb: people walk the pavement's middle (1.5 m)
+local FROM_KERB = 2.2          -- its front edge, from the kerb: people walk the pavement's middle (1.5 m, 0.35 m either side)
 local NEAR = 8                 -- how far off its road a stop may be (beyond the road's half width)
 local SHIFTS = {0, 3, -3, 6, -6, 9, -9} -- along the road from the stop, to find room
 
