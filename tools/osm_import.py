@@ -78,10 +78,10 @@ QUERY = """[out:json][timeout:300][bbox:{s},{w},{n},{e}];
  way["waterway"];way["landuse"];relation["landuse"];way["leisure"];way["amenity"];way["railway"];
  way["man_made"];node["man_made"~"^(tower|mast)$"];node["highway"~"^(crossing|traffic_signals)$"];);
 out geom tags;"""
-# Painted crossings and traffic lights alone (small), into <area>_furniture.json
-# when there's no map cache to take them from.
+# Painted crossings, traffic lights and named bus stops alone (small), into
+# <area>_furniture.json when there's no map cache to take them from.
 FURNITURE_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
-node["highway"~"^(crossing|traffic_signals)$"];
+(node["highway"~"^(crossing|traffic_signals)$"];node["highway"="bus_stop"]["name"];);
 out body;"""
 # Named parts of town, fetched on their own (small) into <area>_places.json.
 PLACES_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
@@ -798,8 +798,11 @@ def main():
     if args.only_pois:
         P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
         els = fetch_pois(cache, cfg, args.fetch)
-        # Bus stops come from the map's own data (the POI query has none).
+        # Bus stops come from the map's own data (the POI query has none),
+        # or the furniture nodes' where the town itself isn't cached.
+        small = cache.with_name(cache.stem + "_furniture.json")
         if cache.exists(): els = els + bus_stops_of(json.loads(cache.read_text())["elements"])
+        elif small.exists(): els = els + bus_stops_of(json.loads(small.read_text())["elements"])
         splice_pois(dest, els, P,
                     lambda v: f"{v:.1f}".rstrip("0").rstrip("."), lambda v: json.dumps(v, ensure_ascii=False))
         return
