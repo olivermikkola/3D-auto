@@ -189,23 +189,31 @@ function P.build()
   })
   -- A traffic light: a post and a head with red, amber and green both
   -- ways along the road (its local z). Green is lit.
-  local function signal_parts(dy)
+  -- `lit`: which lamp shines (1 red, 2 amber, 3 green).
+  local function signal_parts(dy, lit)
     local parts = {{mesh = "cylinder", pos = {0, 1.85 + dy, 0}, size = {0.12, 3.7, 0.12}, color = {0.2, 0.2, 0.21}}}
     for _, z in ipairs{0.13, -0.13} do
       local face = z > 0 and 1 or -1
       parts[#parts + 1] = {mesh = "cube", pos = {0, 3.2 + dy, z}, size = {0.36, 1.05, 0.22}, color = {0.12, 0.12, 0.13}}
-      for k, c in ipairs{{0.75, 0.1, 0.08}, {0.75, 0.55, 0.08}, {0.3, 1.0, 0.5}} do
+      for k, c in ipairs{{1.0, 0.15, 0.1}, {1.0, 0.7, 0.1}, {0.3, 1.0, 0.5}} do
+        local on = k == lit
         parts[#parts + 1] = {mesh = "cylinder", axis = "z", pos = {0, 3.53 - (k - 1) * 0.33 + dy, z + face * 0.12},
-                             size = {0.27, 0.27, 0.05}, color = c, emissive = k == 3 and 1 or 0}
+                             size = {0.27, 0.27, 0.05}, color = on and c or {c[1] * 0.3, c[2] * 0.3, c[3] * 0.3},
+                             emissive = on and 1 or 0}
       end
     end
     -- The yellow push-button box walkers press.
     parts[#parts + 1] = {mesh = "cube", pos = {0.1, 1.1 + dy, 0}, size = {0.12, 0.25, 0.14}, color = {0.95, 0.75, 0.1}}
     return parts
   end
-  engine.mesh("signal", signal_parts(0))
-  -- Knocked over (systems/lamps): about its middle, so it tumbles like a post.
-  engine.mesh("signal_down", signal_parts(-1.85))
+  engine.mesh("signal", signal_parts(0, 3))
+  -- What systems/signals shows, swapped in as the lights change.
+  engine.mesh("signal_red", signal_parts(0, 1))
+  engine.mesh("signal_amber", signal_parts(0, 2))
+  engine.mesh("signal_green", signal_parts(0, 3))
+  -- Knocked over (systems/lamps): about its middle, so it tumbles like a
+  -- post, its lights out.
+  engine.mesh("signal_down", signal_parts(-1.85, 0))
 
   -- A knocked-over lamp (systems/lamps): the same post about its middle,
   -- so it tumbles like one, and its light out.

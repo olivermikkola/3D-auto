@@ -20,6 +20,8 @@ local function road_y(a, b, x, z) return city.height_on(a, b, x, z) or U.ground(
 
 engine.on("init", function()
   if not city.network() then print("DRIVE_SWEEP: grid map, nothing to sweep"); print("DRIVE_SWEEP: PASSED"); return end
+  -- (The roads are what's checked: no traffic lights to wait at.)
+  require("systems.signals").off = true
   -- No ambient traffic or crowds in the way: just the sweep's cars.
   for id in pairs(traffic.cars) do engine.despawn(id) end
   traffic.cars, traffic.target = {}, nil

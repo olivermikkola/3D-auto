@@ -6,6 +6,7 @@ local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
 local vehicle = require "lib.vehicle"
+local signals = require "systems.signals"
 
 local T = {cars = {}}
 local LANE, CRUISE = 3.2, 11 -- LANE: how far before a bend a car aims (and its lane on a grid)
@@ -235,6 +236,23 @@ local function update(id, c, dt)
     end
     c.pull = U.clamp((c.pull or 0) + (yielding and dt or -dt), 0, 1)
     if yielding then want = math.min(want, YIELD_SPEED) end
+    -- Lights at the junction ahead: wait at the line on red, and on amber
+    -- if there's room to stop (else carry on through). Not a street racer
+    -- (a plan) or a suspect on the run (choose): they run the reds.
+    c.waiting = false
+    if c.wp == #c.path and #c.path >= 2 and not ((c.plan and #c.plan > 0) or c.choose) then
+      local a, b = c.path[#c.path - 1], c.path[#c.path]
+      local light = signals.state(c.to, math.atan(b[1] - a[1], b[2] - a[2]))
+      if light and light ~= "green" then
+        local stop = signals.stop_line(c.to)
+        local left = U.dist2d(x, z, b[1], b[2]) - stop -- to the line
+        local room = c.speed * c.speed / 10 + 1 -- what braking at 5 m/s2 takes
+        if left > -1 and (light == "red" or left > room) then
+          want = math.min(want, math.max(0, left * 0.8))
+          c.waiting = left < 6
+        end
+      end
+    end
     local hit, d = engine.raycast(x + fx * 2.3, y, z + fz * 2.3, fx, 0, fz, 12, id)
     if hit then
       local tag = engine.tag(hit)
@@ -259,7 +277,10 @@ local function update(id, c, dt)
     end
 
     -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
-    c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and (c.stuck or 0) + dt or 0
+    -- (Not while waiting at a red light, nor in the queue behind one.)
+    local queued = c.waiting or (hit and d < 8 and T.cars[hit] and T.cars[hit].waiting) or false
+    c.waiting = queued -- (so the queue passes it back, car to car)
+    c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and not queued and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
     if not c.keep and (c.lost or c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
       local nx, nz, nyaw2, ny = place(c, 90)
