@@ -12,7 +12,9 @@ use std::path::Path;
 pub struct Vertex {
     pub pos: [f32; 3],
     /// Unit normal, each axis -1..1 stored as 0..254 (127 is zero); w is
-    /// the facade the shader draws windows of on a wall (0: none).
+    /// the facade the shader draws windows of on a wall (0: none; see
+    /// `set_facade`). A facade's wall is upright, so its y is free and holds
+    /// how far along the wall the vertex is, in window bays.
     pub normal: [u8; 4],
     /// Color 0..255. Alpha is emissive: 0 = lit normally, 255 = glows at
     /// night (headlights, windows, bulbs). On a facade it is instead the
@@ -43,7 +45,8 @@ impl Vertex {
 
     pub fn normal(&self) -> Vec3 {
         let f = |b: u8| (b as f32 - 127.0) / 127.0;
-        v3(f(self.normal[0]), f(self.normal[1]), f(self.normal[2]))
+        let y = if self.normal[3] > 0 { 0.0 } else { f(self.normal[1]) };
+        v3(f(self.normal[0]), y, f(self.normal[2]))
     }
 
     pub fn color(&self) -> Vec3 {
@@ -54,20 +57,36 @@ impl Vertex {
         if self.normal[3] > 0 { 0.0 } else { self.color[3] as f32 / 255.0 }
     }
 
-    /// The facade on this wall (0: none) and its height above the foot (m).
-    pub fn facade(&self) -> (u8, f32) {
-        (self.normal[3], self.color[3] as f32 * FACADE_STEP)
+    /// The facade on this wall (0: none, else as `set_facade` takes it),
+    /// its height above the foot (m) and the byte for how far along it is.
+    pub fn facade(&self) -> (u8, f32, u8) {
+        (self.normal[3], self.color[3] as f32 * FACADE_STEP, self.normal[1])
     }
 
-    /// Mark as facade `id` at `height` m above the building's foot.
-    pub fn set_facade(&mut self, id: u8, height: f32) {
+    /// Mark as facade `id` at `height` m above the building's foot and
+    /// `along` the wall: in eighths of a bay, or with FACADE_SCALED set in
+    /// `id` (a unit mesh its entity stretches), in 255ths of the wall, the
+    /// shader working out the bays from the entity's scale.
+    pub fn set_facade(&mut self, id: u8, height: f32, along: u8) {
         self.normal[3] = id;
+        self.normal[1] = along;
         self.color[3] = (height / FACADE_STEP).round().clamp(0.0, 255.0) as u8;
     }
 }
 
 /// A facade's height above the foot is kept in half metres (up to 127 m).
 pub const FACADE_STEP: f32 = 0.5;
+/// Set in a facade id: the mesh is a unit one its entity scales to size.
+pub const FACADE_SCALED: u8 = 0x80;
+/// The width of a facade's window bays, by facade id (render.rs's `bay`).
+pub fn facade_bay(id: u8) -> f32 {
+    match id & !FACADE_SCALED {
+        1 => 3.0,
+        2 => 2.7,
+        3 => 1.6,
+        _ => 3.3,
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
@@ -124,7 +143,7 @@ impl Mesh {
             let facade = v.facade();
             *v = Vertex::new(v3(p[0], p[1], p[2]), v3(n[0], n[1], n[2]), v.color(), v.emissive());
             if facade.0 > 0 {
-                v.set_facade(facade.0, facade.1);
+                v.set_facade(facade.0, facade.1, facade.2);
             }
         }
         Ok(())
@@ -147,22 +166,56 @@ impl Mesh {
             let p = turn(v.pos().mul(scale)) + offset;
             let n = turn(v.normal().mul(inv)).norm();
             let mut out = Vertex::new(p, n, v.color().mul(col), v.emissive().max(emissive));
-            let (id, h) = v.facade();
+            let (id, h, along) = v.facade();
             if id > 0 {
-                out.set_facade(id, h * scale.y);
+                out.set_facade(id, h * scale.y, along);
             }
             self.verts.push(out);
         }
         self.indices.extend(src.indices.iter().map(|i| i + base));
     }
 
-    /// Mark the vertices from `from` on as facade `id`, their heights
-    /// measured from the lowest of them (the walls' foot).
-    pub fn mark_facade(&mut self, from: usize, id: u8) {
+    /// Mark the upright walls among the vertices from `from` on as facade
+    /// `id`: heights from the lowest vertex (the walls' foot), and along each
+    /// wall in whole bays, as many as fit its length, so windows sit evenly
+    /// from corner to corner. `scaled`: a unit mesh its entity stretches.
+    pub fn mark_facade(&mut self, from: usize, id: u8, scaled: bool) {
         let foot = self.verts[from..].iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min);
-        for v in &mut self.verts[from..] {
-            let h = v.pos[1] - foot;
-            v.set_facade(id, h);
+        // The walls: runs of vertices facing the same way (a box's face, an
+        // outline's side: each is a quad of its own). (Not by plane: on a long
+        // wall the normal's rounding put its two ends in different planes.)
+        let mut walls: Vec<Vec<usize>> = Vec::new();
+        for i in from..self.verts.len() {
+            let v = &self.verts[i];
+            if v.normal().y.abs() > 0.3 {
+                continue;
+            }
+            match walls.last_mut() {
+                Some(w)
+                    if *w.last().unwrap() == i - 1
+                        && self.verts[i - 1].normal[0] == v.normal[0]
+                        && self.verts[i - 1].normal[2] == v.normal[2] =>
+                {
+                    w.push(i)
+                }
+                _ => walls.push(vec![i]),
+            }
+        }
+        let bay = facade_bay(id);
+        for idx in &walls {
+            let n = self.verts[idx[0]].normal();
+            let (tx, tz) = (-n.z, n.x);
+            let at = |v: &Vertex| v.pos[0] * tx + v.pos[2] * tz;
+            let lo = idx.iter().map(|&i| at(&self.verts[i])).fold(f32::INFINITY, f32::min);
+            let hi = idx.iter().map(|&i| at(&self.verts[i])).fold(f32::NEG_INFINITY, f32::max);
+            let len = (hi - lo).max(1e-3);
+            let bays = (len / bay).round().clamp(1.0, 31.0);
+            for &i in idx {
+                let t = (at(&self.verts[i]) - lo) / len;
+                let h = self.verts[i].pos[1] - foot;
+                let (fid, along) = if scaled { (id | FACADE_SCALED, t * 255.0) } else { (id, t * bays * 8.0) };
+                self.verts[i].set_facade(fid, h, along.round() as u8);
+            }
         }
     }
 }
@@ -472,19 +525,50 @@ mod tests {
     fn a_facade_counts_heights_from_its_foot_and_survives_copying() {
         let mut m = Mesh::default();
         m.append_tilted(&cube(), v3(0.0, 5.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 10.0, 4.0), Vec3::ONE, 0.0);
-        m.mark_facade(0, 2);
+        m.mark_facade(0, 2, false);
         for v in &m.verts {
-            let (id, h) = v.facade();
+            let (id, h, along) = v.facade();
+            if v.normal().y.abs() > 0.5 {
+                assert_eq!(id, 0, "roof and floor aren't walls");
+                continue;
+            }
             assert_eq!(id, 2);
             assert!((h - v.pos[1]).abs() < 0.26, "height {h} at y {}", v.pos[1]); // foot at y 0
             assert_eq!(v.emissive(), 0.0, "a facade's alpha is its height, not a glow");
+            // A 4 m wall holds one 2.7 m bay: its ends are 0 and 1 bay along.
+            assert!(along == 0 || along == 8, "along {along}");
+            assert_eq!(v.normal().y, 0.0);
         }
         // Copied into another mesh, raised and stretched twice as tall.
         let mut big = Mesh::default();
         big.append_tilted(&m, v3(0.0, 3.0, 0.0), (0.5, 0.0, 0.0), v3(1.0, 2.0, 1.0), Vec3::ONE, 0.0);
         let top = big.verts.iter().map(|v| v.facade().1).fold(0.0, f32::max);
         assert!((top - 20.0).abs() < 0.26, "top {top}");
-        assert!(big.verts.iter().all(|v| v.facade().0 == 2));
+        assert!(big.verts.iter().all(|v| v.facade().0 == 2 || v.normal().y.abs() > 0.5));
+        assert!(big.verts.iter().filter(|v| v.facade().0 == 2).all(|v| v.facade().2 == 0 || v.facade().2 == 8));
+
+        // A long wall far from the origin, slightly off the axes (its
+        // normal's rounding put its ends in different planes once): 40 bays.
+        let mut long = Mesh::default();
+        long.append_tilted(
+            &prism(&[(0.0, 0.0), (120.0, 1.3), (120.0, 11.3), (0.0, 10.0)], 0.0, 12.0, Vec3::ONE),
+            v3(-300.0, 0.0, 250.0),
+            (0.0, 0.0, 0.0),
+            Vec3::ONE,
+            Vec3::ONE,
+            0.0,
+        );
+        long.mark_facade(0, 1, false);
+        let along: Vec<u8> = long.verts.iter().filter(|v| v.facade().0 == 1 && v.normal().z.abs() > 0.9).map(|v| v.facade().2).collect();
+        assert!(along.contains(&0) && along.contains(&248), "a 120 m wall from 0 to 31 bays (the most): {along:?}");
+
+        // A unit box its entity scales: along the wall in 255ths.
+        let mut unit = Mesh::default();
+        unit.append_tilted(&cube(), Vec3::ZERO, (0.0, 0.0, 0.0), Vec3::ONE, Vec3::ONE, 0.0);
+        unit.mark_facade(0, 1, true);
+        let walls: Vec<_> = unit.verts.iter().filter(|v| v.facade().0 > 0).collect();
+        assert_eq!(walls.len(), 16);
+        assert!(walls.iter().all(|v| v.facade().0 == 1 | FACADE_SCALED && (v.facade().2 == 0 || v.facade().2 == 255)));
     }
 
     #[test]

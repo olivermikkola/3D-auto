@@ -514,7 +514,11 @@ local function building_mesh(style, floors, facade)
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
   end
-  parts[1].facade = facade
+  parts[1].facade, parts[1].facade_scaled = facade, facade and true
+  if facade == 1 then
+    -- The old town's cornice: a deep moulding under the roof, in the wall's colour.
+    parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 - 0.35, 0}, size = {1.035, 0.7, 1.035}, color = {0.9, 0.9, 0.88}}
+  end
   parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.3, 0}, size = {1.02, 0.6, 1.02}, color = {0.6, 0.6, 0.6}}
   parts[#parts + 1] = {mesh = "cube", pos = {0.2, h / 2 + 1.0, -0.15}, size = {0.25, 1.0, 0.2}, color = {0.7, 0.7, 0.7}}
   engine.mesh(name, parts)

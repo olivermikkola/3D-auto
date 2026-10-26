@@ -2717,6 +2717,10 @@ build = function(map, kit)
           local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
           local nx, nz = dz / len, -dx / len
           if inside_poly(o.pts, mx + nx * 0.3, mz + nz * 0.3) then nx, nz = -nx, -nz end
+          if facade == OLD_TOWN then -- the cornice under the roof
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
+                               size = {0.36, 0.7, len + 0.36}, color = {color[1] * 0.9, color[2] * 0.9, color[3] * 0.88}, abs = true})
+          end
           for f = 0, floors - 1 do
             local lit = (f * 7 + o.i * 3 + k) % 3 == 0
             walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + f * kit.FLOOR + 1.9, mz + nz * 0.06},

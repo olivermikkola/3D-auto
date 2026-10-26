@@ -34,15 +34,29 @@ varying vec3 v_color;
 varying vec3 v_normal;
 varying vec3 v_world;
 varying float v_emissive;
-varying vec2 v_facade; // which facade (0: none), height above the foot (m)
+varying vec3 v_facade; // which facade (0: none), height above the foot (m), bays along the wall
+// A facade's window bay (m), as mesh.rs's facade_bay.
+float bay_of(float id) { return id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3)); }
 void main() {
     v_world = (model * vec4(in_pos, 1.0)).xyz;
-    v_normal = (model * vec4((in_normal.xyz / 127.0 - 1.0) * inv_scale2.xyz, 0.0)).xyz;
+    vec3 n = in_normal.xyz / 127.0 - 1.0;
+    // A facade's wall is upright: its normal's y byte holds how far along it is.
+    float id = in_normal.w;
+    float scaled = step(127.5, id);
+    id -= 128.0 * scaled;
+    if (id > 0.5) n.y = 0.0;
+    v_normal = (model * vec4(n * inv_scale2.xyz, 0.0)).xyz;
     v_color = in_color.rgb / 255.0;
     // On a facade the colour's alpha is the height, not a glow.
-    float facade = in_normal.w > 0.5 ? in_normal.w : 0.0;
-    v_facade = vec2(facade, facade > 0.0 ? in_color.a * 0.5 : 0.0);
-    v_emissive = facade > 0.0 ? 0.0 : in_color.a / 255.0;
+    float along = in_normal.y / 8.0;
+    if (scaled > 0.5) {
+        // A unit box stretched by its entity: as many bays as fit the wall.
+        vec3 size = inversesqrt(inv_scale2.xyz);
+        float len = abs(n.x) > abs(n.z) ? size.z : size.x;
+        along = in_normal.y / 255.0 * max(1.0, floor(len / bay_of(id) + 0.5));
+    }
+    v_facade = id > 0.5 ? vec3(id, in_color.a * 0.5, along) : vec3(0.0);
+    v_emissive = id > 0.5 ? 0.0 : in_color.a / 255.0;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }"#;
 
@@ -51,7 +65,7 @@ varying vec3 v_color;
 varying vec3 v_normal;
 varying vec3 v_world;
 varying float v_emissive;
-varying vec2 v_facade;
+varying vec3 v_facade;
 uniform mat4 light_vp;
 uniform vec4 tint;
 uniform vec4 extra; // x = entity glow, y = how wet the ground is, z = snow cover
@@ -100,17 +114,16 @@ float hash(vec2 p) {
 // 4 new render (big dark-framed windows, shops below). `wall` is the wall's
 // colour; `win` comes back 1 in a window that's lit at night, `pane` 1 on
 // glass (it mirrors the sky after lighting).
-vec3 facade(float id, float y, vec3 n, vec3 wall, out float win, out float pane) {
+// `along` counts bays from the wall's corner (whole ones fit its length).
+vec3 facade(float id, float y, float along, vec3 n, vec3 wall, out float win, out float pane) {
     win = 0.0;
-    vec2 t = normalize(vec2(-n.z, n.x));
-    float u = dot(v_world.xz, t);
     float fl = floor(y / 3.5);
     float fy = y - fl * 3.5;
     float old = step(id, 1.5);
     float glassy = step(2.5, id) * step(id, 3.5);
-    float bay = id < 1.5 ? 2.9 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3));
-    float col = floor(u / bay);
-    float fu = abs(u - (col + 0.5) * bay);
+    float bay = id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3));
+    float col = floor(along);
+    float fu = abs(fract(along) - 0.5) * bay;
     // Shops along the street on the old town's and new buildings' ground floor.
     float shop = (old + step(3.5, id)) * (1.0 - step(0.5, fl)); // facades 1 and 4, ground floor
     float hw = mix(id < 1.5 ? 0.55 : (id < 2.5 ? 0.8 : 0.9), bay * 0.38, shop);
@@ -123,7 +136,9 @@ vec3 facade(float id, float y, vec3 n, vec3 wall, out float win, out float pane)
         frame = 1.0 - inside;
     }
     // (The wall's direction rounded: the normal varies a little across a face.)
-    float h = hash(vec2(col, fl) + floor(n.xz * 4.0 + 0.5) * 97.0);
+    // (Seeded by where the window's middle is, so it's the same all across it.)
+    vec2 mid = v_world.xz - normalize(vec2(-n.z, n.x)) * (fract(along) - 0.5) * bay;
+    float h = hash(floor(mid * 0.5 + 0.25) + vec2(fl * 7.0, 0.0));
     vec3 glass = mix(vec3(0.1, 0.12, 0.15), ambient.rgb * 0.55, 0.25 + 0.35 * h);
     vec3 trim = id < 1.5 ? vec3(0.93, 0.92, 0.88) : (id < 3.5 ? wall * 0.8 : vec3(0.22, 0.22, 0.23));
     // A string course along the old town's floors, and a darker plinth under the shops.
@@ -145,7 +160,7 @@ void main() {
     if (v_facade.x > 0.5 && abs(n.y) < 0.4) {
         // Far off, the pattern would shimmer: it fades to its average.
         float far = smoothstep(110.0, 220.0, length(v_world - eye.xyz));
-        vec3 drawn = facade(v_facade.x, v_facade.y, n, base, lit_window, pane);
+        vec3 drawn = facade(v_facade.x, v_facade.y, v_facade.z, n, base, lit_window, pane);
         base = mix(drawn, base * 0.8, far);
         lit_window *= 1.0 - far;
         pane *= 1.0 - far;
