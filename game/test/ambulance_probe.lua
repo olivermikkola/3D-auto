@@ -13,6 +13,7 @@ local H = require "lib.health"
 local input = require "lib.input"
 local wanted = require "lib.wanted"
 local robot = require "test.robot"
+local vehicle = require "lib.vehicle"
 local ambulance = require "systems.ambulance"
 local traffic = require "systems.traffic"
 local peds = require "systems.peds"
@@ -42,7 +43,9 @@ end
 engine.on("patient_lost", function(why)
   local c = ambulance.call_now()
   local x, _, z = engine.pos(G.vehicle or G.player)
-  print(string.format("AMBULANCE_PROBE: call lost: %s (car at %.0f, %.0f; %s m to go by the GPS)", why, x, z, tostring(gps.left())))
+  local st = c and c.stop
+  print(string.format("AMBULANCE_PROBE: call lost: %s (car at %.0f, %.0f; %s m to go by the GPS; %s m straight, %.1f m/s)", why, x, z,
+    tostring(gps.left()), st and string.format("%.1f", U.dist2d(x, z, st[1], st[2])) or "?", G.vehicle and vehicle.speed(G.vehicle) or 0))
 end)
 
 local driver
@@ -97,7 +100,7 @@ local function script()
   check(gps.target() and gps.target().id == c.marker, "the GPS leads to them")
   check(G.errand and G.errand_deadline, "the HUD says where, with a clock")
 
-  driver = robot.gps_driver(15, 6)
+  driver = robot.gps_driver(15, 6, 6) -- (into the 10 m the hospital takes them in: a stop 12 m out by the route can be 10.2 m off)
   local t0 = engine.time()
   wait(function() return ambulance.state() == "ride" end, c.clock + 5, "the robot gets to the patient by the GPS")
   print(string.format("AMBULANCE_PROBE %s: picked up in %.0f s", map, engine.time() - t0))
@@ -108,7 +111,16 @@ local function script()
   H.damage(G.vehicle, 1)
   check(math.abs(c.deadline - (d0 - ambulance.KNOCK)) < 1e-6, "a knock costs seconds")
   local cash0 = G.cash
-  wait(function() return ambulance.state() == nil end, c.deadline - engine.time() + 5, "the robot gets them to hospital in time")
+  local log_at = engine.time() + 15
+  wait(function()
+    if engine.time() > log_at and G.vehicle then -- (where it was, should it not make it)
+      log_at = engine.time() + 15
+      local x, _, z = engine.pos(G.vehicle)
+      print(string.format("AMBULANCE_PROBE: riding at %.0f, %.0f, %.1f m/s, %s m to go (%.1f m straight)", x, z, vehicle.speed(G.vehicle),
+        tostring(gps.left()), U.dist2d(x, z, c.stop[1], c.stop[2])))
+    end
+    return ambulance.state() == nil
+  end, c.deadline - engine.time() + 5, "the robot gets them to hospital in time")
   local last = ambulance.last
   check(last and G.cash - cash0 == last.pay + last.bonus,
     string.format("paid $%d with %.0f s to spare", last and last.pay or -1, last and last.left or -1))

@@ -1718,13 +1718,6 @@ build = function(map, kit)
     end
     return best
   end
-  -- None by the game's pads either: the ambulance pulls up by the hospital's
-  -- (a post at its kerb held the robot 9 m short in Raisio).
-  local function by_pad(x, z)
-    for _, p in pairs(map.specials or {}) do
-      if math.abs(x - p[1]) < 32 and math.abs(z - p[2]) < 32 then return true end
-    end
-  end
   for k = 1, #(map.signals or {}), 2 do
     local x, z = map.signals[k], map.signals[k + 1]
     local ei, si, cx, cz, d = R.nearest_edge(x, z, true)
@@ -1742,7 +1735,7 @@ build = function(map, kit)
         local on_road = H.near(px, pz, 40, function(it)
           return it.edge and it.edge ~= ei and dist_seg(px, pz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 2.5
         end)
-        if not on_road and not under_roof(px, pz) and not by_pad(px, pz) then
+        if not on_road and not under_roof(px, pz) then
           local id = kit.static{mesh = "signal", pos = {px, 0.05 + (e.height and e.height(px, pz) or (GROUND and GROUND(px, pz) or 0)), pz},
                                 yaw = yaw, size = {0.3, 7.4, 0.3}, tag = "signal", abs = true, breaks_at = SIGNAL_BREAKS_AT}
           if j then table.insert(NET.signals.posts, {id = id, x = px, z = pz, yaw = yaw, junction = j}) end

@@ -91,13 +91,14 @@ end
 
 -- A driver that follows the GPS line (lib/gps) as it's redrawn and stops
 -- where it ends. d.inputs(car) -> throttle, steer, handbrake, for
--- input.drive; d.arrived once stopped within 6 m of the line's end. It
+-- input.drive; d.arrived once stopped with `there` m of the line left (12
+-- if not given). It
 -- backs up for 1.5 s when stuck for 2. Stuck within 15 m of one spot for
 -- 12 s all told, it's towed 15 m on along the line (at most twice; the
 -- spot is printed: a place on the map a car gets stuck), so a test of a
 -- job isn't a test of the robot's driving.
 local TOW_AFTER, TOW_MAX = 12, 2
-function R.gps_driver(fast, slow)
+function R.gps_driver(fast, slow, there)
   local gps = require "lib.gps"
   local g = {redraws = 0, still = 0, arrived = false, tows = 0, stuck_for = 0}
   local inner, last
@@ -113,7 +114,7 @@ function R.gps_driver(fast, slow)
       last, g.redraws = route, g.redraws + 1
     end
     local speed = math.abs(require("lib.vehicle").speed(car))
-    if route.length < 12 then -- there: stop
+    if route.length < (there or 12) then -- there: stop
       g.arrived = speed < 1
       return 0, 0, true
     end
