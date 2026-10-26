@@ -95,7 +95,9 @@ engine.on("init", function()
   end
   G.cam_yaw = 0.3
 
-  traffic.start(20)
+  local quality = require "lib.quality"
+  traffic.start(quality.pick(quality.TRAFFIC))
+  quality.watch(function() if traffic.target and traffic.target > 0 then traffic.target = quality.pick(quality.TRAFFIC) end end)
   peds.start()
   pickups.start()
   -- The hospital: where you wake up after getting wasted.
@@ -185,6 +187,7 @@ if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
 if os.getenv("CONVOY_TEST") then require "test.convoy_probe" end
 if os.getenv("SIGNALS_TEST") then require "test.signals_probe" end
 if os.getenv("SHELTERS_TEST") then require "test.shelters_probe" end
+if os.getenv("QUALITY_TEST") then require "test.quality_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end

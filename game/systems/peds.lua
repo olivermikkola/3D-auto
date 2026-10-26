@@ -9,7 +9,8 @@ local prefabs = require "lib.prefabs"
 local H = require "lib.health"
 
 local Ped = {peds = {}, down = {}}
-local COUNT, WALK, RUN = 40, 1.4, 6.5
+local WALK, RUN = 1.4, 6.5
+local quality = require "lib.quality"
 local PASS = 0.8 -- metres right of the pavement's middle a ped may step to pass
 local SKINS = {{0.95, 0.8, 0.65}, {0.85, 0.65, 0.5}, {0.6, 0.42, 0.3}, {0.4, 0.28, 0.2}}
 local SHIRTS = {{0.8, 0.2, 0.2}, {0.2, 0.4, 0.8}, {0.9, 0.8, 0.3}, {0.3, 0.6, 0.35}, {0.15, 0.15, 0.15}, {0.9, 0.9, 0.9}, {0.6, 0.3, 0.6}, {0.9, 0.5, 0.2}}
@@ -290,7 +291,7 @@ end
 
 function Ped.start()
   local px, _, pz = U.player_pos()
-  for _ = 1, COUNT do spawn_ped(px, pz, 0, 140) end
+  for _ = 1, quality.pick(quality.PEDS) do spawn_ped(px, pz, 0, 140) end
 end
 
 -- ---- behaviour ----------------------------------------------------------------
@@ -534,7 +535,7 @@ engine.on("tick", function(dt)
     end
     -- A few at a time, so the street fills up soon after you arrive somewhere new.
     for _ = 1, 3 do
-      if Ped.count() >= COUNT then break end
+      if Ped.count() >= quality.pick(quality.PEDS) then break end
       spawn_ped(px, pz, 70, 140)
     end
   end
