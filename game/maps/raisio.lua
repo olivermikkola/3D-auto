@@ -122,6 +122,8 @@ return {
   cranes = osm.cranes,
   piers = osm.piers,
   pois = osm.pois, -- for missions (lib/pois)
+  zebras = osm.zebras, -- painted crossings, x, z, ...
+  signals = osm.signals, -- traffic lights, x, z, ...
   fog = {170, 700}, -- see across the bay to the shipyard
   trees = 6000,
   lamp_every = 60,

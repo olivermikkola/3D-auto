@@ -76,8 +76,13 @@ TILE = (0.025, 0.05)  # degrees of latitude, longitude fetched at a time
 QUERY = """[out:json][timeout:300][bbox:{s},{w},{n},{e}];
 (way["highway"];way["building"];relation["building"];way["natural"];relation["natural"];
  way["waterway"];way["landuse"];relation["landuse"];way["leisure"];way["amenity"];way["railway"];
- way["man_made"];node["man_made"~"^(tower|mast)$"];);
+ way["man_made"];node["man_made"~"^(tower|mast)$"];node["highway"~"^(crossing|traffic_signals)$"];);
 out geom tags;"""
+# Painted crossings and traffic lights alone (small), into <area>_furniture.json
+# when there's no map cache to take them from.
+FURNITURE_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
+node["highway"~"^(crossing|traffic_signals)$"];
+out body;"""
 # Named parts of town, fetched on their own (small) into <area>_places.json.
 PLACES_QUERY = """[out:json][timeout:60][bbox:{s},{w},{n},{e}];
 node["place"~"^(town|suburb|neighbourhood)$"];
@@ -642,6 +647,50 @@ def poi_lines(pois, f, q):
     return L
 
 
+# Crossings painted on the road (Finland paints the uncontrolled ones too).
+PAINTED = {"marked", "zebra", "traffic_signals", "uncontrolled"}
+
+
+def furniture_of(els, P, inside):
+    """Painted crossings and traffic lights: two lists of (x, z), sorted so
+    the file doesn't change when the data comes in another order."""
+    crossings, signals = set(), set()
+    for el in els:
+        if "lat" not in el: continue
+        t = el.get("tags", {})
+        x, z = P(el["lat"], el["lon"])
+        if not inside(x, z): continue
+        if t.get("highway") == "crossing" and (t.get("crossing") in PAINTED or t.get("crossing:markings", "no") != "no"):
+            crossings.add((round(x, 1), round(z, 1)))
+        elif t.get("highway") == "traffic_signals":
+            signals.add((round(x, 1), round(z, 1)))
+    return sorted(crossings), sorted(signals)
+
+
+def furniture_lines(crossings, signals, f):
+    return ["  -- crossings painted on the road and traffic lights: x, z, x, z, ...",
+            "  zebras = {" + ", ".join(f"{f(x)}, {f(z)}" for x, z in crossings) + "},",
+            "  signals = {" + ", ".join(f"{f(x)}, {f(z)}" for x, z in signals) + "},"]
+
+
+def splice_furniture(dest, els, P, f):
+    """Put crossings and traffic lights into an already generated map,
+    inside its bounds, leaving the rest of it as it was."""
+    text = dest.read_text()
+    m = re.search(r"\n  bounds = \{(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\},", text)
+    X0, Z0, X1, Z1 = map(float, m.groups())
+    def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    crossings, signals = furniture_of(els, P, inside)
+    out = []
+    for line in text.split("\n"):
+        if line.startswith(("  -- crossings painted on the road", "  zebras = {", "  signals = {")): continue
+        if line.startswith("  -- points of interest"):
+            out.extend(furniture_lines(crossings, signals, f))
+        out.append(line)
+    dest.write_text("\n".join(out))
+    print(f"{dest}: {len(crossings)} painted crossings, {len(signals)} traffic lights", file=sys.stderr)
+
+
 def fetch_pois(cache, cfg, fetch):
     """<area>_pois.json, downloaded if asked to or not there yet."""
     path = cache.with_name(cache.stem + "_pois.json")
@@ -712,11 +761,13 @@ def main():
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
     ap.add_argument("--only-pois", action="store_true",
                     help="only put points of interest into the existing map (no terrain or map cache needed)")
+    ap.add_argument("--only-furniture", action="store_true",
+                    help="only put painted crossings and traffic lights into the existing map (from the map cache)")
     ap.add_argument("--terrain", nargs="+", type=Path,
                     help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
     cfg = AREAS[args.area]
-    if cfg.get("require_terrain") and not args.terrain and not args.only_railways and not args.only_pois:
+    if cfg.get("require_terrain") and not args.terrain and not args.only_railways and not args.only_pois and not args.only_furniture:
         ap.error(f"{args.area} requires verified 2 m terrain; no flat-map fallback is permitted")
     elevation = None
     if args.terrain:
@@ -751,6 +802,18 @@ def main():
         if cache.exists(): els = els + bus_stops_of(json.loads(cache.read_text())["elements"])
         splice_pois(dest, els, P,
                     lambda v: f"{v:.1f}".rstrip("0").rstrip("."), lambda v: json.dumps(v, ensure_ascii=False))
+        return
+    if args.only_furniture:
+        P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
+        if cache.exists() and not args.fetch:
+            els = json.loads(cache.read_text())["elements"]
+        else: # just the nodes, not the whole town again
+            small = cache.with_name(cache.stem + "_furniture.json")
+            if args.fetch or not small.exists():
+                print("fetching crossings and traffic lights from Overpass...", file=sys.stderr)
+                small.write_text(json.dumps(overpass(FURNITURE_QUERY.format(s=s, w=w, n=n, e=e), 90)))
+            els = json.loads(small.read_text())["elements"]
+        splice_furniture(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."))
         return
     if args.fetch:
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -1423,6 +1486,7 @@ def main():
     for wd, pts in piers:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
     L.append("  },")
+    L.extend(furniture_lines(*furniture_of(els, P, inside), f))
     L.extend(poi_lines(pois_of(fetch_pois(cache, cfg, args.fetch), P, inside), f, q))
     L.append("  -- named parts of town: {name, x, z, \"town\", \"suburb\" or \"neighbourhood\"}")
     L.append("  areas = {")
