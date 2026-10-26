@@ -34,11 +34,15 @@ varying vec3 v_color;
 varying vec3 v_normal;
 varying vec3 v_world;
 varying float v_emissive;
+varying vec2 v_facade; // which facade (0: none), height above the foot (m)
 void main() {
     v_world = (model * vec4(in_pos, 1.0)).xyz;
     v_normal = (model * vec4((in_normal.xyz / 127.0 - 1.0) * inv_scale2.xyz, 0.0)).xyz;
     v_color = in_color.rgb / 255.0;
-    v_emissive = in_color.a / 255.0;
+    // On a facade the colour's alpha is the height, not a glow.
+    float facade = in_normal.w > 0.5 ? in_normal.w : 0.0;
+    v_facade = vec2(facade, facade > 0.0 ? in_color.a * 0.5 : 0.0);
+    v_emissive = facade > 0.0 ? 0.0 : in_color.a / 255.0;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }"#;
 
@@ -47,6 +51,7 @@ varying vec3 v_color;
 varying vec3 v_normal;
 varying vec3 v_world;
 varying float v_emissive;
+varying vec2 v_facade;
 uniform mat4 light_vp;
 uniform vec4 tint;
 uniform vec4 extra; // x = entity glow, y = how wet the ground is, z = snow cover
@@ -81,9 +86,70 @@ float shadow(float ndl) {
     return mix(lit / 9.0, 1.0, smoothstep(0.8, 1.0, max(c.x, c.y)));
 }
 
+// (No sin: big arguments lose precision on some GPUs, and the pattern speckles.)
+float hash(vec2 p) {
+    vec3 q = fract(vec3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+// Windows drawn by the pixel on a building's walls: the buildings are boxes
+// scaled to size, and windows modelled in them would stretch with them.
+// Facades: 1 old town (tall windows in white frames, shops below, a string
+// course each floor), 2 flats (wide windows, plain), 3 glass (curtain wall),
+// 4 new render (big dark-framed windows, shops below). `wall` is the wall's
+// colour; `win` comes back 1 in a window that's lit at night, `pane` 1 on
+// glass (it mirrors the sky after lighting).
+vec3 facade(float id, float y, vec3 n, vec3 wall, out float win, out float pane) {
+    win = 0.0;
+    vec2 t = normalize(vec2(-n.z, n.x));
+    float u = dot(v_world.xz, t);
+    float fl = floor(y / 3.5);
+    float fy = y - fl * 3.5;
+    float old = step(id, 1.5);
+    float glassy = step(2.5, id) * step(id, 3.5);
+    float bay = id < 1.5 ? 2.9 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3));
+    float col = floor(u / bay);
+    float fu = abs(u - (col + 0.5) * bay);
+    // Shops along the street on the old town's and new buildings' ground floor.
+    float shop = (old + step(3.5, id)) * (1.0 - step(0.5, fl)); // facades 1 and 4, ground floor
+    float hw = mix(id < 1.5 ? 0.55 : (id < 2.5 ? 0.8 : 0.9), bay * 0.38, shop);
+    float lo = mix(id < 1.5 ? 1.0 : 1.05, 0.45, shop);
+    float hi = mix(id < 1.5 ? 2.85 : 2.55, 3.05, shop);
+    float inside = step(fu, hw) * step(lo, fy) * step(fy, hi);
+    float frame = step(fu, hw + 0.12) * step(lo - 0.12, fy) * step(fy, hi + 0.1) * (1.0 - inside);
+    if (glassy > 0.5) { // all glass but the mullions and floor slabs
+        inside = step(fu, bay * 0.5 - 0.06) * step(0.35, fy);
+        frame = 1.0 - inside;
+    }
+    // (The wall's direction rounded: the normal varies a little across a face.)
+    float h = hash(vec2(col, fl) + floor(n.xz * 4.0 + 0.5) * 97.0);
+    vec3 glass = mix(vec3(0.1, 0.12, 0.15), ambient.rgb * 0.55, 0.25 + 0.35 * h);
+    vec3 trim = id < 1.5 ? vec3(0.93, 0.92, 0.88) : (id < 3.5 ? wall * 0.8 : vec3(0.22, 0.22, 0.23));
+    // A string course along the old town's floors, and a darker plinth under the shops.
+    float course = old * step(fy, 0.22) * step(0.5, fl);
+    vec3 c = mix(wall, wall * 0.82, course);
+    c = mix(c, wall * 0.6, shop * (1.0 - step(0.45, fy)));
+    c = mix(c, trim, frame);
+    c = mix(c, glass, inside);
+    win = inside * step(h, shop > 0.5 ? 0.6 : 0.3);
+    pane = inside * (0.3 + 0.25 * h);
+    return c;
+}
+
 void main() {
     vec3 n = normalize(v_normal);
     vec3 base = v_color * tint.rgb;
+    float lit_window = 0.0;
+    float pane = 0.0;
+    if (v_facade.x > 0.5 && abs(n.y) < 0.4) {
+        // Far off, the pattern would shimmer: it fades to its average.
+        float far = smoothstep(110.0, 220.0, length(v_world - eye.xyz));
+        vec3 drawn = facade(v_facade.x, v_facade.y, n, base, lit_window, pane);
+        base = mix(drawn, base * 0.8, far);
+        lit_window *= 1.0 - far;
+        pane *= 1.0 - far;
+    }
     float ndl = max(dot(n, sun.xyz), 0.0);
     vec3 light = mix(ground.rgb, ambient.rgb, 0.5 + 0.5 * n.y) + sun_color.rgb * ndl * shadow(ndl);
     vec3 lamps = vec3(0.0);
@@ -113,7 +179,14 @@ void main() {
     light += lamps * wet * 0.8;
     light += lamps / (1.0 + 0.4 * lamps);
     float glow = v_emissive * params.x + extra.x;
+    // A lit window at night: warm light from inside, not the glass's own colour.
+    base = mix(base, vec3(1.0, 0.82, 0.5) * 0.55, lit_window * params.x);
+    glow += lit_window * params.x;
     vec3 col = base * light * (1.0 - 0.35 * wet) + base * glow * 1.8;
+    // Glass mirrors the sky (the fog's colour is the horizon's: dark at night).
+    col = mix(col, fog_color.rgb * 0.75, pane * (1.0 - lit_window * params.x));
+    // Glass mirrors the sky (the fog's colour is the horizon's: dark at night).
+    col = mix(col, fog_color.rgb * 0.75, pane * (1.0 - lit_window * params.x));
     vec3 to_eye = normalize(eye.xyz - v_world);
     float sheen = pow(1.0 - max(to_eye.y, 0.0), 5.0);
     col = mix(col, fog_color.rgb * 0.8, wet * sheen * 0.7);

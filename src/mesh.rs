@@ -11,10 +11,12 @@ use std::path::Path;
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub pos: [f32; 3],
-    /// Unit normal, each axis -1..1 stored as 0..254 (127 is zero); w unused.
+    /// Unit normal, each axis -1..1 stored as 0..254 (127 is zero); w is
+    /// the facade the shader draws windows of on a wall (0: none).
     pub normal: [u8; 4],
     /// Color 0..255. Alpha is emissive: 0 = lit normally, 255 = glows at
-    /// night (headlights, windows, bulbs).
+    /// night (headlights, windows, bulbs). On a facade it is instead the
+    /// height above the building's foot, in half metres.
     pub color: [u8; 4],
 }
 
@@ -49,9 +51,23 @@ impl Vertex {
     }
 
     pub fn emissive(&self) -> f32 {
-        self.color[3] as f32 / 255.0
+        if self.normal[3] > 0 { 0.0 } else { self.color[3] as f32 / 255.0 }
+    }
+
+    /// The facade on this wall (0: none) and its height above the foot (m).
+    pub fn facade(&self) -> (u8, f32) {
+        (self.normal[3], self.color[3] as f32 * FACADE_STEP)
+    }
+
+    /// Mark as facade `id` at `height` m above the building's foot.
+    pub fn set_facade(&mut self, id: u8, height: f32) {
+        self.normal[3] = id;
+        self.color[3] = (height / FACADE_STEP).round().clamp(0.0, 255.0) as u8;
     }
 }
+
+/// A facade's height above the foot is kept in half metres (up to 127 m).
+pub const FACADE_STEP: f32 = 0.5;
 
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
@@ -105,7 +121,11 @@ impl Mesh {
         for v in &mut self.verts {
             let (p, n) = (f(v.pos), v.normal());
             let n = f([n.x, n.y, n.z]);
+            let facade = v.facade();
             *v = Vertex::new(v3(p[0], p[1], p[2]), v3(n[0], n[1], n[2]), v.color(), v.emissive());
+            if facade.0 > 0 {
+                v.set_facade(facade.0, facade.1);
+            }
         }
         Ok(())
     }
@@ -126,9 +146,24 @@ impl Mesh {
         for v in &src.verts {
             let p = turn(v.pos().mul(scale)) + offset;
             let n = turn(v.normal().mul(inv)).norm();
-            self.verts.push(Vertex::new(p, n, v.color().mul(col), v.emissive().max(emissive)));
+            let mut out = Vertex::new(p, n, v.color().mul(col), v.emissive().max(emissive));
+            let (id, h) = v.facade();
+            if id > 0 {
+                out.set_facade(id, h * scale.y);
+            }
+            self.verts.push(out);
         }
         self.indices.extend(src.indices.iter().map(|i| i + base));
+    }
+
+    /// Mark the vertices from `from` on as facade `id`, their heights
+    /// measured from the lowest of them (the walls' foot).
+    pub fn mark_facade(&mut self, from: usize, id: u8) {
+        let foot = self.verts[from..].iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min);
+        for v in &mut self.verts[from..] {
+            let h = v.pos[1] - foot;
+            v.set_facade(id, h);
+        }
     }
 }
 
@@ -432,6 +467,25 @@ fn parse_mtl(txt: &str, out: &mut HashMap<String, (Vec3, f32)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_facade_counts_heights_from_its_foot_and_survives_copying() {
+        let mut m = Mesh::default();
+        m.append_tilted(&cube(), v3(0.0, 5.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 10.0, 4.0), Vec3::ONE, 0.0);
+        m.mark_facade(0, 2);
+        for v in &m.verts {
+            let (id, h) = v.facade();
+            assert_eq!(id, 2);
+            assert!((h - v.pos[1]).abs() < 0.26, "height {h} at y {}", v.pos[1]); // foot at y 0
+            assert_eq!(v.emissive(), 0.0, "a facade's alpha is its height, not a glow");
+        }
+        // Copied into another mesh, raised and stretched twice as tall.
+        let mut big = Mesh::default();
+        big.append_tilted(&m, v3(0.0, 3.0, 0.0), (0.5, 0.0, 0.0), v3(1.0, 2.0, 1.0), Vec3::ONE, 0.0);
+        let top = big.verts.iter().map(|v| v.facade().1).fold(0.0, f32::max);
+        assert!((top - 20.0).abs() < 0.26, "top {top}");
+        assert!(big.verts.iter().all(|v| v.facade().0 == 2));
+    }
 
     #[test]
     fn prism_of_an_l_has_walls_out_and_a_roof_up() {
