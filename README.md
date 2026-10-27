@@ -831,7 +831,13 @@ two stars after a minute, so `PROFILE=1 PROFILE_DRIVE=1 MAP=turku auto game --he
 profiles a three-minute drive with nobody playing.
 
 `SHOT_CAM="x,y,z,tx,ty,tz[,fov]"` pins the camera for screenshots (`FOG="near,far"`
-pushes the fog back for wide shots). `SOAK=1` runs a traffic soak
+pushes the fog back for wide shots, `SHOT_CAM_GROUND=1` reads the heights as metres above the
+ground, `SHOT_CAM_SNAP=1` puts the eye on the nearest street looking along it, and
+`SHOT_NO_HUD=1` hides the HUD). **Postcards** use them: `tools/postcards.py --out DIR --before
+origin/main` renders Turku from fixed spots (Ylioppilaskylä, the Aurajoki, Kauppatori,
+Kakolanmäki, Logomo, Puolalanmäki, Kupittaa) from this checkout and from `origin/main`, one
+above the other, and `--publish NAME` pushes them to the `postcards` branch and prints markdown
+for the PR. Every PR that changes how the city looks shows its postcards. `SOAK=1` runs a traffic soak
 test, `SAVE_TEST=1`, `2` and `3` with a shared `--save-dir` test saves across restarts, and
 `MENU_TEST=1` and `2` the pause menu and settings, `SHOP_TEST=1` and `2` the shops, `CITY_TEST=1` the loaded map's layout (a connected road graph with nothing built on it, the
 shore walls, the skyline's peaks, the landmarks) and a drive up the car park, `MAP=harbor` any of

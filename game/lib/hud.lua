@@ -380,6 +380,8 @@ engine.on("story", function(text) radio = {text = text, till = engine.time() + 6
 local HINT, help_until = 8, engine.load("help_seen") and 0 or 30
 -- Pinned-camera shots (SHOT_CAM) are pictures, not a first run: no help box over them.
 if os.getenv("SHOT_CAM") then help_until = 0 end
+-- Postcards (tools/postcards.py) show the city alone: no cash, radar or crosshair.
+local NO_HUD = os.getenv("SHOT_NO_HUD") == "1"
 local function seen()
   help_until = 0
   engine.save("help_seen", true)
@@ -402,6 +404,7 @@ end)
 engine.on("frame", function(dt)
   local weather = package.loaded["lib.weather"]
   if weather then weather.draw() end
+  if NO_HUD then return end
   local w, h = engine.screen()
   shadow_text(string.format("$%d", G.cash), w - 20 - engine.text_width(string.format("$%d", G.cash), 28), 20, 28, 0.4, 0.9, 0.4)
 
