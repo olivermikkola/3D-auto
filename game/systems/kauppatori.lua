@@ -259,7 +259,7 @@ engine.on("tick", function(dt)
   if not open then return end
   for _ = 1, still and 200 or 3 do
     if n >= quality.pick(K.SHOPPERS) then break end
-    local k = math.random(#K.spots)
+    local k = peds.rand(#K.spots)
     local sp = K.spots[k]
     if not peds.peds[K.spots.taken[k]] and (still or U.dist2d(x, z, sp[1], sp[2]) > 40) then
       K.shoppers[peds.add_browser(K.spots, k)] = true
