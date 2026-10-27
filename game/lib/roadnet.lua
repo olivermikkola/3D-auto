@@ -925,8 +925,11 @@ local ERA = {
   {2000, "brick", {{0.62, 0.34, 0.26}, {0.55, 0.38, 0.3}, {0.7, 0.45, 0.35}, {0.78, 0.74, 0.66}}},
 }
 -- The windows the shader draws on a building's walls (render.rs): 1 old
--- town, 2 flats, 3 glass, 4 new render.
-local OLD_TOWN, FLATS_F, GLASS_F, NEW_F = 1, 2, 3, 4
+-- town, 2 flats, 3 glass, 4 new render, 5 a big shop, 6 works.
+local OLD_TOWN, FLATS_F, GLASS_F, NEW_F, BIG_SHOP_F, WORKS_F = 1, 2, 3, 4, 5, 6
+-- A shop this big on the ground (m²) is a mall or a hypermarket: a glass
+-- front and a sign band, not rows of windows.
+local BIG_SHOP = 1500
 local ERA_FACADE = {OLD_TOWN, NEW_F, FLATS_F, FLATS_F} -- by ERA row: before 1920, 1945, 1975, 2000
 
 -- Style, colour and facade of a building from the year it was built.
@@ -2558,6 +2561,14 @@ build = function(map, kit)
     end
     return inside
   end
+  local function area(pts) -- of an outline, m²
+    local a, j = 0, #pts
+    for k = 1, #pts do
+      a = a + pts[j][1] * pts[k][2] - pts[k][1] * pts[j][2]
+      j = k
+    end
+    return math.abs(a) / 2
+  end
   for oi, o in ipairs(map.outlines or {}) do
     local pts, x0, z0, x1, z1, clear = {}, math.huge, math.huge, -math.huge, -math.huge, true
     for k = 4, #o do
@@ -2798,6 +2809,11 @@ build = function(map, kit)
                     or (o.kind == "shop" and {0.84, 0.84, 0.82}) or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
       local facade = o.kind ~= "works" and o.kind ~= "church"
                      and (o.year and select(3, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)) or facade_of(nil, o.kind)) or nil
+      if o.kind == "works" then
+        facade = WORKS_F
+      elseif o.kind == "shop" and h < 16 and area(o.pts) > BIG_SHOP then
+        facade = BIG_SHOP_F
+      end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
