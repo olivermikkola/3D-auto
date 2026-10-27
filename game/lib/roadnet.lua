@@ -144,7 +144,7 @@ function R.load(map)
         end
         n.edges[#n.edges + 1] = {a = a, b = b, pts = seg, kind = kind, width = width, name = label, street = road.name, bridge = road.bridge,
                                  deck = road.deck or is_deck(map, road, seg), inferred = not road.deck and is_deck(map, road, seg), prof = prof, s0 = cum[start], tunnel = road.tunnel, roofed = road.roof ~= nil, over = road.over,
-                                 sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway}
+                                 sidewalk = road.sidewalk, lit = road.lit, oneway = road.oneway, parking = road.parking}
         start = i
       end
     end

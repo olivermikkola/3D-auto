@@ -115,6 +115,21 @@ WALKED = ("primary", "secondary", "tertiary", "primary_link", "secondary_link", 
 STONE = ("paving_stones", "sett", "concrete:plates", "unhewn_cobblestone", "cobblestone", "bricks")
 
 
+# Parked cars by the kerb (OpenStreetMap parking:left/right/both = lane or
+# street_side, or the older parking:lane:* = parallel/diagonal/...): which
+# sides of a way, in its direction, (left, right).
+PARK_W = 2.2 # a parking lane's width (m)
+def parking_sides(t):
+    on = {"lane", "street_side", "yes"}
+    old = {"parallel", "diagonal", "perpendicular", "marked", "yes"}
+    def side(s):
+        v = t.get(f"parking:{s}") or t.get("parking:both")
+        if v is not None: return v in on
+        v = t.get(f"parking:lane:{s}") or t.get("parking:lane:both")
+        return v in old
+    return side("left"), side("right")
+
+
 def sidewalks(t):
     """Which sides of a way have a pavement of their own, in the way's
     direction: "both", "left", "right" or "no". A pavement mapped as a
@@ -960,7 +975,8 @@ def main():
                 seg = run[start:k + 1]
                 lit = (t.get("lit") not in ("no", "none")) if "lit" in t else None
                 edges.append({"a": seg[0][0], "b": seg[-1][0], "ids": [p[0] for p in seg], "kind": kind, "width": width,
-                              "name": name, "bridge": bridge, "deck": deck, "bored": bored, "roofed": roofed, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway})
+                              "name": name, "bridge": bridge, "deck": deck, "bored": bored, "roofed": roofed, "hw": hw, "walk": sidewalks(t), "lit": lit, "oneway": oneway,
+                              "park": parking_sides(t)})
                 start = k
     # Loops and two roads joining the same pair: make a bend a junction.
     changed = True
@@ -1052,6 +1068,43 @@ def main():
             if t.get("footway") == "sidewalk" or t.get("cycleway") == "sidewalk": look.append("sidewalk = true")
             if t.get("surface") in STONE: look.append("stone = true")
             paved.append((PAVED[hw], hw == "service", pts, look))
+
+    # ---- kerbside parking ----
+    # A street with parking by its kerb is that much wider than its lanes,
+    # but only where no building stands in the extra (they're kept clear of
+    # the road and its pavement): Turku's streets are as wide as they are.
+    corners = Grid(25)
+    for el in els:
+        t = el.get("tags", {})
+        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        for ring in rings(el):
+            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+            if len(poly) < 3: continue
+            # Its outline and the box the game may stand for it (which
+            # reaches further).
+            ang, (cx, cz), bw, bd = min_rect(poly)
+            c, s_ = math.cos(ang), math.sin(ang)
+            box = [(cx + c * bw * u - s_ * bd * v, cz + s_ * bw * u + c * bd * v) for u, v in ((-.5, -.5), (.5, -.5), (.5, .5), (-.5, .5))]
+            for a, b in list(zip(poly, poly[1:] + poly[:1])) + list(zip(box, box[1:] + box[:1])):
+                n = max(1, math.ceil(math.hypot(b[0] - a[0], b[1] - a[1]) / 2))
+                for k in range(n):
+                    q_ = (a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
+                    corners.add(q_, q_, q_)
+    widened, refused = 0.0, 0.0
+    for ed in edges:
+        left, right = ed.pop("park")
+        if not (left or right) or ed["kind"] == "highway" or ed["bridge"]: continue
+        new = ed["width"] + PARK_W * (left + right)
+        clear = new / 2 + 3
+        length = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(ed["pts"], ed["pts"][1:]))
+        if any(seg_dist(q_, a, b) < clear for a, b in zip(ed["pts"], ed["pts"][1:])
+               for q_ in corners.near(min(a[0], b[0]) - clear, min(a[1], b[1]) - clear, max(a[0], b[0]) + clear, max(a[1], b[1]) + clear)):
+            refused += length
+            continue
+        ed["width"], ed["parking"] = round(new, 1), (left, right)
+        widened += length
+    print(f"kerbside parking: {widened / 1000:.1f} km of street widened for it, {refused / 1000:.1f} km left as it was (buildings in the way)",
+          file=sys.stderr)
 
     # ---- buildings ----
     road_grid = Grid(50)
@@ -1442,6 +1495,7 @@ def main():
         if ed["kind"] != "highway" and ed["walk"] != "both": attrs += f", sidewalk = {q(ed['walk'])}"
         if ed.get("lit") is False: attrs += ", lit = false"
         if ed.get("oneway"): attrs += ", oneway = true"
+        if ed.get("parking"): attrs += ", parking = {%s, %s}" % tuple("true" if v else "false" for v in ed["parking"])
         if ed["bridge"]: attrs += ", bridge = true"
         if ed.get("deck") and terrain: attrs += ", deck = true"
         if ed.get("heights") and not ed.get("deck"):

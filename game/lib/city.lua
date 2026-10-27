@@ -333,10 +333,17 @@ end
 function C.lane(a, b)
   local e = NET and NET.edges[NET.edge_of[a .. ">" .. b] or 0]
   if not e then return 3.2 end
-  local half = e.oneway and e.width or e.width / 2
-  local lanes = math.max(1, math.floor(half / 3.5))
-  return (e.oneway and e.width / 2 or half) - half / lanes / 2
+  -- Inside a parking lane by the kerb ({left, right} of a to b: see
+  -- systems/parking), on whichever side.
+  local P = C.PARK_W
+  local left, right = e.parking and e.parking[1] and P or 0, e.parking and e.parking[2] and P or 0
+  if e.a ~= a then left, right = right, left end
+  local edge = e.width / 2 - right -- the right edge of the lanes, from the middle
+  local wide = e.oneway and e.width - left - right or edge
+  local lanes = math.max(1, math.floor(wide / 3.5))
+  return edge - wide / lanes / 2
 end
+C.PARK_W = 2.2 -- a parking lane's width (as tools/osm_import.py widens a street for it)
 
 -- The junctions one road away from `id`.
 function C.links(id) return graph().links[id] end
