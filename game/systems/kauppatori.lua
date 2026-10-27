@@ -21,8 +21,8 @@ local PAVILIONS = {
 -- The stalls, in the square's own frame (u along its width, v along its
 -- depth, metres from its middle): back-to-back pairs of rows at v = ROWS,
 -- STALLS a side of a cross aisle about 7 m wide, PITCH apart.
-local ROWS = {-21, -7, 7, 21}
-local STALLS, PITCH, AISLE = 6, 3.1, 1.5
+local ROWS = {-26, -13, 0, 13, 26}
+local STALLS, PITCH, AISLE = 8, 3.1, 1.5
 
 -- What a stall sells: its awning, and the colours of what's on its table.
 local GOODS = {
@@ -177,7 +177,7 @@ function K.build(map)
   for i, st in ipairs(stalls) do
     if i % keep == 0 then
       local sx, sz, syaw, sy = st[1], st[2], st[3], st[4]
-      K.stalls[#K.stalls + 1] = engine.spawn{mesh = "market_stall" .. (i % #GOODS + 1), pos = {sx, sy, sz},
+      K.stalls[#K.stalls + 1] = engine.spawn{mesh = "market_stall" .. math.floor(math.sin(i * 12.9898) * 43758.5453 % 1 * #GOODS + 1), pos = {sx, sy, sz},
                                              yaw = syaw, tag = "prop", body = "static"}
       local fx, fz = math.sin(syaw), math.cos(syaw)
       for _, along in ipairs{-0.7, 0.7} do
@@ -223,7 +223,7 @@ end
 -- to stall while the player is near enough to see them. They turn up out
 -- of sight (40 m off), a few a second; at closing time those out of sight
 -- go home.
-local SHOPPERS = {10, 24, 40}
+K.SHOPPERS = {14, 32, 50}
 local OPEN, CLOSE = 8, 18
 local MIDDLE, NEAR = {-172.3, -16.8}, 150 -- (peds recycles walkers 160 m off)
 K.shoppers = {}
@@ -258,7 +258,7 @@ engine.on("tick", function(dt)
   end
   if not open then return end
   for _ = 1, still and 200 or 3 do
-    if n >= quality.pick(SHOPPERS) then break end
+    if n >= quality.pick(K.SHOPPERS) then break end
     local k = math.random(#K.spots)
     local sp = K.spots[k]
     if not peds.peds[K.spots.taken[k]] and (still or U.dist2d(x, z, sp[1], sp[2]) > 40) then

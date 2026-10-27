@@ -55,7 +55,7 @@ local function script()
   -- By day, with the player on the square's edge.
   daynight.set_hour(12)
   move_player(-240, -60)
-  local want = quality.pick({10, 24, 40})
+  local want = quality.pick(K.SHOPPERS)
   wait(function() return #shoppers() >= want end, 30, "the market fills up")
   check(#shoppers() == want, string.format("%d people at the market", #shoppers()))
   sleep(40)
