@@ -281,7 +281,7 @@ local function start()
     table.sort(c, function(a, b) return a.p.x < b.p.x or (a.p.x == b.p.x and a.p.z < b.p.z) end)
   end
   table.sort(keys, function(a, b) return a.d < b.d or (a.d == b.d and a.key < b.key) end)
-  return {chunks = keys, ci = 1, i = 1, parts = {}, grid = footprint_grid(), near = {}, places = 0, ms = 0}
+  return {chunks = keys, ci = 1, i = 1, parts = {}, grid = footprint_grid(), near = {}, places = 0, ms = 0, ticks = 0}
 end
 
 local function place(job, q)
@@ -309,6 +309,7 @@ end
 local PER_TICK = os.getenv("SHOT_CAM") and math.huge or 12
 local function step(job, n)
   local t0 = os.clock()
+  job.ticks = job.ticks + 1
   while n > 0 and job.ci <= #job.chunks do
     local c = job.chunks[job.ci]
     if job.i <= #c then
@@ -335,7 +336,7 @@ engine.on("tick", function()
     for k, n in pairs(S.why) do why[#why + 1] = k .. " " .. n end
     table.sort(why)
     print(string.format("shop signs: %d for %d places, %d chunks, %.0f ms over %d ticks (none: %s)", #S.list, S.job.places,
-                        #S.ids, S.job.ms, math.ceil(S.job.places / math.min(PER_TICK, S.job.places)), table.concat(why, ", ")))
+                        #S.ids, S.job.ms, S.job.ticks, table.concat(why, ", ")))
     S.job, S.pending = nil, false
   end
 end)
