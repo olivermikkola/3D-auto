@@ -10,17 +10,25 @@ A minimal 3D sandbox kernel in Rust. One ~1 MB binary renders low-poly meshes wi
 and dynamic lights, runs rigid-body physics, mixes sound, and forwards input. **The game is entirely Lua**: the binary emits events
 into a tiny pub/sub bus, and scripts build the world on top of it.
 
-The bundled `game/` directory is an open-city demo in about 1,000 lines of Lua. It has a
-procedural island city laid out like Manhattan (long blocks between wide avenues, Central Park,
-a skyline that peaks in Midtown and the Financial District, brownstones uptown) with an Art Deco
-tower, a TV tower and a car park you can drive to the top of, drivable cars that can jump and
-roll, a stunt park, on-foot movement,
-ambient traffic, pedestrians, weapons, health and exploding cars, a wanted level with police
-pursuits and shootouts, a day/night cycle, synthesized sound, a minimap, cash, seven missions,
-progress that's saved between sessions, a pause menu with settings, and shops to spend your
-cash in. Edit any `.lua` file while it runs and it hot-reloads.
+The bundled `game/` directory is **Grand Tour Åbo: Aurajoki**, a GTA-style open-city game in
+about 24,000 lines of hand-written Lua (plus generated map data). Its main map is **Turku at real
+size**, built from open data: OpenStreetMap roads, buildings, bus stops, crossings and traffic
+lights on the land survey's 2 m laser-scanned terrain, with roof and ground colours from the
+city's aerial photo and building heights and roof shapes from its 3D city model. The Aurajoki
+runs through it with its bridges, boats and the Föri. **Raisio**, next door, is the older
+testbed. Two procedural maps, a Manhattan-like island and Harbor Town, show the engine works
+without real data.
 
-![Midtown at golden hour, the Empire in the middle and Central Park beyond](docs/skyline.png)
+You drive, walk, steal cars and run from the police (roadblocks from three stars, a helicopter
+and a convoy from four) through traffic, Föli buses, pedestrians, traffic lights, weather
+and seasons. There are eleven missions, most of which cast their places from the map's real
+points of interest, so every run is a little different, and side jobs that call while you
+drive: taxi fares, ambulance calls, fires, vigilante shifts, bus routes, cash vans to rob and
+street racers at night. Cash, missions and stats are saved; shops, a garage and a paint shop
+take your money. Brands are Finnish parodies (Häsburger, Pöli, Lumis). Edit any `.lua` file
+while it runs and it hot-reloads. There's a browser build for phones too, with quality tiers.
+
+![Turku from open data, before and after the aerial-photo colours: the Aurajoki on the right](docs/turku-open-data-oblique.png)
 
 **Download:** builds for Linux, Windows and macOS are on the
 [Releases](https://github.com/olivermikkola/3D-auto/releases) page. Unzip and run `auto`. On
