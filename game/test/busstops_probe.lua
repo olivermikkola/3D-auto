@@ -60,7 +60,7 @@ local function script()
   check(facing >= people * 0.8, "looking at the road")
 
   local buses_at = {}
-  for t = 1, 12 do
+  for t = 1, 18 do
     sleep(20)
     local buses = 0
     for _, c in pairs(traffic.cars) do if c.is_bus then buses = buses + 1 end end
