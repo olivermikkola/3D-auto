@@ -2791,6 +2791,7 @@ build = function(map, kit)
   -- band of windows on every wall each floor (some lit at night), a dark
   -- flat roof. Baked a chunk at a time; they collide through their boxes.
   local walls, GLASS, ROOF = chunked(), {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
+  local copings, plinths = 0, 0
   -- Balconies on the flats' sunny walls (south to west, as built): one
   -- every third window bay (render.rs draws 2.7 m bays, as many whole ones
   -- as fit the wall), mirrored about the wall's middle so they line up with
@@ -2865,6 +2866,15 @@ build = function(map, kit)
           if facade == OLD_TOWN then -- the cornice under the roof
             walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
                                size = {0.36, 0.7, len + 0.36}, color = {color[1] * 0.9, color[2] * 0.9, color[3] * 0.88}, abs = true})
+            -- and a plinth a shade darker along its foot
+            plinths = plinths + 1
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
+                               size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
+          elseif facade and facade ~= GLASS_F then -- the parapet's coping, a lighter edge to the roof
+            copings = copings + 1
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
+                               size = {0.24, 0.4, len + 0.24}, color = {math.min(1, color[1] * 1.2 + 0.1), math.min(1, color[2] * 1.2 + 0.1),
+                               math.min(1, color[3] * 1.2 + 0.1)}, abs = true})
           end
           if facade == FLATS_F and len > 6 and h >= 3 * kit.FLOOR and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
             balconies(mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
@@ -2879,6 +2889,7 @@ build = function(map, kit)
       end
     end
   end
+  print(string.format("outline trim: %d copings, %d plinths", copings, plinths))
   print(string.format("balconies: %d", balcony_count))
   walls.bake("outline", "outline")
   roofs.bake("roofs_", "outline")
