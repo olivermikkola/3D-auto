@@ -19,8 +19,8 @@ local quality = require "lib.quality"
 
 local S = {list = {}, ids = {}, why = {}} -- list: {x, z, y, yaw, word}; ids: the baked chunks
 
-local LETTER = 0.34  -- letter height
-local PLATE_H = 0.6
+local LETTER = 0.42  -- letter height
+local PLATE_H = 0.72
 local PLATE_D = 0.1
 local OVER = 3.2     -- the plate's middle, over the ground: between the shop's windows and the first floor's
 local BAND = 4.3     -- where a big shop's sign band is (render.rs facade 5)
