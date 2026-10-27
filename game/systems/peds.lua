@@ -340,14 +340,24 @@ end
 -- market (spots.taken[k] = who stands there, or stood: the knocked down
 -- and the recycled leave theirs behind). It walks from one to another
 -- nearby and stands a while at each. systems/kauppatori sets them up.
+-- Browsers draw from their own random numbers, so everyone else's (the
+-- traffic, the walkers, the missions) are the same whether a market is
+-- near or not. rand() 0..1, rand(n) 1..n.
+local seed = 20261027
+function Ped.rand(n)
+  seed = (seed * 1103515245 + 12345) % 2147483648
+  local r = seed / 2147483648
+  return n and math.floor(r * n) + 1 or r
+end
+
 function Ped.add_browser(spots, k)
   local s = spots[k]
-  local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {s[1], 1.15 + (s[4] or U.ground(s[1], s[2])), s[2]}, yaw = s[3],
+  local id = engine.spawn{mesh = "ped" .. Ped.rand(VARIANTS), pos = {s[1], 1.15 + (s[4] or U.ground(s[1], s[2])), s[2]}, yaw = s[3],
                           size = {0.7, 1.8, 0.7}, body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
   H.set(id, 30)
   spots.taken[k] = id
-  Ped.peds[id] = {id = id, spots = spots, k = k, tx = s[1], tz = s[2], speed = WALK * (0.6 + math.random() * 0.3),
-                  state = "browse", stuck = 0, until_t = engine.time() + math.random() * 12}
+  Ped.peds[id] = {id = id, spots = spots, k = k, tx = s[1], tz = s[2], speed = WALK * (0.6 + Ped.rand() * 0.3),
+                  state = "browse", stuck = 0, until_t = engine.time() + Ped.rand() * 12}
   return id
 end
 
@@ -355,7 +365,7 @@ end
 local function next_spot(p, x, z)
   local spots = p.spots
   for try = 1, 20 do
-    local k = math.random(#spots)
+    local k = Ped.rand(#spots)
     local s = spots[k]
     if not Ped.peds[spots.taken[k]] and U.dist2d(x, z, s[1], s[2]) < (try <= 15 and 12 or 30) then
       if spots.taken[p.k] == p.id then spots.taken[p.k] = nil end
@@ -377,7 +387,7 @@ local function browse(id, p, dt, x, z, vy, actual_speed2)
   local mx, mz = p.tx - x, p.tz - z
   local l = math.sqrt(mx * mx + mz * mz)
   if l < 0.4 then
-    p.until_t, p.stuck = engine.time() + 10 + math.random() * 30, 0
+    p.until_t, p.stuck = engine.time() + 10 + Ped.rand() * 30, 0
     return
   end
   mx, mz = mx / l, mz / l
