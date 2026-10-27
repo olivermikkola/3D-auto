@@ -109,6 +109,7 @@ engine.on("init", function()
   require("systems.gunshop").build()
   require("systems.paintshop").build()
   require("systems.dealer").build()
+  require("systems.nightlife").build()
   require("systems.cashvan").build()
   require("systems.ambulance").build()
   require("systems.fire").build()
@@ -200,6 +201,7 @@ if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
 if os.getenv("AMBULANCE_TEST") then require "test.ambulance_probe" end
 if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
 if os.getenv("FIRE_TEST") then require "test.fire_probe" end
+if os.getenv("NIGHTLIFE_TEST") then require "test.nightlife_probe" end
 if os.getenv("BUS_TEST") then require "test.bus_probe" end
 if os.getenv("YIELD_TEST") then require "test.yield_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
