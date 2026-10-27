@@ -29,13 +29,13 @@ function F.outward(x, z, bx, bz)
 end
 
 function F.clear_approach(x, z, nx, nz, car)
-  for _, tag in ipairs{"lamp", "car", "cop"} do
+  for _, tag in ipairs{"lamp", "signal", "car", "cop"} do
     for _, obstacle in ipairs(engine.find(tag)) do
       if obstacle ~= car then
         local lx, _, lz = engine.pos(obstacle)
         local along = (lx - x) * nx + (lz - z) * nz
         local across = math.abs((lx - x) * nz - (lz - z) * nx)
-        local margin = tag == "lamp" and 3 or 5
+        local margin = (tag == "lamp" or tag == "signal") and 3 or 5
         if along > -margin and along < 12 + margin and across < margin then return false end
       end
     end
@@ -47,11 +47,11 @@ end
 -- ray alone misses the car's sides; the ragdoll also needs vertical room.
 -- Walk through dynamic hits so a pedestrian cannot mask a building behind it.
 local BACKSTOP = {building = true, container = true, landmark = true, wall = true,
-                  tree = true, lamp = true, carpark = true, garage = true, fountain = true}
+                  tree = true, lamp = true, signal = true, carpark = true, garage = true, fountain = true}
 function F.clear_flight(x, z, dx, dz, car)
   -- Thin poles can fall BETWEEN swept rays; reserve their full footprint.
-  for _, tag in ipairs{"lamp", "tree", "car", "cop", "wreck"} do
-    local margin = (tag == "lamp" or tag == "tree") and 2 or 5
+  for _, tag in ipairs{"lamp", "signal", "tree", "car", "cop", "wreck"} do
+    local margin = (tag == "lamp" or tag == "signal" or tag == "tree") and 2 or 5
     for _, id in ipairs(engine.find(tag)) do
       if id ~= car then
         local ox, _, oz = engine.pos(id)

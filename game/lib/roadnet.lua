@@ -636,8 +636,8 @@ local function strip(parts, pts, width, top, color, discs, hf)
   end
 end
 
--- Dashed center line.
-local function dashes(parts, pts, top, hf)
+-- Dashed center line; none within 3.5 m of a crossing in `skip` ({x, z}s).
+local function dashes(parts, pts, top, hf, skip)
   hf = hf or GROUND
   for i = 2, #pts do
     local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
@@ -646,6 +646,11 @@ local function dashes(parts, pts, top, hf)
     for s = 8, len - 8, 9 do
       local t = s / len
       local x, z = ax + (bx - ax) * t, az + (bz - az) * t
+      local near = false
+      for _, c in ipairs(skip or {}) do
+        if (c[1] - x) ^ 2 + (c[2] - z) ^ 2 < 3.5 * 3.5 then near = true break end
+      end
+      if near then goto next_dash end
       local part = {mesh = "plane", pos = {x, top + 0.005, z}, yaw = yaw, size = {0.18, 1, 3}, color = {0.9, 0.9, 0.86}}
       if hf then
         local d = 1.5 / len
@@ -653,7 +658,26 @@ local function dashes(parts, pts, top, hf)
         part.pos[2], part.pitch, part.abs = (h0 + h1) / 2 + top, -math.atan(h1 - h0, 3), true
       end
       parts[#parts + 1] = part
+      ::next_dash::
     end
+  end
+end
+
+-- A painted crossing at (x, z) across a road w wide heading yaw: Finnish
+-- style, bars along the road 0.5 m wide and 3 m long, 0.5 m apart.
+local function zebra(parts, x, z, yaw, w, top, hf)
+  hf = hf or GROUND
+  local rx, rz = math.cos(yaw), -math.sin(yaw)
+  local fx, fz = math.sin(yaw), math.cos(yaw)
+  local half = w / 2 - 0.5
+  for o = -half + 0.25, half - 0.25, 1.0 do
+    local px, pz = x + rx * o, z + rz * o
+    local part = {mesh = "plane", pos = {px, top + 0.006, pz}, yaw = yaw, size = {0.5, 1, 3}, color = {0.92, 0.92, 0.9}}
+    if hf then
+      local h0, h1 = hf(px - fx * 1.5, pz - fz * 1.5), hf(px + fx * 1.5, pz + fz * 1.5)
+      part.pos[2], part.pitch, part.abs = (h0 + h1) / 2 + top + 0.006, -math.atan(h1 - h0, 3), true
+    end
+    parts[#parts + 1] = part
   end
 end
 
@@ -1498,6 +1522,19 @@ build = function(map, kit)
     end
     return best
   end
+  -- The map's painted crossings, each on the road it's nearest (not a
+  -- motorway, not one in a tunnel under a street), as {x, z, yaw}.
+  local zebras = {}
+  for k = 1, #(map.zebras or {}), 2 do
+    local x, z = map.zebras[k], map.zebras[k + 1]
+    local ei, si, cx, cz, d = R.nearest_edge(x, z, true)
+    local e = ei and NET.edges[ei]
+    if e and d < e.width / 2 + 1 and not e.tunnel and e.width >= 5 then
+      local a, b = e.pts[si - 1], e.pts[si]
+      zebras[ei] = zebras[ei] or {}
+      table.insert(zebras[ei], {cx, cz, math.atan(b[1] - a[1], b[2] - a[2])})
+    end
+  end
   for ei, e in ipairs(NET.edges) do
     local parts = {}
     local walk = e.kind ~= "highway"
@@ -1508,7 +1545,8 @@ build = function(map, kit)
       kerbs(parts, ei, e)
     end
     strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
-    dashes(parts, e.pts, 0.09, hf)
+    dashes(parts, e.pts, 0.09, hf, zebras[ei])
+    for _, c in ipairs(zebras[ei] or {}) do zebra(parts, c[1], c[2], c[3], e.width, 0.09, hf) end
     if hf then
       local wide = e.width + (walk and 2 * SIDEWALK or 1)
       for i = 2, #e.pts do
@@ -1658,6 +1696,36 @@ build = function(map, kit)
                        breaks_at = kit.LAMP_BREAKS_AT}
           end
           side = -side
+        end
+      end
+    end
+  end
+  -- (A car nudging one knocks it over, as in GTA: they stand at the corners
+  -- turning cars cut, and a solid one held a crawling car for 12 s. People
+  -- never do: too light, see physics.rs.)
+  local SIGNAL_BREAKS_AT = 1.5
+  -- Traffic lights where the map has them: a post each side of the road,
+  -- on the pavement by the kerb (not near another road's asphalt), its
+  -- lights facing both ways along the road.
+  for k = 1, #(map.signals or {}), 2 do
+    local x, z = map.signals[k], map.signals[k + 1]
+    local ei, si, cx, cz, d = R.nearest_edge(x, z, true)
+    local e = ei and NET.edges[ei]
+    if e and d < e.width / 2 + 4 and not e.tunnel then
+      local a, b = e.pts[si - 1], e.pts[si]
+      local yaw = math.atan(b[1] - a[1], b[2] - a[2])
+      local rx, rz = math.cos(yaw), -math.sin(yaw)
+      for _, side in ipairs{-1, 1} do
+        local o = e.width / 2 + 1.0
+        local px, pz = cx + rx * side * o, cz + rz * side * o
+        -- Well clear of the crossing road too: cars turning the corner cut
+        -- across it (a post 1.5 m off its kerb stopped a robot in Raisio).
+        local on_road = H.near(px, pz, 40, function(it)
+          return it.edge and it.edge ~= ei and dist_seg(px, pz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 2.5
+        end)
+        if not on_road and not under_roof(px, pz) then
+          kit.static{mesh = "signal", pos = {px, 0.05 + (e.height and e.height(px, pz) or (GROUND and GROUND(px, pz) or 0)), pz},
+                     yaw = yaw, size = {0.3, 7.4, 0.3}, tag = "signal", abs = true, breaks_at = SIGNAL_BREAKS_AT}
         end
       end
     end

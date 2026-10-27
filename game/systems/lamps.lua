@@ -2,11 +2,13 @@
 -- goes through (the physics lets it, see Body::breaks_at), and the post
 -- is swapped for a loose one that topples the way the car was going.
 -- Slower than BREAKS_AT it's a solid post; people never knock one over.
+-- Traffic lights (tag "signal") go the same way.
 local U = require "lib.util"
 local FX = require "lib.fx"
 
 local L = {BREAKS_AT = 6, down = {}, MAX_DOWN = 24}
-local POLE = 5.0 -- the post's height; a lamp's position is its foot
+-- By tag: the loose post's mesh, and the post's height (its position is its foot).
+local POSTS = {lamp = {"lamp_down", 5.0}, signal = {"signal_down", 3.7}}
 
 -- What hitting a lamp costs the car: a quarter of its speed.
 local KEEP = 0.75
@@ -15,8 +17,9 @@ function L.knock(lamp, car)
   local x, y, z = engine.pos(lamp)
   local qx, qy, qz, qw = engine.rot(lamp)
   local vx, vy, vz = engine.vel(car)
+  local mesh, POLE = table.unpack(POSTS[engine.tag(lamp)] or POSTS.lamp)
   engine.despawn(lamp)
-  local pole = engine.spawn{mesh = "lamp_down", pos = {x, y + POLE / 2, z}, size = {0.3, POLE, 0.3},
+  local pole = engine.spawn{mesh = mesh, pos = {x, y + POLE / 2, z}, size = {0.3, POLE, 0.3},
                             body = "dynamic", mass = 90, friction = 0.8, tag = "lamp_down"}
   engine.set_rot(pole, qx, qy, qz, qw)
   -- It goes off the car's front corner, out of its way: forward and to
@@ -47,8 +50,8 @@ end
 engine.on("contact", function(a, b, _, broke)
   if not broke then return end
   local lamp, car = a, b
-  if engine.tag(lamp) ~= "lamp" then lamp, car = b, a end
-  if engine.tag(lamp) == "lamp" and engine.exists(car) then L.knock(lamp, car) end
+  if not POSTS[engine.tag(lamp)] then lamp, car = b, a end
+  if POSTS[engine.tag(lamp)] and engine.exists(car) then L.knock(lamp, car) end
 end)
 
 -- Fallen lamps are cleared away later, once nobody is near.
