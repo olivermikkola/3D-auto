@@ -287,7 +287,8 @@ end
 local function place(job, q)
   local x, z, y, nx, nz, outline = site(job.grid, q.p)
   if not x then S.why[z] = (S.why[z] or 0) + 1 return end
-  -- Wall behind its top edge too (a low box building ends under it).
+  -- One flat wall behind it, top to bottom (not a low box building's top
+  -- with a taller one behind).
   -- Nothing built in front of it (a shop podium before a tower's wall).
   local front = engine.raycast(x + nx * 0.05, y - PLATE_H / 2 + 0.05, z + nz * 0.05, nx, 0, nz, 1.5)
   local hidden = front and engine.tag(front) == "building"
@@ -296,8 +297,9 @@ local function place(job, q)
   end
   if hidden then S.why.hidden = (S.why.hidden or 0) + 1 return end
   if not outline then
-    local top = engine.raycast(x + nx * 0.5, y + PLATE_H / 2 + 0.1, z + nz * 0.5, -nx, 0, -nz, 0.9)
-    if not top or engine.tag(top) ~= "building" then S.why["low wall"] = (S.why["low wall"] or 0) + 1 return end
+    local top, dt = engine.raycast(x + nx * 0.5, y + PLATE_H / 2 + 0.1, z + nz * 0.5, -nx, 0, -nz, 0.9)
+    local foot, df = engine.raycast(x + nx * 0.5, y - PLATE_H / 2 - 0.1, z + nz * 0.5, -nx, 0, -nz, 0.9)
+    if not top or engine.tag(top) ~= "building" or not foot or math.abs(dt - df) > 0.1 then S.why["low wall"] = (S.why["low wall"] or 0) + 1 return end
   end
   local ci, cj = math.floor(x / APART), math.floor(z / APART)
   for i = ci - 1, ci + 1 do
