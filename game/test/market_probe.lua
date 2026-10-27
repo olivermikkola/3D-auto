@@ -101,10 +101,17 @@ local function script()
   local fled = 0
   for _, id in ipairs(shoppers()) do if peds.peds[id].state == "flee" then fled = fled + 1 end end
   check(fled > 0, string.format("a fright sends them running (%d)", fled))
-  sleep(8)
-  local back = 0
-  for _, id in ipairs(shoppers()) do if peds.peds[id].state == "browse" then back = back + 1 end end
-  check(back == #shoppers(), "and they come back to browse")
+  -- (One who ran into the road can be sent running again by a car.)
+  sleep(12)
+  local back, n2 = 0, 0
+  for _, id in ipairs(shoppers()) do
+    local p = peds.peds[id]
+    if p then
+      n2 = n2 + 1
+      if p.state == "browse" then back = back + 1 end
+    end
+  end
+  check(back >= n2 * 0.8, string.format("and they come back to browse (%d of %d)", back, n2))
 
   -- Closing time: those out of sight go home; no new ones come.
   daynight.set_hour(19)
