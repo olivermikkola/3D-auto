@@ -147,6 +147,11 @@ vec3 facade(float id, float y, float along, vec3 n, vec3 wall, out float win, ou
     // A string course along the old town's floors, and a darker plinth under the shops.
     float course = old * step(fy, 0.22) * step(0.5, fl);
     vec3 c = mix(wall, wall * 0.82, course);
+    // The floors' slab edges: a joint between the flats' panels, a band of
+    // lighter render on new buildings.
+    float flats = step(1.5, id) * step(id, 2.5);
+    float slab = step(0.5, fl) * (flats * step(fy, 0.12) + step(3.5, id) * step(id, 4.5) * step(fy, 0.3));
+    c = mix(c, flats > 0.5 ? wall * 0.55 : min(wall * 1.25 + 0.08, vec3(1.0)), slab);
     c = mix(c, wall * 0.6, shop * (1.0 - step(0.45, fy)));
     c = mix(c, trim, frame);
     c = mix(c, glass, inside);
