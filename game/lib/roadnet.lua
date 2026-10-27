@@ -1902,9 +1902,9 @@ build = function(map, kit)
   -- Service roads and paved paths: drawn, not driven by the AI.
   if map.paved then
     local ch = chunked()
-    -- A path is left out where it runs under a road's asphalt (the roads
-    -- are a little wider than the real ones, and a path mapped along one's
-    -- edge would show through it).
+    -- A path (or a lane of setts) is left out where it runs under a road's
+    -- asphalt (the roads are a little wider than the real ones, and a path
+    -- mapped along one's edge would show through it).
     local E = NET.edges
     -- The stretches of road whose asphalt could reach segment ab of a path
     -- w wide.
@@ -1928,7 +1928,8 @@ build = function(map, kit)
     end
     for _, p in ipairs(map.paved) do
       local runs, cur, last = {}, nil, nil
-      if p.path then
+      -- (A lane of setts too: its stones would show on the road it joins.)
+      if p.path or p.stone then
         for i = 4, #p do
           local a, b = p[i - 1], p[i]
           local near = roads_near(a, b, p[1])
