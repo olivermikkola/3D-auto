@@ -2821,9 +2821,9 @@ build = function(map, kit)
                                size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
           elseif facade and facade ~= GLASS_F then -- the parapet's coping, a lighter edge to the roof
             copings = copings + 1
-            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.08, base + h - 0.15, mz + nz * 0.08}, yaw = math.atan(dx, dz),
-                               size = {0.16, 0.3, len + 0.16}, color = {math.min(1, color[1] * 1.12 + 0.06), math.min(1, color[2] * 1.12 + 0.06),
-                               math.min(1, color[3] * 1.12 + 0.06)}, abs = true})
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
+                               size = {0.24, 0.4, len + 0.24}, color = {math.min(1, color[1] * 1.2 + 0.1), math.min(1, color[2] * 1.2 + 0.1),
+                               math.min(1, color[3] * 1.2 + 0.1)}, abs = true})
           end
           for f = 0, floors - 1 do
             local lit = (f * 7 + o.i * 3 + k) % 3 == 0
