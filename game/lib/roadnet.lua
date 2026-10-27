@@ -1756,6 +1756,102 @@ build = function(map, kit)
       end
     end
   end
+  -- Markings besides the center line: a stop line where traffic waits for
+  -- a junction's lights (systems/signals: `stop` from its middle), across
+  -- the lanes coming in; and a solid line along each edge of a main road,
+  -- broken where other roads join and left off a side cars park on.
+  local marks = chunked()
+  local MARK = {0.92, 0.92, 0.88}
+  -- The point `dist` along e from its end at junction j, and the heading
+  -- there away from j.
+  local function from_end(e, j, dist)
+    local pts, n = e.pts, #e.pts
+    for k = 1, n - 1 do
+      local a = e.a == j and pts[k] or pts[n - k + 1]
+      local b = e.a == j and pts[k + 1] or pts[n - k]
+      local l = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+      if l > 0 and dist <= l then
+        local t = dist / l
+        return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, math.atan(b[1] - a[1], b[2] - a[2])
+      end
+      dist = dist - l
+    end
+  end
+  local function mark(x, z, yaw, across, long, hf, pitch)
+    local y = (hf or GROUND or function() return 0 end)(x, z)
+    marks.add(x, z, {mesh = "plane", pos = {x, y + 0.097, z}, yaw = yaw, pitch = pitch, size = {across, 1, long}, color = MARK, abs = true})
+  end
+  local stop_lines, edge_lines = 0, 0
+  local js = {}
+  for j in pairs(NET.signals.junctions) do js[#js + 1] = j end
+  table.sort(js)
+  for _, j in ipairs(js) do
+    local ctl = NET.signals.junctions[j]
+    for _, e in ipairs(meeting()[j] or {}) do
+      local inbound = not e.oneway or e.b == j
+      if e.kind ~= "highway" and not e.tunnel and e.width >= 5 and inbound then
+        local x, z, yaw = from_end(e, j, ctl.stop)
+        if x then
+          local hy = yaw + math.pi -- heading in, toward the junction
+          local rx, rz = math.cos(hy), -math.sin(hy)
+          local w = e.width / 2 - 0.3
+          local o = e.oneway and 0 or w / 2 + 0.15
+          if e.oneway then w = e.width - 0.6 end
+          mark(x + rx * o, z + rz * o, hy, w, 0.5, e.height)
+          stop_lines = stop_lines + 1
+        end
+      end
+    end
+  end
+  for _, e in ipairs(NET.edges) do
+    if e.kind == "main" and not e.tunnel and e.width >= 7 then
+      local hf = e.height or GROUND
+      local total = 0
+      for i = 2, #e.pts do total = total + math.sqrt((e.pts[i][1] - e.pts[i - 1][1]) ^ 2 + (e.pts[i][2] - e.pts[i - 1][2]) ^ 2) end
+      -- Clear of the mouths of the roads joining at either end.
+      local function mouth(j)
+        local m = meeting()[j] or {}
+        if #m < 3 then return 0 end
+        local widest = 0
+        for _, o in ipairs(m) do if o ~= e then widest = math.max(widest, o.width) end end
+        return widest / 2 + 3
+      end
+      local s0, s1 = mouth(e.a), total - mouth(e.b)
+      local s = 0
+      for i = 2, #e.pts do
+        local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+        local lo, hi = math.max(s, s0), math.min(s + len, s1)
+        if len > 0 and hi - lo > 1 then
+          local yaw = math.atan(bx - ax, bz - az)
+          local fx, fz = (bx - ax) / len, (bz - az) / len
+          local rx, rz = math.cos(yaw), -math.sin(yaw)
+          local n = math.ceil((hi - lo) / 6)
+          for k = 0, n - 1 do
+            local u0, u1 = lo + (hi - lo) * k / n - s, lo + (hi - lo) * (k + 1) / n - s
+            local mx, mz = ax + fx * (u0 + u1) / 2, az + fz * (u0 + u1) / 2
+            for _, side in ipairs{-1, 1} do
+              if not (e.parking and e.parking[side < 0 and 1 or 2]) then
+                local o = e.width / 2 - 0.35
+                local px, pz = mx + rx * side * o, mz + rz * side * o
+                local pitch
+                if hf then
+                  local h0 = hf(px - fx * (u1 - u0) / 2, pz - fz * (u1 - u0) / 2)
+                  local h1 = hf(px + fx * (u1 - u0) / 2, pz + fz * (u1 - u0) / 2)
+                  pitch = -math.atan(h1 - h0, u1 - u0)
+                end
+                mark(px, pz, yaw, 0.15, u1 - u0 + 0.02, hf, pitch)
+                edge_lines = edge_lines + 1
+              end
+            end
+          end
+        end
+        s = s + len
+      end
+    end
+  end
+  marks.bake("marks", "road")
+  print(string.format("road markings: %d stop lines, %d edge line pieces", stop_lines, edge_lines))
   for id, p in ipairs(NET.pos) do
     local ring = (NET.map.roundabouts or {})[NET.name[id] or ""]
     if ring then -- a raised planted island in the middle
