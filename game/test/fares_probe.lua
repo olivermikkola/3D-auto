@@ -132,7 +132,10 @@ local function script()
   local heat_up = wanted.heat_up
   wanted.heat_up = function() end
   local cash0 = G.cash
-  driver = robot.gps_driver(14, 6)
+  -- (It stops 6 m from the end of the route: the fare wants the cab
+  -- stopped within 9 m of the spot in a straight line, and the route's last
+  -- metres can bend.)
+  driver = robot.gps_driver(14, 6, 6)
   local t0 = engine.time()
   wait(function() return fares.state() == "ride" end, 240, "the robot gets to the pickup by the GPS")
   print(string.format("FARES_PROBE %s: picked up at %s in %.0f s", map, f.pickup.name, engine.time() - t0))
