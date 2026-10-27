@@ -40,6 +40,7 @@ require "systems.vigilante"
 require "systems.fire"
 require "systems.busroute"
 require "systems.shelters"
+require "systems.ambience"
 require "systems.parking"
 require "lib.menu"
 require "lib.shop"
@@ -153,6 +154,7 @@ if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("ARCH_TEST") then require "test.arch_probe" end
 if os.getenv("PASI_TEST") then require "test.pasi_probe" end
 if os.getenv("FOLI_TEST") then require "test.foli_probe" end
+if os.getenv("AMBIENCE_TEST") then require "test.ambience_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
 if os.getenv("MAP_TEST") then require "test.map_probe" end

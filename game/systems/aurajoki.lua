@@ -257,17 +257,8 @@ function A.tick(dt)
   end
 end
 
--- The cathedral's bells ring noon over the river.
-local CATHEDRAL = {428, -104} -- the tower
-local last_hour
 engine.on("tick", function(dt)
   A.tick(dt or (1/60))
-  if not A.fori then return end
-  local hour = math.floor(require("lib.daynight").hour)
-  if last_hour and hour ~= last_hour and hour == 12 then
-    engine.play("cathedral_bell", {pos = {CATHEDRAL[1], 25, CATHEDRAL[2]}, volume = 0.8})
-  end
-  last_hour = hour
 end)
 
 return A
