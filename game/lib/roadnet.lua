@@ -2809,19 +2809,29 @@ build = function(map, kit)
       if math.min(k, nb - 1 - k) % 3 == 1 then
         local u = (k + 0.5) * bay - len / 2
         local bx, bz = mx + fx * u + nx * 0.65, mz + fz * u + nz * 0.65
-        if not R.on_carriageway(bx + nx * 0.7, bz + nz * 0.7, 0.3) then
+        -- (Up to the top of any building it would stick into: a lower
+        -- block built on, a wing round the corner.)
+        local tx, tz, over = bx + nx * 0.7, bz + nz * 0.7, -math.huge
+        for _, oi in ipairs(out_grid[cell_key(math.floor(tx / CELL), math.floor(tz / CELL))] or {}) do
+          local o = OUT[oi]
+          if o.placed and inside_poly(o.pts, tx, tz) then over = math.max(over, (o.base or 0) + o.h) end
+        end
+        if not R.on_carriageway(tx, tz, 0.3) then
           local w = bay * 0.92
           for f = 1, floors - 1 do
             local y = base + f * kit.FLOOR
+            if y < over + 0.3 then goto next end
             walls.add(bx, bz, {mesh = "cube", pos = {bx, y + 0.08, bz}, yaw = yaw, size = {1.3, 0.16, w}, color = slab, abs = true})
             if not glazed then
               walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
                                  color = rail, abs = true})
             end
             balcony_count = balcony_count + 1
+            ::next::
           end
-          if glazed and floors > 1 then -- glazed in: one sheet of glass up the stack
-            local y0, y1 = base + kit.FLOOR, base + (floors - 1) * kit.FLOOR + 2.6
+          local first = math.max(1, math.ceil((over + 0.3 - base) / kit.FLOOR))
+          if glazed and floors - 1 >= first then -- glazed in: one sheet of glass up the stack
+            local y0, y1 = base + first * kit.FLOOR, base + (floors - 1) * kit.FLOOR + 2.6
             walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, (y0 + y1) / 2, bz + nz * 0.6}, yaw = yaw, size = {0.08, y1 - y0, w},
                                color = {0.42, 0.52, 0.58}, abs = true})
           end
