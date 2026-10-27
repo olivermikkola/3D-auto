@@ -556,17 +556,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ground_keeps_its_normal_and_survives_copying() {
-        let mut m = Mesh::default();
-        m.append_tilted(&cube(), v3(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 0.2, 4.0), Vec3::ONE, 0.0);
-        m.mark_ground(0, GROUND_SETTS);
-        let mut copy = Mesh::default();
-        copy.append_tilted(&m, v3(1.0, 0.0, 0.0), (0.7, 0.0, 0.0), Vec3::ONE, Vec3::ONE, 0.0);
-        assert!(copy.verts.iter().all(|v| v.ground() == GROUND_SETTS && v.facade().0 == 0));
-        assert!(copy.verts.iter().any(|v| v.normal().y > 0.9), "the top still faces up");
-    }
-
-    #[test]
     fn a_facade_counts_heights_from_its_foot_and_survives_copying() {
         let mut m = Mesh::default();
         m.append_tilted(&cube(), v3(0.0, 5.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 10.0, 4.0), Vec3::ONE, 0.0);
@@ -717,5 +706,16 @@ mod tests {
         assert!(hi.x > 4.8 && lo.x < -4.8, "{lo:?} {hi:?}");
         assert!((hi.y - lo.y - 10.0 * 0.2f32.sin()).abs() < 0.15, "rise {}", hi.y - lo.y);
         outward(&m);
+    }
+
+    #[test]
+    fn ground_keeps_its_normal_and_survives_copying() {
+        let mut m = Mesh::default();
+        m.append_tilted(&cube(), v3(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 0.2, 4.0), Vec3::ONE, 0.0);
+        m.mark_ground(0, GROUND_SETTS);
+        let mut copy = Mesh::default();
+        copy.append_tilted(&m, v3(1.0, 0.0, 0.0), (0.7, 0.0, 0.0), Vec3::ONE, Vec3::ONE, 0.0);
+        assert!(copy.verts.iter().all(|v| v.ground() == GROUND_SETTS && v.facade().0 == 0));
+        assert!(copy.verts.iter().any(|v| v.normal().y > 0.9), "the top still faces up");
     }
 }
