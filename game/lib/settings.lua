@@ -104,5 +104,12 @@ for _, s in ipairs(M.list) do
   values[s.key] = v
   apply(s.key, v)
 end
+-- On a phone (PHONE=1 from web/index.html on a touch screen) the game
+-- starts on the low preset once, before anything is drawn, phones that
+-- played before included; after that the menu's choice stands.
+if os.getenv("PHONE") == "1" and not engine.load("phone_low") then
+  M.set("quality", 1)
+  engine.save("phone_low", true)
+end
 
 return M
