@@ -305,7 +305,8 @@ end
 
 -- Up to n more places; true when they're all done. Each chunk's signs are
 -- baked into one mesh as soon as it's through.
-local PER_TICK = 12
+-- (A still picture, test/shot, wants them all up in its first frames.)
+local PER_TICK = os.getenv("SHOT_CAM") and math.huge or 12
 local function step(job, n)
   local t0 = os.clock()
   while n > 0 and job.ci <= #job.chunks do
@@ -334,7 +335,7 @@ engine.on("tick", function()
     for k, n in pairs(S.why) do why[#why + 1] = k .. " " .. n end
     table.sort(why)
     print(string.format("shop signs: %d for %d places, %d chunks, %.0f ms over %d ticks (none: %s)", #S.list, S.job.places,
-                        #S.ids, S.job.ms, math.ceil(S.job.places / PER_TICK), table.concat(why, ", ")))
+                        #S.ids, S.job.ms, math.ceil(S.job.places / math.min(PER_TICK, S.job.places)), table.concat(why, ", ")))
     S.job, S.pending = nil, false
   end
 end)
