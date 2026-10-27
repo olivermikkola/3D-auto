@@ -11,6 +11,7 @@ anything on disk.
     python tools/run_tests.py --only "test_*_sweep.py"   # or --skip the same
 
 Prints each file's time; a failing file's full output is printed at the end.
+The files in ALONE (they time the game) run last, by themselves.
 """
 import argparse
 import fnmatch
@@ -23,6 +24,10 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent
 ROOT = TOOLS.parent
+# Run on their own once the rest are done: they time the game, and beside
+# three other test files a CI machine stalled 60-70 ms now and then (Windows,
+# test_profile_drive: a traffic tick that takes 2-4 ms alone).
+ALONE = {"test_profile_drive.py"}
 
 
 def run(name):
@@ -43,12 +48,16 @@ def main():
                    and not (args.skip and fnmatch.fnmatch(p.name, args.skip)))
     failed = []
     start = time.monotonic()
+    def report(name, code, out, secs):
+        print(f"{'ok  ' if code == 0 else 'FAIL'} {secs:6.1f} s  {name}", flush=True)
+        if code != 0:
+            failed.append((name, out))
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        for fut in as_completed([pool.submit(run, f) for f in files]):
-            name, code, out, secs = fut.result()
-            print(f"{'ok  ' if code == 0 else 'FAIL'} {secs:6.1f} s  {name}", flush=True)
-            if code != 0:
-                failed.append((name, out))
+        for fut in as_completed([pool.submit(run, f) for f in files if f not in ALONE]):
+            report(*fut.result())
+    for f in files:
+        if f in ALONE:
+            report(*run(f))
     for name, out in failed:
         print(f"\n===== {name} =====\n{out}")
     print(f"\n{len(files) - len(failed)}/{len(files)} files passed in {time.monotonic() - start:.0f} s "
