@@ -32,7 +32,7 @@ engine.on("tick", function()
     local hit, d = engine.raycast(s.x + nx * 0.5, s.y, s.z + nz * 0.5, -nx, 0, -nz, s.outline and 12 or 1.5)
     if not hit or engine.tag(hit) ~= "building" or (not s.outline and d > 1.2) then floating[#floating + 1] = s end
     -- Nothing of the building in front of it.
-    local front = engine.raycast(s.x + nx * 0.02, s.y, s.z + nz * 0.02, nx, 0, nz, 0.4)
+    local front = engine.raycast(s.x + nx * 0.02, s.y - 0.3, s.z + nz * 0.02, nx, 0, nz, 1.5)
     if front and engine.tag(front) == "building" then buried[#buried + 1] = s end
     if roadnet.on_carriageway(s.x + nx * 0.5, s.z + nz * 0.5, 0) then on_road[#on_road + 1] = s end
     local over = s.y - U.ground(s.x + nx * 0.6, s.z + nz * 0.6)
