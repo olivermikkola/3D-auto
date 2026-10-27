@@ -440,7 +440,13 @@ local function knock(id, by, speed)
   local body = engine.spawn{mesh = mesh, pos = {x, y + 0.2, z}, yaw = yaw, size = {0.7, 1.8, 0.7},
                             body = "dynamic", mass = 70, friction = 0.8, tag = "ped_down"}
   engine.set_vel(body, vx * 0.9, math.max(vy, 0) + 2 + speed * 0.25, vz * 0.9)
-  engine.set_angvel(body, (math.random() - 0.5) * 8, (math.random() - 0.5) * 4, (math.random() - 0.5) * 8)
+  -- They go over the way the car was going, and a bit of whatever else. With
+  -- only random spin a square hit could leave them sliding upright along
+  -- the road ahead of the bumper. (Three draws, as before: same sequence.)
+  local r1, r2, r3 = math.random(), math.random(), math.random()
+  local h = math.sqrt(vx * vx + vz * vz) + 1e-3
+  local over = 3 + 3 * r2
+  engine.set_angvel(body, vz / h * over + (r1 - 0.5) * 3, (r2 - 0.5) * 4, -vx / h * over + (r3 - 0.5) * 3)
   Ped.down[body] = engine.time() + 12
   engine.emit("ped_down", body, by)
 end
