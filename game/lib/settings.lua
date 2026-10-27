@@ -13,6 +13,12 @@ M.list = {
   -- first start, and F1 brings them back. (A new key: the old "help" was
   -- saved as on by everyone who ever changed any setting.)
   {key = "help_on", label = "HELP OVERLAY", default = false},
+  -- One switch for slower and faster machines (a phone, a gaming PC): sets
+  -- shadows and view distance below (each still yours to change after),
+  -- and how many cars and people there are and the street furniture
+  -- (lib/quality). MEDIUM is the game as it was before the switch.
+  {key = "quality", label = "GRAPHICS QUALITY", min = 1, max = 3, step = 1, default = 2, names = {"LOW", "MEDIUM", "HIGH"},
+   preset = {{shadows = false, view = 70}, {shadows = true, view = 100}, {shadows = true, view = 150}}},
   -- For slower GPUs: no shadow pass, and a shorter view (a share of the
   -- map's own fog distance; nothing past it is drawn). Faster ones can see
   -- twice as far (measured cheap on a Radeon 890M: docs/ROADMAP.md).
@@ -63,6 +69,7 @@ function M.set(key, v)
   apply(key, v)
   local ok, err = engine.save("settings", values)
   if not ok then print("settings: " .. err) end
+  for k, pv in pairs(s.preset and s.preset[v] or {}) do M.set(k, pv) end
   return v
 end
 
@@ -76,6 +83,7 @@ end
 function M.text(key)
   local s, v = by_key[key], values[key]
   if type(s.default) == "boolean" then return v and "ON" or "OFF" end
+  if s.names then return s.names[v] end
   return string.format(s.fmt or "%d", v)
 end
 

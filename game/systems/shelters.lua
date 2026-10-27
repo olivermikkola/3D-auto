@@ -11,6 +11,7 @@ local U = require "lib.util"
 local city = require "lib.city"
 local roadnet = require "lib.roadnet"
 local pois = require "lib.pois"
+local quality = require "lib.quality"
 
 local S = {list = {}} -- list: {id, x, z, yaw, stop name}
 
@@ -112,8 +113,21 @@ end
 
 function S.build()
   mesh()
-  S.pending = city.network() ~= nil
+  S.pending = city.network() ~= nil and quality.tier() > 1
 end
+
+-- None on the lowest quality: taken down when it's picked, put up again
+-- when it's raised.
+local function take_down()
+  for _, s in ipairs(S.list) do
+    if engine.exists(s.id) then engine.despawn(s.id) end
+  end
+  S.list = {}
+end
+quality.watch(function(tier)
+  if tier == 1 then take_down(); S.pending = false
+  elseif #S.list == 0 and city.network() and S.pending == false then S.pending = true end
+end)
 
 local function put_up()
   local stops = {}
