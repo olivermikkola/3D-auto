@@ -181,6 +181,7 @@ if os.getenv("HELI_TEST") then require "test.heli_probe" end
 if os.getenv("CARKINDS_TEST") then require "test.carkinds_probe" end
 if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
 if os.getenv("CONVOY_TEST") then require "test.convoy_probe" end
+if os.getenv("SIGNALS_TEST") then require "test.signals_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end

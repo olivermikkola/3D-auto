@@ -233,6 +233,10 @@ end
 -- "on" the road. For whatever places
 -- trees, lamps and props: none of them belongs in the carriageway. Returns
 -- the road's edge, or nil.
+-- The traffic lights: {junctions = {[id] = {base, stop, offset}}, posts =
+-- {{id, x, z, yaw, junction}...}} (empty where the map has none).
+function R.signals() return NET and NET.signals or {junctions = {}, posts = {}} end
+
 function R.on_carriageway(x, z, clear, y)
   if not NET then return nil end
   local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
@@ -1707,6 +1711,26 @@ build = function(map, kit)
   -- Traffic lights where the map has them: a post each side of the road,
   -- on the pavement by the kerb (not near another road's asphalt), its
   -- lights facing both ways along the road.
+  -- The junction a light stands by (its road's nearer end, within 35 m)
+  -- runs it, in two phases (systems/signals): roads lined up with `base`,
+  -- and the ones across. `stop`: how far from the junction's middle
+  -- traffic waits, past the widest road crossing it and its crossing.
+  NET.signals = {junctions = {}, posts = {}}
+  local function controls(e, cx, cz, yaw)
+    local best, bd
+    for _, j in ipairs{e.a, e.b} do
+      local p = NET.pos[j]
+      local dj = math.sqrt((p[1] - cx) ^ 2 + (p[2] - cz) ^ 2)
+      if dj < 35 and (not bd or dj < bd) then best, bd = j, dj end
+    end
+    if not best then return end
+    if not NET.signals.junctions[best] then
+      local widest = 0
+      for _, o in ipairs(meeting()[best] or {}) do widest = math.max(widest, o.width) end
+      NET.signals.junctions[best] = {base = yaw, stop = math.max(8.5, widest / 2 + 5), offset = (best * 7919) % 97}
+    end
+    return best
+  end
   for k = 1, #(map.signals or {}), 2 do
     local x, z = map.signals[k], map.signals[k + 1]
     local ei, si, cx, cz, d = R.nearest_edge(x, z, true)
@@ -1715,6 +1739,7 @@ build = function(map, kit)
       local a, b = e.pts[si - 1], e.pts[si]
       local yaw = math.atan(b[1] - a[1], b[2] - a[2])
       local rx, rz = math.cos(yaw), -math.sin(yaw)
+      local j = controls(e, cx, cz, yaw)
       for _, side in ipairs{-1, 1} do
         local o = e.width / 2 + 1.0
         local px, pz = cx + rx * side * o, cz + rz * side * o
@@ -1724,8 +1749,9 @@ build = function(map, kit)
           return it.edge and it.edge ~= ei and dist_seg(px, pz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + 2.5
         end)
         if not on_road and not under_roof(px, pz) then
-          kit.static{mesh = "signal", pos = {px, 0.05 + (e.height and e.height(px, pz) or (GROUND and GROUND(px, pz) or 0)), pz},
-                     yaw = yaw, size = {0.3, 7.4, 0.3}, tag = "signal", abs = true, breaks_at = SIGNAL_BREAKS_AT}
+          local id = kit.static{mesh = "signal", pos = {px, 0.05 + (e.height and e.height(px, pz) or (GROUND and GROUND(px, pz) or 0)), pz},
+                                yaw = yaw, size = {0.3, 7.4, 0.3}, tag = "signal", abs = true, breaks_at = SIGNAL_BREAKS_AT}
+          if j then table.insert(NET.signals.posts, {id = id, x = px, z = pz, yaw = yaw, junction = j}) end
         end
       end
     end
