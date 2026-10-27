@@ -44,6 +44,8 @@ void main() {
     float id = in_normal.w;
     float scaled = step(127.5, id);
     id -= 128.0 * scaled;
+    float ground_id = id > 63.5 ? id : 0.0; // a ground surface (64 up): no facade, its normal as it is
+    if (ground_id > 0.5) id = 0.0;
     if (id > 0.5) n.y = 0.0;
     v_normal = (model * vec4(n * inv_scale2.xyz, 0.0)).xyz;
     v_color = in_color.rgb / 255.0;
@@ -55,7 +57,7 @@ void main() {
         float len = abs(n.x) > abs(n.z) ? size.z : size.x;
         along = in_normal.y / 255.0 * max(1.0, floor(len / bay_of(id) + 0.5));
     }
-    v_facade = id > 0.5 ? vec3(id, in_color.a * 0.5, along) : vec3(0.0);
+    v_facade = id > 0.5 ? vec3(id, in_color.a * 0.5, along) : vec3(ground_id, 0.0, 0.0);
     v_emissive = id > 0.5 ? 0.0 : in_color.a / 255.0;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }"#;
@@ -184,12 +186,48 @@ vec3 facade(float id, float y, float along, vec3 n, vec3 wall, out float win, ou
     return c;
 }
 
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// The ground's surface by the pixel (64 worn asphalt, 65 setts), on its
+// colour c, at world (x, z) p.
+vec3 ground_surface(float id, vec3 c, vec2 p) {
+    if (id < 64.5) {
+        // Asphalt: blotches of wear at two sizes, the stones in it, and now
+        // and then a patch where it's been dug up and laid again.
+        float wear = vnoise(p * 0.08) * 0.6 + vnoise(p * 0.45) * 0.4;
+        float grit = hash(floor(p * 9.0));
+        vec2 cell = floor(p / vec2(7.0, 4.0));
+        vec2 in_cell = fract(p / vec2(7.0, 4.0));
+        float redone = step(hash(cell + 17.0), 0.05) * step(0.15, in_cell.x) * step(in_cell.x, 0.8) * step(0.2, in_cell.y) * step(in_cell.y, 0.85);
+        c *= 0.9 + 0.2 * wear + 0.06 * (grit - 0.5);
+        return mix(c, c * 0.8, redone);
+    }
+    // Setts: rows of 0.16 m stones, every other row half a stone along,
+    // each its own shade, in darker joints.
+    vec2 q = p / 0.16;
+    q.x += 0.5 * mod(floor(q.y), 2.0);
+    vec2 f = abs(fract(q) - 0.5);
+    float joint = step(0.42, max(f.x, f.y));
+    float shade = 0.82 + 0.3 * hash(floor(q));
+    return mix(c * shade, c * 0.55, joint);
+}
+
 void main() {
     vec3 n = normalize(v_normal);
     vec3 base = v_color * tint.rgb;
+    if (v_facade.x > 63.5 && n.y > 0.5) {
+        // Far off, the pattern would shimmer: it fades to the plain colour.
+        float far = smoothstep(40.0, 140.0, length(v_world - eye.xyz));
+        base = mix(ground_surface(v_facade.x, base, v_world.xz), base, far);
+    }
     float lit_window = 0.0;
     float pane = 0.0;
-    if (v_facade.x > 0.5 && abs(n.y) < 0.4) {
+    if (v_facade.x > 0.5 && v_facade.x < 63.5 && abs(n.y) < 0.4) {
         // Far off, the pattern would shimmer: it fades to its average.
         float far = smoothstep(110.0, 220.0, length(v_world - eye.xyz));
         vec3 drawn = facade(v_facade.x, v_facade.y, v_facade.z, n, base, lit_window, pane);

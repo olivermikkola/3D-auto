@@ -45,7 +45,7 @@ impl Vertex {
 
     pub fn normal(&self) -> Vec3 {
         let f = |b: u8| (b as f32 - 127.0) / 127.0;
-        let y = if self.normal[3] > 0 { 0.0 } else { f(self.normal[1]) };
+        let y = if self.on_facade() { 0.0 } else { f(self.normal[1]) };
         v3(f(self.normal[0]), y, f(self.normal[2]))
     }
 
@@ -54,12 +54,30 @@ impl Vertex {
     }
 
     pub fn emissive(&self) -> f32 {
-        if self.normal[3] > 0 { 0.0 } else { self.color[3] as f32 / 255.0 }
+        if self.on_facade() { 0.0 } else { self.color[3] as f32 / 255.0 }
+    }
+
+    fn on_facade(&self) -> bool {
+        self.normal[3] > 0 && self.ground() == 0
+    }
+
+    /// The ground surface the shader draws on this vertex (0: none; else
+    /// GROUND_ASPHALT or GROUND_SETTS).
+    pub fn ground(&self) -> u8 {
+        let b = self.normal[3];
+        if b >= GROUND_ASPHALT && b & FACADE_SCALED == 0 { b } else { 0 }
+    }
+
+    pub fn set_ground(&mut self, id: u8) {
+        self.normal[3] = id;
     }
 
     /// The facade on this wall (0: none, else as `set_facade` takes it),
     /// its height above the foot (m) and the byte for how far along it is.
     pub fn facade(&self) -> (u8, f32, u8) {
+        if !self.on_facade() {
+            return (0, 0.0, 0);
+        }
         (self.normal[3], self.color[3] as f32 * FACADE_STEP, self.normal[1])
     }
 
@@ -78,6 +96,10 @@ impl Vertex {
 pub const FACADE_STEP: f32 = 0.5;
 /// Set in a facade id: the mesh is a unit one its entity scales to size.
 pub const FACADE_SCALED: u8 = 0x80;
+/// Ground surfaces, in the same byte as a facade but from 64 up: worn
+/// asphalt, and setts (paving stones) on the paths that have them.
+pub const GROUND_ASPHALT: u8 = 64;
+pub const GROUND_SETTS: u8 = 65;
 /// The width of a facade's window bays, by facade id (render.rs's `bay`).
 pub fn facade_bay(id: u8) -> f32 {
     match id & !FACADE_SCALED {
@@ -174,10 +196,12 @@ impl Mesh {
         for v in &mut self.verts {
             let (p, n) = (f(v.pos), v.normal());
             let n = f([n.x, n.y, n.z]);
-            let facade = v.facade();
+            let (facade, ground) = (v.facade(), v.ground());
             *v = Vertex::new(v3(p[0], p[1], p[2]), v3(n[0], n[1], n[2]), v.color(), v.emissive());
             if facade.0 > 0 {
                 v.set_facade(facade.0, facade.1, facade.2);
+            } else if ground > 0 {
+                v.set_ground(ground);
             }
         }
         Ok(())
@@ -203,10 +227,20 @@ impl Mesh {
             let (id, h, along) = v.facade();
             if id > 0 {
                 out.set_facade(id, h * scale.y, along);
+            } else if v.ground() > 0 {
+                out.set_ground(v.ground());
             }
             self.verts.push(out);
         }
         self.indices.extend(src.indices.iter().map(|i| i + base));
+    }
+
+    /// Mark every vertex from `from` on as ground surface `id` (the shader
+    /// draws it only where it faces up).
+    pub fn mark_ground(&mut self, from: usize, id: u8) {
+        for v in &mut self.verts[from..] {
+            v.set_ground(id);
+        }
     }
 
     /// Mark the upright walls among the vertices from `from` on as facade
@@ -725,5 +759,16 @@ mod tests {
         assert!(hi.x > 4.8 && lo.x < -4.8, "{lo:?} {hi:?}");
         assert!((hi.y - lo.y - 10.0 * 0.2f32.sin()).abs() < 0.15, "rise {}", hi.y - lo.y);
         outward(&m);
+    }
+
+    #[test]
+    fn ground_keeps_its_normal_and_survives_copying() {
+        let mut m = Mesh::default();
+        m.append_tilted(&cube(), v3(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), v3(4.0, 0.2, 4.0), Vec3::ONE, 0.0);
+        m.mark_ground(0, GROUND_SETTS);
+        let mut copy = Mesh::default();
+        copy.append_tilted(&m, v3(1.0, 0.0, 0.0), (0.7, 0.0, 0.0), Vec3::ONE, Vec3::ONE, 0.0);
+        assert!(copy.verts.iter().all(|v| v.ground() == GROUND_SETTS && v.facade().0 == 0));
+        assert!(copy.verts.iter().any(|v| v.normal().y > 0.9), "the top still faces up");
     }
 }

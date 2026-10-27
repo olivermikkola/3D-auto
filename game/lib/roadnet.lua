@@ -18,6 +18,7 @@ local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
 local SUNNY = {-0.45, 0.89} -- the way balconies face: south-southwest (x east, z south)
 local PATH = {0.36, 0.36, 0.37} -- foot and cycle paths: asphalt, a little paler than the road
+local ASPHALT, SETTS = 64, 65 -- the ground surfaces the shader draws (mesh.rs GROUND_*)
 
 local NET -- the loaded network
 -- On a map with terrain, the height of the ground (or water) at x, z; nil on
@@ -1553,7 +1554,9 @@ build = function(map, kit)
     else
       kerbs(parts, ei, e)
     end
+    local first = #parts + 1
     strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
+    for k = first, #parts do parts[k].ground = ASPHALT end
     dashes(parts, e.pts, 0.09, hf, zebras[ei])
     for _, c in ipairs(zebras[ei] or {}) do zebra(parts, c[1], c[2], c[3], e.width, 0.09, hf) end
     if hf then
@@ -2000,9 +2003,9 @@ build = function(map, kit)
   -- Service roads and paved paths: drawn, not driven by the AI.
   if map.paved then
     local ch = chunked()
-    -- A path is left out where it runs under a road's asphalt (the roads
-    -- are a little wider than the real ones, and a path mapped along one's
-    -- edge would show through it).
+    -- A path (or a lane of setts) is left out where it runs under a road's
+    -- asphalt (the roads are a little wider than the real ones, and a path
+    -- mapped along one's edge would show through it).
     local E = NET.edges
     -- The stretches of road whose asphalt could reach segment ab of a path
     -- w wide.
@@ -2026,7 +2029,8 @@ build = function(map, kit)
     end
     for _, p in ipairs(map.paved) do
       local runs, cur, last = {}, nil, nil
-      if p.path then
+      -- (A lane of setts too: its stones would show on the road it joins.)
+      if p.path or p.stone then
         for i = 4, #p do
           local a, b = p[i - 1], p[i]
           local near = roads_near(a, b, p[1])
@@ -2061,7 +2065,9 @@ build = function(map, kit)
       end
       for _, pts in ipairs(runs) do
         local parts = {}
+        local first = #parts + 1
         strip(parts, pts, p[1], p[2] and 0.047 or 0.044, p[2] and ROAD or p.stone and {0.6, 0.5, 0.45} or PATH, true)
+        for k = first, #parts do parts[k].ground = p.stone and SETTS or ASPHALT end
         for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
       end
     end
