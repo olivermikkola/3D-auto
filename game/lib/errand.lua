@@ -63,7 +63,10 @@ function E.park_spot(x, z, nth)
       local l = math.max(math.sqrt(dx * dx + dz * dz), 1e-3)
       local p = roadnet.net().edges[e].pts
       local yaw = math.atan(p[#p][1] - p[1][1], p[#p][2] - p[1][2])
-      return rx + dx / l * (w / 2 - 1.3), rz + dz / l * (w / 2 - 1.3), yaw
+      local px, pz = rx + dx / l * (w / 2 - 1.3), rz + dz / l * (w / 2 - 1.3)
+      -- (A car parked at the kerb there makes room.)
+      if package.loaded["systems.parking"] then package.loaded["systems.parking"].clear(px, pz, 7) end
+      return px, pz, yaw
     end
   end
   local j = city.nearest(x, z)

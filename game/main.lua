@@ -41,6 +41,7 @@ require "systems.fire"
 require "systems.busroute"
 require "systems.shelters"
 require "systems.ambience"
+require "systems.parking"
 require "lib.menu"
 require "lib.shop"
 
@@ -114,6 +115,7 @@ engine.on("init", function()
   require("systems.fire").build()
   require("systems.busroute").build()
   require("systems.shelters").build()
+  require("systems.parking").build()
   require("systems.heli").build()
   engine.grab_mouse(true)
 end)
@@ -190,6 +192,7 @@ if os.getenv("CONVOY_TEST") then require "test.convoy_probe" end
 if os.getenv("SIGNALS_TEST") then require "test.signals_probe" end
 if os.getenv("SHELTERS_TEST") then require "test.shelters_probe" end
 if os.getenv("QUALITY_TEST") then require "test.quality_probe" end
+if os.getenv("PARKING_TEST") then require "test.parking_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end
