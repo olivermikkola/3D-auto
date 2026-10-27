@@ -609,6 +609,20 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (0.0, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), 0.0);
                 continue;
             }
+            // Lettering: text = "HÄSBURGER", `height` the letters' (m), `depth`
+            // their relief (default 0.05); centred on pos, reading from +z
+            // before the part's yaw.
+            if let Some(text) = p.get::<Option<String>>("text")? {
+                let c = color(&p.get("color")?)?;
+                let height = p.get::<Option<f32>>("height")?.unwrap_or(1.0);
+                let depth = p.get::<Option<f32>>("depth")?.unwrap_or(0.05);
+                let cube = &e.meshes[mesh_id(&e, "cube")?];
+                let src = mesh::text(cube, &text, height, depth);
+                let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
+                let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
+                out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (yaw, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), glow);
+                continue;
+            }
             let part = p.get::<Option<String>>("mesh")?.unwrap_or("cube".into());
             let src = mesh_id(&e, &part)?;
             if e.gpu_only.contains(&src) {
