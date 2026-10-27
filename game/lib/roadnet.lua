@@ -4,6 +4,7 @@
 -- `roads` instead of `grid`, and builds it with R.build. Buildings line
 -- the roads by district; landmarks are placed by hand. See maps/raisio.lua.
 local tunnel = require "lib.tunnel"
+local quality = require "lib.quality"
 local R = {}
 
 local SIDEWALK = 3          -- meters of pavement each side of a non-highway road
@@ -15,7 +16,9 @@ local ROOF_REACH, ROOF_SLAB, ROOF_CLEAR = 16, {0.8, 2.5}, 5
 local WIDTH = {highway = 18, main = 13, street = 10}
 local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
+local SUNNY = {-0.45, 0.89} -- the way balconies face: south-southwest (x east, z south)
 local PATH = {0.36, 0.36, 0.37} -- foot and cycle paths: asphalt, a little paler than the road
+local ASPHALT, SETTS = 64, 65 -- the ground surfaces the shader draws (mesh.rs GROUND_*)
 
 local NET -- the loaded network
 -- On a map with terrain, the height of the ground (or water) at x, z; nil on
@@ -926,8 +929,11 @@ local ERA = {
   {2000, "brick", {{0.62, 0.34, 0.26}, {0.55, 0.38, 0.3}, {0.7, 0.45, 0.35}, {0.78, 0.74, 0.66}}},
 }
 -- The windows the shader draws on a building's walls (render.rs): 1 old
--- town, 2 flats, 3 glass, 4 new render.
-local OLD_TOWN, FLATS_F, GLASS_F, NEW_F = 1, 2, 3, 4
+-- town, 2 flats, 3 glass, 4 new render, 5 a big shop, 6 works.
+local OLD_TOWN, FLATS_F, GLASS_F, NEW_F, BIG_SHOP_F, WORKS_F = 1, 2, 3, 4, 5, 6
+-- A shop this big on the ground (m²) is a mall or a hypermarket: a glass
+-- front and a sign band, not rows of windows.
+local BIG_SHOP = 1500
 local ERA_FACADE = {OLD_TOWN, NEW_F, FLATS_F, FLATS_F} -- by ERA row: before 1920, 1945, 1975, 2000
 
 -- Style, colour and facade of a building from the year it was built.
@@ -1554,7 +1560,9 @@ build = function(map, kit)
     else
       kerbs(parts, ei, e)
     end
+    local first = #parts + 1
     strip(parts, e.pts, e.width, 0.08, ROAD, true, hf)
+    for k = first, #parts do parts[k].ground = ASPHALT end
     dashes(parts, e.pts, 0.09, hf, zebras[ei])
     for _, c in ipairs(zebras[ei] or {}) do zebra(parts, c[1], c[2], c[3], e.width, 0.09, hf) end
     if hf then
@@ -1762,6 +1770,102 @@ build = function(map, kit)
       end
     end
   end
+  -- Markings besides the center line: a stop line where traffic waits for
+  -- a junction's lights (systems/signals: `stop` from its middle), across
+  -- the lanes coming in; and a solid line along each edge of a main road,
+  -- broken where other roads join and left off a side cars park on.
+  local marks = chunked()
+  local MARK = {0.92, 0.92, 0.88}
+  -- The point `dist` along e from its end at junction j, and the heading
+  -- there away from j.
+  local function from_end(e, j, dist)
+    local pts, n = e.pts, #e.pts
+    for k = 1, n - 1 do
+      local a = e.a == j and pts[k] or pts[n - k + 1]
+      local b = e.a == j and pts[k + 1] or pts[n - k]
+      local l = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+      if l > 0 and dist <= l then
+        local t = dist / l
+        return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, math.atan(b[1] - a[1], b[2] - a[2])
+      end
+      dist = dist - l
+    end
+  end
+  local function mark(x, z, yaw, across, long, hf, pitch)
+    local y = (hf or GROUND or function() return 0 end)(x, z)
+    marks.add(x, z, {mesh = "plane", pos = {x, y + 0.097, z}, yaw = yaw, pitch = pitch, size = {across, 1, long}, color = MARK, abs = true})
+  end
+  local stop_lines, edge_lines = 0, 0
+  local js = {}
+  for j in pairs(NET.signals.junctions) do js[#js + 1] = j end
+  table.sort(js)
+  for _, j in ipairs(js) do
+    local ctl = NET.signals.junctions[j]
+    for _, e in ipairs(meeting()[j] or {}) do
+      local inbound = not e.oneway or e.b == j
+      if e.kind ~= "highway" and not e.tunnel and e.width >= 5 and inbound then
+        local x, z, yaw = from_end(e, j, ctl.stop)
+        if x then
+          local hy = yaw + math.pi -- heading in, toward the junction
+          local rx, rz = -math.cos(hy), math.sin(hy) -- its right (x east, z south): traffic keeps right
+          local w = e.width / 2 - 0.3
+          local o = e.oneway and 0 or w / 2 + 0.15
+          if e.oneway then w = e.width - 0.6 end
+          mark(x + rx * o, z + rz * o, hy, w, 0.5, e.height)
+          stop_lines = stop_lines + 1
+        end
+      end
+    end
+  end
+  for _, e in ipairs(NET.edges) do
+    if e.kind == "main" and not e.tunnel and e.width >= 7 then
+      local hf = e.height or GROUND
+      local total = 0
+      for i = 2, #e.pts do total = total + math.sqrt((e.pts[i][1] - e.pts[i - 1][1]) ^ 2 + (e.pts[i][2] - e.pts[i - 1][2]) ^ 2) end
+      -- Clear of the mouths of the roads joining at either end.
+      local function mouth(j)
+        local m = meeting()[j] or {}
+        if #m < 3 then return 0 end
+        local widest = 0
+        for _, o in ipairs(m) do if o ~= e then widest = math.max(widest, o.width) end end
+        return widest / 2 + 3
+      end
+      local s0, s1 = mouth(e.a), total - mouth(e.b)
+      local s = 0
+      for i = 2, #e.pts do
+        local ax, az, bx, bz = e.pts[i - 1][1], e.pts[i - 1][2], e.pts[i][1], e.pts[i][2]
+        local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+        local lo, hi = math.max(s, s0), math.min(s + len, s1)
+        if len > 0 and hi - lo > 1 then
+          local yaw = math.atan(bx - ax, bz - az)
+          local fx, fz = (bx - ax) / len, (bz - az) / len
+          local rx, rz = math.cos(yaw), -math.sin(yaw)
+          local n = math.ceil((hi - lo) / 6)
+          for k = 0, n - 1 do
+            local u0, u1 = lo + (hi - lo) * k / n - s, lo + (hi - lo) * (k + 1) / n - s
+            local mx, mz = ax + fx * (u0 + u1) / 2, az + fz * (u0 + u1) / 2
+            for _, side in ipairs{-1, 1} do
+              if not (e.parking and e.parking[side < 0 and 1 or 2]) then
+                local o = e.width / 2 - 0.35
+                local px, pz = mx + rx * side * o, mz + rz * side * o
+                local pitch
+                if hf then
+                  local h0 = hf(px - fx * (u1 - u0) / 2, pz - fz * (u1 - u0) / 2)
+                  local h1 = hf(px + fx * (u1 - u0) / 2, pz + fz * (u1 - u0) / 2)
+                  pitch = -math.atan(h1 - h0, u1 - u0)
+                end
+                mark(px, pz, yaw, 0.15, u1 - u0 + 0.02, hf, pitch)
+                edge_lines = edge_lines + 1
+              end
+            end
+          end
+        end
+        s = s + len
+      end
+    end
+  end
+  marks.bake("marks", "road")
+  print(string.format("road markings: %d stop lines, %d edge line pieces", stop_lines, edge_lines))
   for id, p in ipairs(NET.pos) do
     local ring = (NET.map.roundabouts or {})[NET.name[id] or ""]
     if ring then -- a raised planted island in the middle
@@ -1905,9 +2009,9 @@ build = function(map, kit)
   -- Service roads and paved paths: drawn, not driven by the AI.
   if map.paved then
     local ch = chunked()
-    -- A path is left out where it runs under a road's asphalt (the roads
-    -- are a little wider than the real ones, and a path mapped along one's
-    -- edge would show through it).
+    -- A path (or a lane of setts) is left out where it runs under a road's
+    -- asphalt (the roads are a little wider than the real ones, and a path
+    -- mapped along one's edge would show through it).
     local E = NET.edges
     -- The stretches of road whose asphalt could reach segment ab of a path
     -- w wide.
@@ -1931,7 +2035,8 @@ build = function(map, kit)
     end
     for _, p in ipairs(map.paved) do
       local runs, cur, last = {}, nil, nil
-      if p.path then
+      -- (A lane of setts too: its stones would show on the road it joins.)
+      if p.path or p.stone then
         for i = 4, #p do
           local a, b = p[i - 1], p[i]
           local near = roads_near(a, b, p[1])
@@ -1966,7 +2071,9 @@ build = function(map, kit)
       end
       for _, pts in ipairs(runs) do
         local parts = {}
+        local first = #parts + 1
         strip(parts, pts, p[1], p[2] and 0.047 or 0.044, p[2] and ROAD or p.stone and {0.6, 0.5, 0.45} or PATH, true)
+        for k = first, #parts do parts[k].ground = p.stone and SETTS or ASPHALT end
         for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
       end
     end
@@ -2564,6 +2671,14 @@ build = function(map, kit)
     end
     return inside
   end
+  local function area(pts) -- of an outline, m²
+    local a, j = 0, #pts
+    for k = 1, #pts do
+      a = a + pts[j][1] * pts[k][2] - pts[k][1] * pts[j][2]
+      j = k
+    end
+    return math.abs(a) / 2
+  end
   for oi, o in ipairs(map.outlines or {}) do
     local pts, x0, z0, x1, z1, clear = {}, math.huge, math.huge, -math.huge, -math.huge, true
     for k = 4, #o do
@@ -2795,6 +2910,56 @@ build = function(map, kit)
   -- band of windows on every wall each floor (some lit at night), a dark
   -- flat roof. Baked a chunk at a time; they collide through their boxes.
   local walls, GLASS, ROOF = chunked(), {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
+  local copings, plinths = 0, 0
+  -- Balconies on the flats' sunny walls (south to west, as built): one
+  -- every third window bay (render.rs draws 2.7 m bays, as many whole ones
+  -- as fit the wall), mirrored about the wall's middle so they line up with
+  -- the windows from whichever corner the shader counts. Some blocks have
+  -- them glazed in, a sheet of glass up the stack. Not out over a road.
+  local balcony_count = 0
+  local function balconies(mx, mz, fx, fz, nx, nz, len, base, h, color, i)
+    if quality.tier() == 1 then return end
+    local nb = math.max(1, math.floor(len / 2.7 + 0.5))
+    local bay = len / nb
+    local glazed = i % 3 == 0
+    local slab, rail = {0.72, 0.72, 0.7}, {color[1] * 0.85, color[2] * 0.85, color[3] * 0.85}
+    local yaw = math.atan(fx, fz)
+    local floors = math.floor(h / kit.FLOOR + 0.5)
+    for k = 0, nb - 1 do
+      if math.min(k, nb - 1 - k) % 3 == 1 then
+        local u = (k + 0.5) * bay - len / 2
+        local bx, bz = mx + fx * u + nx * 0.65, mz + fz * u + nz * 0.65
+        -- (Up to the top of any building it would stick into: a lower
+        -- block built on, a wing round the corner.)
+        local tx, tz, over = bx + nx * 0.7, bz + nz * 0.7, -math.huge
+        for _, oi in ipairs(out_grid[cell_key(math.floor(tx / CELL), math.floor(tz / CELL))] or {}) do
+          local o = OUT[oi]
+          if o.placed and inside_poly(o.pts, tx, tz) then over = math.max(over, (o.base or 0) + o.h) end
+        end
+        if not R.on_carriageway(tx, tz, 0.3) then
+          local w = bay * 0.92
+          for f = 1, floors - 1 do
+            local y = base + f * kit.FLOOR
+            if y < over + 0.3 then goto next end
+            walls.add(bx, bz, {mesh = "cube", pos = {bx, y + 0.08, bz}, yaw = yaw, size = {1.3, 0.16, w}, color = slab, abs = true})
+            if not glazed then
+              walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
+                                 color = rail, abs = true})
+            end
+            balcony_count = balcony_count + 1
+            ::next::
+          end
+          local first = math.max(1, math.ceil((over + 0.3 - base) / kit.FLOOR))
+          if glazed and floors - 1 >= first then -- glazed in: one sheet of glass up the stack
+            local y0, y1 = base + first * kit.FLOOR, base + (floors - 1) * kit.FLOOR + 2.6
+            walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, (y0 + y1) / 2, bz + nz * 0.6}, yaw = yaw, size = {0.08, y1 - y0, w},
+                               color = {0.42, 0.52, 0.58}, abs = true})
+          end
+        end
+      end
+    end
+  end
+
   local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
   for _, o in pairs(OUT) do
     if o.placed then
@@ -2805,6 +2970,11 @@ build = function(map, kit)
                     or (o.kind == "shop" and {0.84, 0.84, 0.82}) or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
       local facade = o.kind ~= "works" and o.kind ~= "church"
                      and (o.year and select(3, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)) or facade_of(nil, o.kind)) or nil
+      if o.kind == "works" then
+        facade = WORKS_F
+      elseif o.kind == "shop" and h < 16 and area(o.pts) > BIG_SHOP then
+        facade = BIG_SHOP_F
+      end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
@@ -2821,6 +2991,18 @@ build = function(map, kit)
           if facade == OLD_TOWN then -- the cornice under the roof
             walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
                                size = {0.36, 0.7, len + 0.36}, color = {color[1] * 0.9, color[2] * 0.9, color[3] * 0.88}, abs = true})
+            -- and a plinth a shade darker along its foot
+            plinths = plinths + 1
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
+                               size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
+          elseif facade and facade ~= GLASS_F then -- the parapet's coping, a lighter edge to the roof
+            copings = copings + 1
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
+                               size = {0.24, 0.4, len + 0.24}, color = {math.min(1, color[1] * 1.2 + 0.1), math.min(1, color[2] * 1.2 + 0.1),
+                               math.min(1, color[3] * 1.2 + 0.1)}, abs = true})
+          end
+          if facade == FLATS_F and len > 6 and h >= 3 * kit.FLOOR and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
+            balconies(mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
           end
           for f = 0, floors - 1 do
             local lit = (f * 7 + o.i * 3 + k) % 3 == 0
@@ -2832,6 +3014,8 @@ build = function(map, kit)
       end
     end
   end
+  print(string.format("outline trim: %d copings, %d plinths", copings, plinths))
+  print(string.format("balconies: %d", balcony_count))
   walls.bake("outline", "outline")
   roofs.bake("roofs_", "outline")
   -- A tree or two in the yards round homes, once every building stands.

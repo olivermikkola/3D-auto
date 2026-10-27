@@ -613,6 +613,9 @@ engine.on("contact", function(a, b, speed)
   local o, other
   if P.officers[a] then o, other = a, b elseif P.officers[b] then o, other = b, a else return end
   local tag = engine.tag(other)
+  -- A squad car's driver doesn't run down their own (unless it's you at
+  -- the wheel): arriving cars nudged deployed officers to death.
+  if tag == "cop" and other ~= G.vehicle then return end
   if (tag == "car" or tag == "cop") and speed > 4 then
     local vx, vy, vz = engine.vel(other)
     H.damage(o, 200, other, vx, vy, vz)

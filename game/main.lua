@@ -41,6 +41,7 @@ require "systems.fire"
 require "systems.busroute"
 require "systems.shelters"
 require "systems.shopsigns"
+require "systems.ambience"
 require "systems.parking"
 require "lib.menu"
 require "lib.shop"
@@ -110,6 +111,7 @@ engine.on("init", function()
   require("systems.gunshop").build()
   require("systems.paintshop").build()
   require("systems.dealer").build()
+  require("systems.nightlife").build()
   require("systems.cashvan").build()
   require("systems.ambulance").build()
   require("systems.fire").build()
@@ -118,6 +120,7 @@ engine.on("init", function()
   require("systems.shopsigns").build()
   require("systems.parking").build()
   require("systems.heli").build()
+  require("systems.terraces").build()
   engine.grab_mouse(true)
 end)
 
@@ -154,6 +157,7 @@ if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("ARCH_TEST") then require "test.arch_probe" end
 if os.getenv("PASI_TEST") then require "test.pasi_probe" end
 if os.getenv("FOLI_TEST") then require "test.foli_probe" end
+if os.getenv("AMBIENCE_TEST") then require "test.ambience_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
 if os.getenv("MAP_TEST") then require "test.map_probe" end
@@ -172,6 +176,8 @@ if os.getenv("HEIST_TEST") then require "test.heist_probe" end
 if os.getenv("KAKOLA_TEST") then require "test.kakola_probe" end
 if os.getenv("HARBOR_TEST") then require "test.harbor_probe" end
 if os.getenv("KAUPPATORI_TEST") then require "test.kauppatori_probe" end
+if os.getenv("MARKET_TEST") then require "test.market_probe" end
+if os.getenv("BUSSTOPS_TEST") then require "test.busstops_probe" end
 if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
 if os.getenv("PED_EVASION_TEST") then require "test.ped_evasion_probe" end
 if os.getenv("PED_PASS_TEST") then require "test.ped_pass_probe" end
@@ -195,6 +201,7 @@ if os.getenv("SIGNS_TEST") then require "test.shopsigns_probe" end
 if os.getenv("QUALITY_TEST") then require "test.quality_probe" end
 if os.getenv("PARKING_TEST") then require "test.parking_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
+if os.getenv("TERRACES_TEST") then require "test.terraces_probe" end
 if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
 if os.getenv("GPS_TEST") then require "test.gps_probe" end
 if os.getenv("FARES_TEST") then require "test.fares_probe" end
@@ -202,6 +209,7 @@ if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
 if os.getenv("AMBULANCE_TEST") then require "test.ambulance_probe" end
 if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
 if os.getenv("FIRE_TEST") then require "test.fire_probe" end
+if os.getenv("NIGHTLIFE_TEST") then require "test.nightlife_probe" end
 if os.getenv("BUS_TEST") then require "test.bus_probe" end
 if os.getenv("YIELD_TEST") then require "test.yield_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end

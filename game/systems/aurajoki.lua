@@ -17,6 +17,29 @@ local FORI_ROUTE = {
   yaw = -2.13,
 }
 
+-- Both banks from Satama/Forum Marinum past Tuomiokirkko to Koroistenniemi,
+-- drawn by hand (systems/terraces uses them too). The stone quays are
+-- where z is between QUAYS[1] and QUAYS[2].
+A.BANKS = {
+  -- West bank (Läntinen Rantakatu & river path)
+  west = {
+    {-2150, 1720}, {-1850, 1520}, {-1550, 1330}, {-1258, 1117},
+    {-980, 920}, {-820, 770}, {-680, 670}, {-460, 520},
+    {-310, 430}, {-150, 350}, {-25, 295}, {120, 150},
+    {250, -40}, {360, -320}, {420, -680}, {460, -950},
+    {620, -1250}, {880, -1550}, {1120, -1750}, {1210, -1860}
+  },
+  -- East bank (Itäinen Rantakatu & river path)
+  east = {
+    {-2050, 1820}, {-1750, 1610}, {-1450, 1410}, {-1166, 1174},
+    {-920, 970}, {-760, 820}, {-620, 720}, {-400, 580},
+    {-250, 480}, {-100, 400}, {25, 345}, {180, 200},
+    {300, 10}, {420, -260}, {490, -640}, {540, -920},
+    {720, -1210}, {980, -1510}, {1200, -1710}, {1280, -1820}
+  }
+}
+A.QUAYS = {-400, 1700}
+
 function A.build(map)
   if not map or (map.id ~= "turku" and map.name ~= "Turku") then return end
 
@@ -96,24 +119,7 @@ function A.build(map)
 
   -- 6. Aurajoki Riverbank Promenade: Stone Quays, Willows, Bollards & Lamps
   -- Follows both banks from Satama/Forum Marinum past Tuomiokirkko to Koroistenniemi.
-  local river_banks = {
-    -- West bank (Läntinen Rantakatu & river path)
-    west = {
-      {-2150, 1720}, {-1850, 1520}, {-1550, 1330}, {-1258, 1117},
-      {-980, 920}, {-820, 770}, {-680, 670}, {-460, 520},
-      {-310, 430}, {-150, 350}, {-25, 295}, {120, 150},
-      {250, -40}, {360, -320}, {420, -680}, {460, -950},
-      {620, -1250}, {880, -1550}, {1120, -1750}, {1210, -1860}
-    },
-    -- East bank (Itäinen Rantakatu & river path)
-    east = {
-      {-2050, 1820}, {-1750, 1610}, {-1450, 1410}, {-1166, 1174},
-      {-920, 970}, {-760, 820}, {-620, 720}, {-400, 580},
-      {-250, 480}, {-100, 400}, {25, 345}, {180, 200},
-      {300, 10}, {420, -260}, {490, -640}, {540, -920},
-      {720, -1210}, {980, -1510}, {1200, -1710}, {1280, -1820}
-    }
-  }
+  local river_banks = A.BANKS
 
   -- The banks are drawn by hand and run over the riverside streets in
   -- places: nothing goes down on a carriageway.
@@ -135,7 +141,7 @@ function A.build(map)
         local y = U.ground(x, z)
 
         -- Urban stone quay section (Forum Marinum to Tuomiokirkko)
-        if z > -400 and z < 1700 then
+        if z > A.QUAYS[1] and z < A.QUAYS[2] then
           -- Low granite edge quay barrier, where it misses the street
           local fx, fz = math.sin(yaw) * 7.9, math.cos(yaw) * 7.9
           local wall = off_road(x, z, 0.6) and off_road(x + fx, z + fz, 0.6) and off_road(x - fx, z - fz, 0.6)
@@ -257,17 +263,8 @@ function A.tick(dt)
   end
 end
 
--- The cathedral's bells ring noon over the river.
-local CATHEDRAL = {428, -104} -- the tower
-local last_hour
 engine.on("tick", function(dt)
   A.tick(dt or (1/60))
-  if not A.fori then return end
-  local hour = math.floor(require("lib.daynight").hour)
-  if last_hour and hour ~= last_hour and hour == 12 then
-    engine.play("cathedral_bell", {pos = {CATHEDRAL[1], 25, CATHEDRAL[2]}, volume = 0.8})
-  end
-  last_hour = hour
 end)
 
 return A

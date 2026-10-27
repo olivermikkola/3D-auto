@@ -35,16 +35,22 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 - **Free roam**: traffic of cars, vans, taxis and sports cars, Föli buses, pedestrians, police pursuits with roadblocks from three
   stars and a helicopter from four, Lumis cash vans to rob, street racers at night, street lamps that knock over, weather (clear, cloudy, rain,
   storm; snow in winter) with wet and snowy roads, and a city radio that answers what you do.
-- **Side jobs and finding your way** (in review, PRs #138-#142): a GPS line on the radar
-  to whatever you're after, a waypoint you set on the map (M), a radar that turns with you,
-  taxi fares that call while you drive a cab, and ambulance calls from the hospital. The jobs
-  pick their places like the missions do (real hotels, pitches, bars, hospitals), by the hour.
+- **Side jobs and finding your way**: a GPS line on the radar to whatever you're after, a
+  waypoint you set on the map (M), a radar that turns with you, taxi fares, ambulance calls,
+  vigilante shifts, fires, Pöli bus routes and a police convoy at four stars. The jobs pick
+  their places like the missions do (real hotels, pitches, bars, hospitals), by the hour.
+- **Turku's look from open data**: roof and ground colours from the city's 2022 aerial photo,
+  measured heights and LOD2 roofs from its 3D city model, procedural facades (old town,
+  flats, glass, new) with lit windows at night, painted crossings, traffic lights that cycle,
+  Föli shelters at the real stops, and low/medium/high quality presets in settings.
+- **Phone**: the browser build (GitHub Pages) plays with touch controls, saves and sound.
 - **Sweeps that drive the whole map** keep it playable: traffic (`DRIVE_SWEEP`), buses,
   pedestrians (`PED_SWEEP`), the player's car (`PLAYER_SWEEP`), bridges (`BRIDGE_AUDIT`), and
   landmark renders checked by pixel in CI.
 - **Performance:** `PROFILE=1` prints fps, Lua, physics and draw time and the worst frame;
   `PROFILE_DRIVE=1` drives a robot round town. Turku headless peaks at about 540 MB RSS (it
-  was 1.2 GB; vertices are 20 bytes now). The GPU side on real hardware is still unmeasured.
+  was 1.2 GB; vertices are 20 bytes now). On the Beelink's Radeon 890M the GPU takes 2-4 ms a
+  frame at 1080p: it is not the limit.
 
 ## Learned in October 2026
 
@@ -65,30 +71,39 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   the first run only, and losing the cops takes time out of sight scaled by stars.
 - The story catalogue and scorer (`lib/story.lua`, `story/radio.lua`).
 
-## Next
+## Next (agreed with Oliver, 27 October 2026)
 
-1. **GPU: measured, not the limit.** Beelink (Radeon 890M, radeonsi), Turku at 1920x1080, a
-   two-minute robot drive with a two-star chase (2026-10-23, `PROFILE=1` with the GPU timer
-   from #143): a steady 60 fps (vsync), GPU 2-4 ms a frame, CPU about 5 ms, worst frame 27 ms,
-   no frame over 50 ms. There is room to spend on looks (shadow reach, view distance, more
-   traffic) before anything needs culling.
-2. **Playtest the new jobs** (#138-#145): is the ambulance clock (the drive at 8 m/s plus
-   45 s) fair with traffic, is a taxi's pay worth the drive, does the turning radar help, is
-   a fleeing suspect catchable in 100 s, is a fire's clock fair. Numbers to tune are at the
-   top of `systems/fares.lua`, `ambulance.lua`, `vigilante.lua` and `fire.lua`.
-3. **More free-roam events**, picked from a closed list by game state, never made up (cash
-   vans, night street racers, taxi fares, ambulance calls, vigilante shifts in a stolen police
-   car and the fire brigade are in). Still open: a convoy at four stars.
-4. **Templates:** "across the river" is in (`across_water`; Turku only, Raisio has no water
-   raster). Next: the map-specific missions (Pansio heist, Föli, archipelago) where it makes
-   sense.
-5. **More Turku:** the next districts, each with a render check.
+The game has more features than reasons to play them, and Turku is recognisable from above
+but not yet from the street. So: make it look like Turku where you stand, make it feel alive,
+then give the player something to work towards. In order:
+
+0. **Groundwork.** These docs up to date, and **postcards**: fixed camera spots rendered
+   before and after every visual PR, so a change is judged by looking. The spots: Ylioppilaskylä,
+   the Aurajoki riverside, Kauppatori, Kakolanmäki, the Logomo railway yard, Puolalanmäki
+   (the art museum and Puolalanpuisto) and Kupittaa (campus and park).
+1. **Small wins.** The phone picks the low preset by itself (`engine.platform()`); pedestrians
+   stop scanning every entity for `engine.nearest`; windows on malls and warehouses; the CI
+   tests that flake on slow runners; sounds of the place (gulls by the river and the harbour,
+   the cathedral's bells on the hour); Turku parody adverts.
+2. **Buildings.** Cornices and floor lines, shop fronts from OSM `shop=*` (window, light,
+   parody sign), balconies on the flats, LOD2 roofs beyond the old town, Ylioppilaskylä's
+   unusual shapes.
+3. **Streets.** Lane markings, stop lines and arrows; worn and patched asphalt; cobbles in the
+   old town; cycle paths you can see.
+4. **Life.** Cyclists, people who wait at the shelters and board the bus, stalls and crowds on
+   Kauppatori by day, terraces along the river in summer, Aurakatu busy on weekend nights.
+5. **Playtest** with Oliver, then tune the jobs (numbers at the top of `systems/fares.lua`,
+   `ambulance.lua`, `vigilante.lua`, `fire.lua`).
+6. **A reason to play.** Businesses to buy (a grill, a kiosk, a taxi firm) that pay while you
+   play and are places to save, and a story that ties the eleven missions together through the
+   radio and its characters.
+7. **Phone for real.** Load Turku in pieces around the player instead of all 52,000 entities
+   at once (the browser build is about 530 MB). The Raisio-Turku crossing waits for this.
 
 ### Later
 
-- Laser-scan roof shapes and heights (MML, CC BY 4.0) matched to OSM footprints.
-- A small classifier behind the story scorer, only once the catalogue needs it.
 - Helsinki, then 1:1 Manhattan.
+- A small classifier behind the story scorer, only once the catalogue needs it.
 
 ## Data sources
 
@@ -96,8 +111,8 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 |---|---|---|
 | Roads, buildings, land use | OpenStreetMap via Overpass | ODbL. Fetch in tiles (`osm_import.py --fetch`); public servers time out on whole towns. |
 | Terrain | Maanmittauslaitos elevation model, 10 m (2 m available) | CC BY 4.0. Key in `~/.config/3d-auto/mml-key`. |
-| Building heights and roofs | MML laser scanning | Open, CC BY 4.0. |
-| Ground colour | MML orthophotos | Open. Not used yet. |
+| Building heights and roofs | Turku's 3D city model (LOD1 everywhere, LOD2 in the centre) | CC BY 4.0. Used. |
+| Roof and ground colour | Turku's 2022 true orthophoto (city WMS) | CC BY 4.0. Used. |
 | Helsinki | City of Helsinki's open 3D city model | Not used yet. |
 | Manhattan | NYC Open Data building footprints with heights | Not used yet. |
 | Google Earth 3D | — | **Off limits:** its terms don't allow pulling its models into a game. |

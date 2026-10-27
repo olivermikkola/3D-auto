@@ -36,7 +36,7 @@ varying vec3 v_world;
 varying float v_emissive;
 varying vec3 v_facade; // which facade (0: none), height above the foot (m), bays along the wall
 // A facade's window bay (m), as mesh.rs's facade_bay.
-float bay_of(float id) { return id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3)); }
+float bay_of(float id) { return id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : (id < 4.5 ? 3.3 : (id < 5.5 ? 6.0 : 4.0)))); }
 void main() {
     v_world = (model * vec4(in_pos, 1.0)).xyz;
     vec3 n = in_normal.xyz / 127.0 - 1.0;
@@ -44,6 +44,8 @@ void main() {
     float id = in_normal.w;
     float scaled = step(127.5, id);
     id -= 128.0 * scaled;
+    float ground_id = id > 63.5 ? id : 0.0; // a ground surface (64 up): no facade, its normal as it is
+    if (ground_id > 0.5) id = 0.0;
     if (id > 0.5) n.y = 0.0;
     v_normal = (model * vec4(n * inv_scale2.xyz, 0.0)).xyz;
     v_color = in_color.rgb / 255.0;
@@ -55,7 +57,7 @@ void main() {
         float len = abs(n.x) > abs(n.z) ? size.z : size.x;
         along = in_normal.y / 255.0 * max(1.0, floor(len / bay_of(id) + 0.5));
     }
-    v_facade = id > 0.5 ? vec3(id, in_color.a * 0.5, along) : vec3(0.0);
+    v_facade = id > 0.5 ? vec3(id, in_color.a * 0.5, along) : vec3(ground_id, 0.0, 0.0);
     v_emissive = id > 0.5 ? 0.0 : in_color.a / 255.0;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }"#;
@@ -111,7 +113,10 @@ float hash(vec2 p) {
 // scaled to size, and windows modelled in them would stretch with them.
 // Facades: 1 old town (tall windows in white frames, shops below, a string
 // course each floor), 2 flats (wide windows, plain), 3 glass (curtain wall),
-// 4 new render (big dark-framed windows, shops below). `wall` is the wall's
+// 4 new render (big dark-framed windows, shops below), 5 a big shop (a glass
+// front on the ground floor, a sign band over it, plain wall above), 6 works
+// (ribbed cladding, a strip of high windows, a roller door every third bay).
+// `wall` is the wall's
 // colour; `win` comes back 1 in a window that's lit at night, `pane` 1 on
 // glass (it mirrors the sky after lighting).
 // `along` counts bays from the wall's corner (whole ones fit its length).
@@ -121,7 +126,7 @@ vec3 facade(float id, float y, float along, vec3 n, vec3 wall, out float win, ou
     float fy = y - fl * 3.5;
     float old = step(id, 1.5);
     float glassy = step(2.5, id) * step(id, 3.5);
-    float bay = id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : 3.3));
+    float bay = id < 1.5 ? 3.0 : (id < 2.5 ? 2.7 : (id < 3.5 ? 1.6 : (id < 4.5 ? 3.3 : (id < 5.5 ? 6.0 : 4.0))));
     float col = floor(along);
     float fu = abs(fract(along) - 0.5) * bay;
     // Shops along the street on the old town's and new buildings' ground floor.
@@ -144,20 +149,85 @@ vec3 facade(float id, float y, float along, vec3 n, vec3 wall, out float win, ou
     // A string course along the old town's floors, and a darker plinth under the shops.
     float course = old * step(fy, 0.22) * step(0.5, fl);
     vec3 c = mix(wall, wall * 0.82, course);
+    // The floors' slab edges: a joint between the flats' panels, a band of
+    // lighter render on new buildings.
+    float flats = step(1.5, id) * step(id, 2.5);
+    float slab = step(0.5, fl) * (flats * step(fy, 0.12) + step(3.5, id) * step(id, 4.5) * step(fy, 0.3));
+    c = mix(c, flats > 0.5 ? wall * 0.55 : min(wall * 1.25 + 0.08, vec3(1.0)), slab);
     c = mix(c, wall * 0.6, shop * (1.0 - step(0.45, fy)));
     c = mix(c, trim, frame);
     c = mix(c, glass, inside);
     win = inside * step(h, shop > 0.5 ? 0.6 : 0.3);
     pane = inside * (0.3 + 0.25 * h);
+    if (id > 4.5 && id < 5.5) { // a big shop
+        float front = step(fu, bay * 0.5 - 0.12) * step(0.3, y) * step(y, 3.4);
+        float mullion = step(fract(along * 3.0), 0.03) * front;
+        front *= 1.0 - mullion;
+        float sign = step(3.7, y) * step(y, 4.9);
+        c = mix(wall, wall * 0.55, step(y, 0.3));
+        c = mix(c, vec3(0.2, 0.21, 0.23), step(3.4, y) * step(y, 3.7) + mullion);
+        // The sign band: dark, with a lighter edge, a colour per shop bay.
+        vec3 brand = mix(vec3(0.75, 0.16, 0.12), vec3(0.12, 0.3, 0.62), step(0.5, h));
+        c = mix(c, mix(vec3(0.16, 0.16, 0.18), brand, step(0.66, h) * step(abs(fract(along) - 0.5), 0.3)), sign);
+        c = mix(c, glass, front);
+        win = front * step(h, 0.7) + sign * step(0.66, h) * step(abs(fract(along) - 0.5), 0.3) * 0.6;
+        pane = front * (0.3 + 0.25 * h);
+    } else if (id > 5.5) { // works
+        float rib = step(fract(along * 6.0), 0.1);
+        float high = step(fu, bay * 0.5 - 0.15) * step(4.4, y) * step(y, 5.2);
+        float door = step(abs(mod(col, 3.0) - 1.0), 0.1) * step(fu, 1.7) * step(y, 4.0);
+        c = mix(wall, wall * 0.84, rib);
+        c = mix(c, mix(vec3(0.34, 0.35, 0.37), vec3(0.28, 0.29, 0.31), step(fract(y * 2.5), 0.12)), door);
+        c = mix(c, vec3(0.2, 0.2, 0.21), step(fu, 1.85) * step(y, 4.15) * step(abs(mod(col, 3.0) - 1.0), 0.1) * (1.0 - door));
+        c = mix(c, glass, high);
+        win = high * step(h, 0.2);
+        pane = high * (0.2 + 0.2 * h);
+    }
     return c;
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// The ground's surface by the pixel (64 worn asphalt, 65 setts), on its
+// colour c, at world (x, z) p.
+vec3 ground_surface(float id, vec3 c, vec2 p) {
+    if (id < 64.5) {
+        // Asphalt: blotches of wear at two sizes, the stones in it, and now
+        // and then a patch where it's been dug up and laid again.
+        float wear = vnoise(p * 0.08) * 0.6 + vnoise(p * 0.45) * 0.4;
+        float grit = hash(floor(p * 9.0));
+        vec2 cell = floor(p / vec2(7.0, 4.0));
+        vec2 in_cell = fract(p / vec2(7.0, 4.0));
+        float redone = step(hash(cell + 17.0), 0.05) * step(0.15, in_cell.x) * step(in_cell.x, 0.8) * step(0.2, in_cell.y) * step(in_cell.y, 0.85);
+        c *= 0.9 + 0.2 * wear + 0.06 * (grit - 0.5);
+        return mix(c, c * 0.8, redone);
+    }
+    // Setts: rows of 0.16 m stones, every other row half a stone along,
+    // each its own shade, in darker joints.
+    vec2 q = p / 0.16;
+    q.x += 0.5 * mod(floor(q.y), 2.0);
+    vec2 f = abs(fract(q) - 0.5);
+    float joint = step(0.42, max(f.x, f.y));
+    float shade = 0.82 + 0.3 * hash(floor(q));
+    return mix(c * shade, c * 0.55, joint);
 }
 
 void main() {
     vec3 n = normalize(v_normal);
     vec3 base = v_color * tint.rgb;
+    if (v_facade.x > 63.5 && n.y > 0.5) {
+        // Far off, the pattern would shimmer: it fades to the plain colour.
+        float far = smoothstep(40.0, 140.0, length(v_world - eye.xyz));
+        base = mix(ground_surface(v_facade.x, base, v_world.xz), base, far);
+    }
     float lit_window = 0.0;
     float pane = 0.0;
-    if (v_facade.x > 0.5 && abs(n.y) < 0.4) {
+    if (v_facade.x > 0.5 && v_facade.x < 63.5 && abs(n.y) < 0.4) {
         // Far off, the pattern would shimmer: it fades to its average.
         float far = smoothstep(110.0, 220.0, length(v_world - eye.xyz));
         vec3 drawn = facade(v_facade.x, v_facade.y, v_facade.z, n, base, lit_window, pane);

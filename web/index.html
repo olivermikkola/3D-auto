@@ -83,8 +83,14 @@
         const log = imports.env.console_log;
         imports.env.console_log = ptr => { show(UTF8ToString(ptr)); log(ptr); };
         // The page's query string, for the game's environment (src/web.rs).
+        // A touch screen as the main pointer (a phone or tablet) adds phone=1,
+        // so a first start picks the low graphics preset (lib/settings).
         imports.env.web_query = (ptr, cap) => {
-          const q = new TextEncoder().encode(location.search);
+          let search = location.search;
+          if (matchMedia("(pointer: coarse)").matches && !/[?&]phone=/.test(search)) {
+            search += (search ? "&" : "?") + "phone=1";
+          }
+          const q = new TextEncoder().encode(search);
           new Uint8Array(wasm_memory.buffer, ptr, Math.min(cap, q.length)).set(q.subarray(0, cap));
           return q.length;
         };

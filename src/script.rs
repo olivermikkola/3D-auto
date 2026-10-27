@@ -599,14 +599,19 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 continue;
             }
             // A strip along a line: ribbon = {x, y, z, ...} (part-local), `width`
-            // wide, with a skirt `depth` deep (default 0.3) down each side.
+            // wide, with a skirt `depth` deep (default 0.3) down each side;
+            // `ground` as for other parts.
             if let Some(line) = p.get::<Option<Vec<f32>>>("ribbon")? {
                 let pts: Vec<Vec3> = line.as_chunks::<3>().0.iter().map(|&[x, y, z]| v3(x, y, z)).collect();
                 let c = color(&p.get("color")?)?;
                 let width: f32 = p.get("width")?;
                 let depth = p.get::<Option<f32>>("depth")?.unwrap_or(0.3);
                 let src = mesh::ribbon(&pts, width, depth, Vec3::ONE);
+                let from = out.verts.len();
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (0.0, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), 0.0);
+                if let Some(id) = ground_id(&p)? {
+                    out.mark_ground(from, id);
+                }
                 continue;
             }
             // Lettering: text = "HÄSBURGER", `height` the letters' (m), `depth`
@@ -644,6 +649,11 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             // its entity stretches to size (a building box).
             if let Some(id) = p.get::<Option<u8>>("facade")? {
                 out.mark_facade(from, id, p.get::<Option<bool>>("facade_scaled")?.unwrap_or(false));
+            }
+            // A ground surface the shader draws where it faces up: 64 worn
+            // asphalt, 65 setts (mesh::GROUND_*).
+            if let Some(id) = ground_id(&p)? {
+                out.mark_ground(from, id);
             }
         }
         let tris = out.tri_count();
@@ -955,6 +965,17 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(())
     });
     Ok(api)
+}
+
+/// A part's `ground` surface id, if any: 64 worn asphalt, 65 setts
+/// (mesh::GROUND_*). Anything else is a typo in the game's Lua.
+fn ground_id(p: &Table) -> Result<Option<u8>> {
+    match p.get::<Option<u8>>("ground")? {
+        Some(id) if id != mesh::GROUND_ASPHALT && id != mesh::GROUND_SETTS => {
+            Err(mlua::Error::runtime(format!("unknown ground surface {id}")))
+        }
+        id => Ok(id),
+    }
 }
 
 #[cfg(test)]

@@ -7,8 +7,9 @@ local U = require "lib.util"
 local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local signals = require "systems.signals"
+local busstops = require "systems.busstops"
 
-local T = {cars = {}}
+local T = {cars = {}, BUSES = 8} -- BUSES: one car in so many is a Föli bus
 local LANE, CRUISE = 3.2, 11 -- LANE: how far before a bend a car aims (and its lane on a grid)
 
 -- A car drives the bends of its road from c.from to c.to, aiming at bend
@@ -131,7 +132,7 @@ local function add_car(min_dist)
   if not x then return end
   -- Föli buses run in Raisio and Turku
   local map_name = city.map().id
-  local is_bus = (map_name == "raisio" or map_name == "turku") and (math.random(8) == 1)
+  local is_bus = (map_name == "raisio" or map_name == "turku") and (math.random(T.BUSES) == 1)
   added = added + 1
   local kind = not is_bus and kind_of(added) or nil
   local mesh = is_bus and "bus" or kind
@@ -234,7 +235,28 @@ local function update(id, c, dt)
       local d = math.sqrt(dx * dx + dz * dz)
       yielding = d < YIELD and (dx * fx + dz * fz) < -2 and math.cos(U.angle_diff(yaw, engine.yaw(siren))) > 0.5
     end
-    c.pull = U.clamp((c.pull or 0) + (yielding and dt or -dt), 0, 1)
+    -- A Föli bus: pull in where people wait at a stop ahead, the front
+    -- door by them, and stand with the doors open (systems/busstops).
+    local stopping = false
+    if c.is_bus and not c.choose then
+      c.stop = c.stop or (not c.doors and busstops.ahead(x, z, fx, fz))
+      local s = c.stop
+      if s then
+        local left = (s.x - x) * fx + (s.z - z) * fz - busstops.DOOR
+        if left < -4 and not c.doors then
+          c.stop = nil -- went past it
+        else
+          stopping = true
+          want = math.min(want, math.max(0, left * 0.6))
+          if left < 1.5 and c.speed < 0.5 and not c.doors then
+            c.doors = engine.time() + busstops.DOORS
+            busstops.board(s, id)
+          end
+        end
+      end
+      if c.doors and engine.time() > c.doors then c.stop, c.doors = nil, nil end
+    end
+    c.pull = U.clamp((c.pull or 0) + ((yielding or stopping) and dt or -dt), 0, 1)
     if yielding then want = math.min(want, YIELD_SPEED) end
     -- Lights at the junction ahead: wait at the line on red, and on amber
     -- if there's room to stop (else carry on through). Not a street racer
@@ -278,7 +300,7 @@ local function update(id, c, dt)
 
     -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
     -- (Not while waiting at a red light, nor in the queue behind one.)
-    local queued = c.waiting or (hit and d < 8 and T.cars[hit] and T.cars[hit].waiting) or false
+    local queued = c.waiting or c.doors ~= nil or (hit and d < 8 and T.cars[hit] and T.cars[hit].waiting) or false
     c.waiting = queued -- (so the queue passes it back, car to car)
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and not queued and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
