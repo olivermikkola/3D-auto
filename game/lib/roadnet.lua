@@ -924,14 +924,27 @@ local ERA = {
   {1975, "brick", {{0.74, 0.73, 0.7}, {0.82, 0.8, 0.74}, {0.68, 0.66, 0.64}, {0.86, 0.84, 0.8}}},
   {2000, "brick", {{0.62, 0.34, 0.26}, {0.55, 0.38, 0.3}, {0.7, 0.45, 0.35}, {0.78, 0.74, 0.66}}},
 }
+-- The windows the shader draws on a building's walls (render.rs): 1 old
+-- town, 2 flats, 3 glass, 4 new render.
+local OLD_TOWN, FLATS_F, GLASS_F, NEW_F = 1, 2, 3, 4
+local ERA_FACADE = {OLD_TOWN, NEW_F, FLATS_F, FLATS_F} -- by ERA row: before 1920, 1945, 1975, 2000
+
+-- Style, colour and facade of a building from the year it was built.
 local function era_look(year, kind, floors, i)
-  for _, e in ipairs(ERA) do
-    if year < e[1] then return e[2], e[3][1 + i % #e[3]] end
+  for k, e in ipairs(ERA) do
+    if year < e[1] then return e[2], e[3][1 + i % #e[3]], ERA_FACADE[k] end
   end
-  if kind == "flats" and floors >= 3 then return "balconies", {0.92, 0.9, 0.86} end
-  if (kind == "shop" or kind == "civic") and floors >= 4 then return "glass", {1, 1, 1} end
+  if kind == "flats" and floors >= 3 then return "balconies", {0.92, 0.9, 0.86}, FLATS_F end
+  if (kind == "shop" or kind == "civic") and floors >= 4 then return "glass", {1, 1, 1}, GLASS_F end
   local NEW = {{0.88, 0.87, 0.84}, {0.76, 0.73, 0.68}, {0.62, 0.36, 0.28}, {0.58, 0.6, 0.62}}
-  return "brick", NEW[1 + i % #NEW] -- most new buildings are pale render or brick, not glass
+  return "brick", NEW[1 + i % #NEW], NEW_F -- most new buildings are pale render or brick, not glass
+end
+
+-- A building's facade when its year isn't known: by its style and kind.
+local function facade_of(style, kind)
+  if style == "glass" then return GLASS_F end
+  if style == "balconies" or kind == "flats" then return FLATS_F end
+  return OLD_TOWN
 end
 
 -- Detached houses: a painted wooden box under a gable roof, the ridge
@@ -2760,8 +2773,9 @@ build = function(map, kit)
         end
         local FINNISH_FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}}
         local color = kind == "church" and {0.94, 0.93, 0.9} or (style == "balconies" and FINNISH_FLATS[1 + i % #FINNISH_FLATS]) or style == "glass" and {1, 1, 1} or PLASTER[1 + i % #PLASTER]
-        if f[10] and kind ~= "church" then style, color = era_look(f[10], kind, floors, i) end
-        kit.static{mesh = kit.building_mesh(style, floors), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
+        local facade = facade_of(style, kind)
+        if f[10] and kind ~= "church" then style, color, facade = era_look(f[10], kind, floors, i) end
+        kit.static{mesh = kit.building_mesh(style, floors, kind ~= "church" and facade or nil), pos = {x, kit.CURB + floors * kit.FLOOR / 2, z}, yaw = yaw,
                    size = {w, floors * kit.FLOOR, d}, scale = {w, 1, d}, color = color, tag = "building"}
         roof_on(x, z, w * 1.02, d * 1.02, yaw, kit.CURB + floors * kit.FLOOR + 0.6, f[9] or nil, f[11])
       end
@@ -2782,11 +2796,13 @@ build = function(map, kit)
       local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
                     or (o.year and select(2, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)))
                     or (o.kind == "shop" and {0.84, 0.84, 0.82}) or (o.kind == "flats" and FLATS[1 + o.i % #FLATS]) or PLASTER[1 + o.i % #PLASTER]
+      local facade = o.kind ~= "works" and o.kind ~= "church"
+                     and (o.year and select(3, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)) or facade_of(nil, o.kind)) or nil
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
-      walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true})
+      walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
       walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
-      local floors = o.kind == "works" and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
+      local floors = (o.kind == "works" or facade) and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
         local a, b = o.pts[k], o.pts[k % n + 1]
         local dx, dz = b[1] - a[1], b[2] - a[2]
@@ -2795,6 +2811,10 @@ build = function(map, kit)
           local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
           local nx, nz = dz / len, -dx / len
           if inside_poly(o.pts, mx + nx * 0.3, mz + nz * 0.3) then nx, nz = -nx, -nz end
+          if facade == OLD_TOWN then -- the cornice under the roof
+            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
+                               size = {0.36, 0.7, len + 0.36}, color = {color[1] * 0.9, color[2] * 0.9, color[3] * 0.88}, abs = true})
+          end
           for f = 0, floors - 1 do
             local lit = (f * 7 + o.i * 3 + k) % 3 == 0
             walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + f * kit.FLOOR + 1.9, mz + nz * 0.06},
