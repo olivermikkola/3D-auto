@@ -2792,10 +2792,10 @@ build = function(map, kit)
   -- flat roof. Baked a chunk at a time; they collide through their boxes.
   local walls, GLASS, ROOF = chunked(), {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
   -- Balconies on the flats' sunny walls (south to west, as built): one
-  -- every other window bay (render.rs draws 2.7 m bays, as many whole ones
+  -- every third window bay (render.rs draws 2.7 m bays, as many whole ones
   -- as fit the wall), mirrored about the wall's middle so they line up with
   -- the windows from whichever corner the shader counts. Some blocks have
-  -- them glazed in. Not out over a road.
+  -- them glazed in, a sheet of glass up the stack. Not out over a road.
   local balcony_count = 0
   local function balconies(mx, mz, fx, fz, nx, nz, len, base, h, color, i)
     if quality.tier() == 1 then return end
@@ -2804,28 +2804,32 @@ build = function(map, kit)
     local glazed = i % 3 == 0
     local slab, rail = {0.72, 0.72, 0.7}, {color[1] * 0.85, color[2] * 0.85, color[3] * 0.85}
     local yaw = math.atan(fx, fz)
+    local floors = math.floor(h / kit.FLOOR + 0.5)
     for k = 0, nb - 1 do
-      if math.min(k, nb - 1 - k) % 2 == 1 then
+      if math.min(k, nb - 1 - k) % 3 == 1 then
         local u = (k + 0.5) * bay - len / 2
         local bx, bz = mx + fx * u + nx * 0.65, mz + fz * u + nz * 0.65
         if not R.on_carriageway(bx + nx * 0.7, bz + nz * 0.7, 0.3) then
           local w = bay * 0.92
-          for f = 1, math.floor(h / kit.FLOOR + 0.5) - 1 do
+          for f = 1, floors - 1 do
             local y = base + f * kit.FLOOR
             walls.add(bx, bz, {mesh = "cube", pos = {bx, y + 0.08, bz}, yaw = yaw, size = {1.3, 0.16, w}, color = slab, abs = true})
-            walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
-                               color = rail, abs = true})
-            if glazed then
-              walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 1.8, bz + nz * 0.6}, yaw = yaw, size = {0.06, 1.5, w},
-                                 color = {0.42, 0.52, 0.58}, abs = true})
+            if not glazed then
+              walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
+                                 color = rail, abs = true})
             end
             balcony_count = balcony_count + 1
+          end
+          if glazed and floors > 1 then -- glazed in: one sheet of glass up the stack
+            local y0, y1 = base + kit.FLOOR, base + (floors - 1) * kit.FLOOR + 2.6
+            walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, (y0 + y1) / 2, bz + nz * 0.6}, yaw = yaw, size = {0.08, y1 - y0, w},
+                               color = {0.42, 0.52, 0.58}, abs = true})
           end
         end
       end
     end
   end
-  local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
+
   for _, o in pairs(OUT) do
     if o.placed then
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
