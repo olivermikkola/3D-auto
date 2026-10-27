@@ -3,10 +3,17 @@ local T = require "systems.traffic"
 local peds = require "systems.peds"
 local function sample()
   local n, moving = 0, 0
-  for id in pairs(T.cars) do
+  -- A car waiting at a red light, or queued behind one, is traffic working
+  -- (systems/signals), not a jam.
+  local waiting = 0
+  for id, c in pairs(T.cars) do
     n = n + 1
     local vx, _, vz = engine.vel(id)
-    if vx * vx + vz * vz > 9 then moving = moving + 1 end
+    if vx * vx + vz * vz > 9 then
+      moving = moving + 1
+    elseif c.waiting then
+      waiting = waiting + 1
+    end
   end
   local pn, pmoving = 0, 0
   for id in pairs(peds.peds) do
@@ -14,8 +21,9 @@ local function sample()
     local vx, _, vz = engine.vel(id)
     if vx * vx + vz * vz > 0.3 then pmoving = pmoving + 1 end
   end
-  print(string.format("t=%ds traffic moving %d/%d, pedestrians walking %d/%d", engine.ticks() // 60, moving, n, pmoving, pn))
-  if engine.ticks() >= 3600 and (moving < n * 0.6 or pmoving < pn * 0.7) then
+  print(string.format("t=%ds traffic moving %d/%d (+%d at lights), pedestrians walking %d/%d", engine.ticks() // 60, moving, n, waiting,
+                      pmoving, pn))
+  if engine.ticks() >= 3600 and (moving + waiting < n * 0.6 or pmoving < pn * 0.7) then
     error("SOAK FAILED: the city is jammed")
   end
 end

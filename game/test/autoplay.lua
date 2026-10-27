@@ -465,14 +465,43 @@ local function keep_off()
     local x, _, z
     if engine.exists(id) then x, _, z = engine.pos(id) end
     if px and x and (x - px) ^ 2 + (z - pz) ^ 2 < 6 ^ 2 then
-      engine.despawn(id)
-      police.officers[id] = nil
+      -- Back 15 m the way they came, if that's clear; despawning them all
+      -- left nobody to shoot (Raisio seed 5: six officers, then none).
+      local d = math.max(0.5, math.sqrt((x - px) ^ 2 + (z - pz) ^ 2))
+      local bx, bz = px + (x - px) / d * 15, pz + (z - pz) / d * 15
+      if not engine.raycast(px, 1.5 + U.ground(px, pz), pz, bx - px, 0, bz - pz, 15.5, G.player) then
+        engine.set_pos(id, bx, 1.2 + U.ground(bx, bz), bz)
+        engine.set_vel(id, 0, 0, 0)
+      else
+        engine.despawn(id)
+        police.officers[id] = nil
+      end
     end
   end
   return px, pz
 end
+-- What's going on with the officers, every 5 s: CI has failed in these
+-- steps (Raisio, some seeds) when it doesn't locally, so the log has to say why.
+local last_report
+local function report(px, pz, last_hit)
+  local t = engine.time()
+  if last_report and t - last_report < 5 then return end
+  last_report = t
+  local n, near, seen = 0, math.huge, 0
+  for id in pairs(police.officers) do
+    if engine.exists(id) and px then
+      n = n + 1
+      local ox, oy, oz = engine.pos(id)
+      local _, py = engine.pos(G.player)
+      near = math.min(near, math.sqrt((ox - px) ^ 2 + (oz - pz) ^ 2))
+      if engine.raycast(ox, oy + 1, oz, px - ox, py + 0.5 - oy - 1, pz - oz, 200, id) == G.player then seen = seen + 1 end
+    end
+  end
+  print(string.format("  ..  hp %d, %d officers (%d see the player), nearest %.0f m, %d cars, last hit %.0f s ago, stars %d",
+                      H.player.hp, n, seen, near, police.count(), last_hit and t - last_hit or -1, wanted.stars()))
+end
 until_(function()
-  keep_off()
+  report(keep_off())
   return H.player.hp < H.player.max
 end, 25, "officers shoot at the player", function()
   H.player.hp = 12 -- two more real officer hits must still kill the player
@@ -480,6 +509,7 @@ end)
 local last_hp, last_hit
 until_(function()
   local px, pz = keep_off()
+  report(px, pz, last_hit)
   -- Nor about hiding: if no officer has landed a shot for a while (out of
   -- sight round a building), stand where one has a clear line of fire.
   local now = engine.time()
