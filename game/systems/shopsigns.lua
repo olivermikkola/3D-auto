@@ -19,8 +19,8 @@ local quality = require "lib.quality"
 
 local S = {list = {}, ids = {}, why = {}} -- list: {x, z, y, yaw, word}; ids: the baked chunks
 
-local LETTER = 0.28  -- letter height
-local PLATE_H = 0.5
+local LETTER = 0.34  -- letter height
+local PLATE_H = 0.6
 local PLATE_D = 0.1
 local OVER = 3.2     -- the plate's middle, over the ground: between the shop's windows and the first floor's
 local BAND = 4.3     -- where a big shop's sign band is (render.rs facade 5)
@@ -162,6 +162,12 @@ local function over(f)
   return (f.kind == "shop" and f.h < 16 and area(f.pts) > 1500) and BAND or OVER
 end
 
+-- The sign's height on outline wall w: over the building's foot, or over
+-- the ground in front where that's higher (on a slope).
+local function height(w)
+  return math.max(w.f.base or -math.huge, U.ground(w.x + w.nx * 0.6, w.z + w.nz * 0.6)) + over(w.f)
+end
+
 local KEEP = {building = true}
 -- The first building wall from (x, y, z) along (dx, dz), within reach: its
 -- id, distance, point and normal.
@@ -183,10 +189,10 @@ local function by_outline(grid, p)
   local n = 0
   for _, w in ipairs(walls(grid, p.x, p.z, 6)) do
     if fits(w) and (w.d < 0.01 or inside(w.f.pts, p.x, p.z) or w.d < 3) then
-      local y = w.f.base + over(w.f)
+      local y = height(w)
       if not wall_ray(w.x + w.nx * 0.15, y, w.z + w.nz * 0.15, w.nx, w.nz, 8)
          and not roadnet.on_carriageway(w.x + w.nx * 0.5, w.z + w.nz * 0.5, 0.3) then
-        return w.x, w.z, y, w.nx, w.nz
+        return w.x, w.z, y, w.nx, w.nz, true
       end
       n = n + 1
       if n == 4 then break end
@@ -207,15 +213,16 @@ local function by_outline(grid, p)
   local w = walls(grid, hx, hz, 2.5)[1] -- a drawn building further off: onto its wall
   if w then
     if not fits(w) then return nil, "small wall" end
-    hx, hz, nx, nz, y = w.x, w.z, w.nx, w.nz, w.f.base + over(w.f)
+    hx, hz, nx, nz, y = w.x, w.z, w.nx, w.nz, height(w)
   end
   if wall_ray(hx + nx * 0.15, y, hz + nz * 0.15, nx, nz, 6) or roadnet.on_carriageway(hx + nx * 0.5, hz + nz * 0.5, 0.3) then
     return nil, "no open wall"
   end
-  return hx, hz, w and y or U.ground(hx + nx * 0.6, hz + nz * 0.6) + OVER, nx, nz
+  return hx, hz, w and y or U.ground(hx + nx * 0.6, hz + nz * 0.6) + OVER, nx, nz, w ~= nil
 end
 
--- Where p's sign goes: x, z, height, the wall's normal; or nil and why not.
+-- Where p's sign goes: x, z, height, the wall's normal, whether that's a
+-- drawn outline's wall; or nil and why not.
 local function site(grid, p)
   local ei, _, cx, cz, d = roadnet.nearest_edge(p.x, p.z, true)
   local e = ei and roadnet.net().edges[ei]
@@ -235,7 +242,7 @@ local function site(grid, p)
   nx, nz = nx / l, nz / l
   if nx * -dx + nz * -dz < 0.35 then return nil, "wall turned away" end
   if roadnet.on_carriageway(hx + nx * 0.5, hz + nz * 0.5, 0.3) then return nil, "road" end
-  if w then return hx, hz, w.f.base + over(w.f), nx, nz end
+  if w then return hx, hz, height(w), nx, nz, true end
   return hx, hz, U.ground(hx + nx * 0.6, hz + nz * 0.6) + OVER, nx, nz
 end
 
@@ -247,63 +254,88 @@ local function take_down()
   for _, id in ipairs(S.ids) do
     if engine.exists(id) then engine.despawn(id) end
   end
-  S.ids, S.list = {}, {}
+  S.ids, S.list, S.job, S.why = {}, {}, nil, {}
 end
 quality.watch(function(tier)
   if tier == 1 then take_down(); S.pending = false
   elseif #S.ids == 0 and city.network() and S.pending == false then S.pending = true end
 end)
 
-local function put_up()
-  local places = {}
+-- The places to sign, a chunk of the map at a time, the player's first.
+local function start()
+  local chunks, keys = {}, {}
   for _, p in ipairs(pois.find{road = false}) do
     local word, look = S.word(p.tags)
-    if word then places[#places + 1] = {p = p, word = word, look = look} end
-  end
-  table.sort(places, function(a, b) return a.p.x < b.p.x or (a.p.x == b.p.x and a.p.z < b.p.z) end)
-  local grid, near, chunks = footprint_grid(), {}, {}
-  for _, q in ipairs(places) do
-    local x, z, y, nx, nz = site(grid, q.p)
-    if not x then S.why[z] = (S.why[z] or 0) + 1 end
-    if x then
-      local ci, cj, crowded = math.floor(x / APART), math.floor(z / APART), false
-      for i = ci - 1, ci + 1 do
-        for j = cj - 1, cj + 1 do
-          for _, o in ipairs(near[i .. "," .. j] or {}) do
-            if U.dist2d(o.x, o.z, x, z) < APART then crowded = true end
-          end
-        end
+    if word then
+      local k = math.floor(p.x / CHUNK) .. "," .. math.floor(p.z / CHUNK)
+      if not chunks[k] then
+        chunks[k] = {key = k, x = (math.floor(p.x / CHUNK) + 0.5) * CHUNK, z = (math.floor(p.z / CHUNK) + 0.5) * CHUNK}
+        keys[#keys + 1] = chunks[k]
       end
-      if crowded then S.why.crowded = (S.why.crowded or 0) + 1 end
-      if not crowded then
-        local s = {x = x, z = z, y = y, yaw = math.atan(nx, nz), word = q.word, name = q.p.name}
-        S.list[#S.list + 1] = s
-        local k = ci .. "," .. cj
-        near[k] = near[k] or {}
-        table.insert(near[k], s)
-        local ck = math.floor(x / CHUNK) .. "," .. math.floor(z / CHUNK)
-        chunks[ck] = chunks[ck] or {}
-        parts(chunks[ck], x, y, z, nx, nz, q.word, q.look)
+      table.insert(chunks[k], {p = p, word = word, look = look})
+    end
+  end
+  local px, _, pz = U.player_pos()
+  for _, c in ipairs(keys) do
+    c.d = U.dist2d(c.x, c.z, px, pz)
+    table.sort(c, function(a, b) return a.p.x < b.p.x or (a.p.x == b.p.x and a.p.z < b.p.z) end)
+  end
+  table.sort(keys, function(a, b) return a.d < b.d or (a.d == b.d and a.key < b.key) end)
+  return {chunks = keys, ci = 1, i = 1, parts = {}, grid = footprint_grid(), near = {}, places = 0, ms = 0}
+end
+
+local function place(job, q)
+  local x, z, y, nx, nz, outline = site(job.grid, q.p)
+  if not x then S.why[z] = (S.why[z] or 0) + 1 return end
+  local ci, cj = math.floor(x / APART), math.floor(z / APART)
+  for i = ci - 1, ci + 1 do
+    for j = cj - 1, cj + 1 do
+      for _, o in ipairs(job.near[i .. "," .. j] or {}) do
+        if U.dist2d(o.x, o.z, x, z) < APART then S.why.crowded = (S.why.crowded or 0) + 1 return end
       end
     end
   end
-  local keys = {}
-  for k in pairs(chunks) do keys[#keys + 1] = k end
-  table.sort(keys)
-  for _, k in ipairs(keys) do
-    engine.mesh("shopsigns" .. k, chunks[k])
-    S.ids[#S.ids + 1] = engine.spawn{mesh = "shopsigns" .. k, pos = {0, 0, 0}, tag = "sign"}
+  local s = {x = x, z = z, y = y, yaw = math.atan(nx, nz), word = q.word, name = q.p.name, outline = outline}
+  S.list[#S.list + 1] = s
+  local k = ci .. "," .. cj
+  job.near[k] = job.near[k] or {}
+  table.insert(job.near[k], s)
+  parts(job.parts, x, y, z, nx, nz, q.word, q.look)
+end
+
+-- Up to n more places; true when they're all done. Each chunk's signs are
+-- baked into one mesh as soon as it's through.
+local PER_TICK = 12
+local function step(job, n)
+  local t0 = os.clock()
+  while n > 0 and job.ci <= #job.chunks do
+    local c = job.chunks[job.ci]
+    if job.i <= #c then
+      place(job, c[job.i])
+      job.i, job.places, n = job.i + 1, job.places + 1, n - 1
+    end
+    if job.i > #c then
+      if #job.parts > 0 then
+        engine.mesh("shopsigns" .. c.key, job.parts)
+        S.ids[#S.ids + 1] = engine.spawn{mesh = "shopsigns" .. c.key, pos = {0, 0, 0}, tag = "sign"}
+      end
+      job.ci, job.i, job.parts = job.ci + 1, 1, {}
+    end
   end
-  local why = {}
-  for k, n in pairs(S.why) do why[#why + 1] = k .. " " .. n end
-  table.sort(why)
-  print(string.format("shop signs: %d for %d places, %d chunks (none: %s)", #S.list, #places, #S.ids, table.concat(why, ", ")))
+  job.ms = job.ms + (os.clock() - t0) * 1000
+  return job.ci > #job.chunks
 end
 
 engine.on("tick", function()
-  if S.pending and engine.ticks() > 1 then
-    S.pending = false
-    put_up()
+  if not S.pending or engine.ticks() <= 1 then return end
+  S.job = S.job or start()
+  if step(S.job, PER_TICK) then
+    local why = {}
+    for k, n in pairs(S.why) do why[#why + 1] = k .. " " .. n end
+    table.sort(why)
+    print(string.format("shop signs: %d for %d places, %d chunks, %.0f ms over %d ticks (none: %s)", #S.list, S.job.places,
+                        #S.ids, S.job.ms, math.ceil(S.job.places / PER_TICK), table.concat(why, ", ")))
+    S.job, S.pending = nil, false
   end
 end)
 
