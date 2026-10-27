@@ -609,7 +609,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 let src = mesh::ribbon(&pts, width, depth, Vec3::ONE);
                 let from = out.verts.len();
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (0.0, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), 0.0);
-                if let Some(id) = p.get::<Option<u8>>("ground")? {
+                if let Some(id) = ground_id(&p)? {
                     out.mark_ground(from, id);
                 }
                 continue;
@@ -638,7 +638,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             }
             // A ground surface the shader draws where it faces up: 64 worn
             // asphalt, 65 setts (mesh::GROUND_*).
-            if let Some(id) = p.get::<Option<u8>>("ground")? {
+            if let Some(id) = ground_id(&p)? {
                 out.mark_ground(from, id);
             }
         }
@@ -951,6 +951,17 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(())
     });
     Ok(api)
+}
+
+/// A part's `ground` surface id, if any: 64 worn asphalt, 65 setts
+/// (mesh::GROUND_*). Anything else is a typo in the game's Lua.
+fn ground_id(p: &Table) -> Result<Option<u8>> {
+    match p.get::<Option<u8>>("ground")? {
+        Some(id) if id != mesh::GROUND_ASPHALT && id != mesh::GROUND_SETTS => {
+            Err(mlua::Error::runtime(format!("unknown ground surface {id}")))
+        }
+        id => Ok(id),
+    }
 }
 
 #[cfg(test)]
