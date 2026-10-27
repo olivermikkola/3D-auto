@@ -73,8 +73,8 @@ local function sitter_mesh(name, shirt, pants, skin, hair)
     {mesh = "cube", pos = {0.13, -0.24, 0.42}, size = {0.18, 0.5, 0.18}, color = pants}, -- shins
     {mesh = "cube", pos = {-0.13, -0.24, 0.42}, size = {0.18, 0.5, 0.18}, color = pants},
     {mesh = "cube", pos = {0, 0.48, -0.02}, size = {0.56, 0.66, 0.32}, color = shirt},
-    {mesh = "cube", pos = {0.34, 0.42, 0.12}, size = {0.14, 0.5, 0.18}, color = skin, pitch = 0.6},
-    {mesh = "cube", pos = {-0.34, 0.42, 0.12}, size = {0.14, 0.5, 0.18}, color = skin, pitch = 0.6},
+    {mesh = "cube", pos = {0.34, 0.45, 0.04}, size = {0.14, 0.55, 0.18}, color = skin},
+    {mesh = "cube", pos = {-0.34, 0.45, 0.04}, size = {0.14, 0.55, 0.18}, color = skin},
     {mesh = "sphere", pos = {0, 0.98, 0}, size = 0.34, color = skin},
     {mesh = "cube", pos = {0, 1.07, -0.03}, size = {0.36, 0.12, 0.36}, color = hair},
   })
