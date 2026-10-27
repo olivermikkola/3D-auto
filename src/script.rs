@@ -591,7 +591,11 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 let src = mesh::prism(&pts, 0.0, h, Vec3::ONE);
                 let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
                 let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
+                let from = out.verts.len();
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (yaw, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), glow);
+                if let Some(id) = p.get::<Option<u8>>("facade")? {
+                    out.mark_facade(from, id, false);
+                }
                 continue;
             }
             // A strip along a line: ribbon = {x, y, z, ...} (part-local), `width`
@@ -619,7 +623,14 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             let angle = |k: &str| -> Result<f32> { Ok(p.get::<Option<f32>>(k)?.unwrap_or(0.0)) };
             let turn = (angle("yaw")?, angle("pitch")?, angle("roll")?);
             let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
+            let from = out.verts.len();
             out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, turn, size, v3(c[0], c[1], c[2]), glow);
+            // Windows the shader draws on its walls (see render.rs), counted
+            // up from the part's foot. `facade_scaled`: the mesh is a unit one
+            // its entity stretches to size (a building box).
+            if let Some(id) = p.get::<Option<u8>>("facade")? {
+                out.mark_facade(from, id, p.get::<Option<bool>>("facade_scaled")?.unwrap_or(false));
+            }
         }
         let tris = out.tri_count();
         e.add_mesh(&name, out);

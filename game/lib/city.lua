@@ -452,17 +452,20 @@ end
 -- About a third of the floors have their lights on at night.
 local function lit(f, floors) return (f * 7 + floors * 3) % 3 == 0 end
 
--- One baked mesh per (style, floors). Footprint is 1x1 (scaled per building),
--- height is real so window bands keep a sane spacing.
+-- One baked mesh per (style, floors, facade). Footprint is 1x1 (scaled per
+-- building), height is real so window bands keep a sane spacing. With a
+-- `facade` (render.rs) the shader draws the windows on the walls instead
+-- of bands: they can't stretch with the box, and it's fewer triangles.
 local baked = {}
-local function building_mesh(style, floors)
-  local name = style .. floors
+local function building_mesh(style, floors, facade)
+  local name = style .. floors .. (facade and ("f" .. facade) or "")
   if baked[name] then return name end
   local h = floors * FLOOR
   local parts
+  local window_band = facade and function() end or window_band
   if style == "glass" then
     parts = {{mesh = "cube", size = {1, h, 1}, color = {0.35, 0.45, 0.55}, emissive = 0.08}}
-    for f = 1, floors - 1 do
+    for f = 1, facade and 0 or floors - 1 do
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR, 0}, size = {1.01, 0.3, 1.01}, color = {0.85, 0.87, 0.9}}
     end
     if floors >= 30 then -- a mast on the supertalls
@@ -510,6 +513,11 @@ local function building_mesh(style, floors)
   else
     parts = {{mesh = "cube", size = {1, h, 1}, color = {1, 1, 1}}}
     for f = 0, floors - 1 do window_band(parts, -h / 2 + f * FLOOR + 1.9, 1, lit(f, floors)) end
+  end
+  parts[1].facade, parts[1].facade_scaled = facade, facade and true
+  if facade == 1 then
+    -- The old town's cornice: a deep moulding under the roof, in the wall's colour.
+    parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 - 0.35, 0}, size = {1.035, 0.7, 1.035}, color = {0.9, 0.9, 0.88}}
   end
   parts[#parts + 1] = {mesh = "cube", pos = {0, h / 2 + 0.3, 0}, size = {1.02, 0.6, 1.02}, color = {0.6, 0.6, 0.6}}
   parts[#parts + 1] = {mesh = "cube", pos = {0.2, h / 2 + 1.0, -0.15}, size = {0.25, 1.0, 0.2}, color = {0.7, 0.7, 0.7}}
