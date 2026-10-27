@@ -10,7 +10,9 @@ python3 tools/web_check.py --query "map=raisio" --wait 40 --shot /tmp/web.png
 ```
 
 The page's address sets the game's environment: `index.html?map=raisio&hour=22` is
-`MAP=raisio HOUR=22`. `?log=1` keeps the log box on screen.
+`MAP=raisio HOUR=22`. `?log=1` keeps the log box on screen. On a touch screen (`pointer: coarse`) the page adds
+`phone=1`, and the game starts on the low graphics preset the first time (`lib/settings.lua`);
+the player's later choice in the menu stands.
 
 ## What it needs
 
