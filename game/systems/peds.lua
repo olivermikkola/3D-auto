@@ -261,6 +261,7 @@ end
 -- whether it's mid-block: on the pavement well away from any corner.
 function Ped.curb(id)
   local p = Ped.peds[id]
+  if p.spots then return 0, 0, false end -- browsing a market: no road
   local x, _, z = engine.pos(id)
   if city.network() then
     local e = edges()[p.e]
@@ -283,9 +284,12 @@ function Ped.curb(id)
   return 0, z > bz and 1 or -1, mid
 end
 
+-- Walkers on the pavements (not people browsing a market: they have their own count).
 function Ped.count()
   local n = 0
-  for _ in pairs(Ped.peds) do n = n + 1 end
+  for _, p in pairs(Ped.peds) do
+    if not p.spots then n = n + 1 end
+  end
   return n
 end
 
@@ -329,17 +333,84 @@ local function someone_ahead(id, x, z, mx, mz)
   return false
 end
 
+-- ---- browsing: people at a market ----------------------------------------------
+
+-- A browser has spots instead of a pavement: {x, z, yaw, y} places to stand
+-- (in front of a stall, facing it), shared by everyone browsing the same
+-- market (spots.taken[k] = who stands there, or stood: the knocked down
+-- and the recycled leave theirs behind). It walks from one to another
+-- nearby and stands a while at each. systems/kauppatori sets them up.
+function Ped.add_browser(spots, k)
+  local s = spots[k]
+  local id = engine.spawn{mesh = "ped" .. math.random(VARIANTS), pos = {s[1], 1.15 + (s[4] or U.ground(s[1], s[2])), s[2]}, yaw = s[3],
+                          size = {0.7, 1.8, 0.7}, body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
+  H.set(id, 30)
+  spots.taken[k] = id
+  Ped.peds[id] = {id = id, spots = spots, k = k, tx = s[1], tz = s[2], speed = WALK * (0.6 + math.random() * 0.3),
+                  state = "browse", stuck = 0, until_t = engine.time() + math.random() * 12}
+  return id
+end
+
+-- On to a free spot, a nearby stall if there's one (or stay put if none).
+local function next_spot(p, x, z)
+  local spots = p.spots
+  for try = 1, 20 do
+    local k = math.random(#spots)
+    local s = spots[k]
+    if not Ped.peds[spots.taken[k]] and U.dist2d(x, z, s[1], s[2]) < (try <= 15 and 12 or 30) then
+      if spots.taken[p.k] == p.id then spots.taken[p.k] = nil end
+      spots.taken[k], p.k = p.id, k
+      break
+    end
+  end
+  p.tx, p.tz, p.until_t = spots[p.k][1], spots[p.k][2], nil
+end
+
+local function browse(id, p, dt, x, z, vy, actual_speed2)
+  local yaw = engine.yaw(id)
+  if p.until_t then -- standing at a stall, looking at it
+    engine.set_vel(id, 0, vy, 0)
+    engine.set_yaw(id, yaw + U.angle_diff(yaw, p.spots[p.k][3]) * math.min(1, dt * 4))
+    if engine.time() > p.until_t then next_spot(p, x, z) end
+    return
+  end
+  local mx, mz = p.tx - x, p.tz - z
+  local l = math.sqrt(mx * mx + mz * mz)
+  if l < 0.4 then
+    p.until_t, p.stuck = engine.time() + 10 + math.random() * 30, 0
+    return
+  end
+  mx, mz = mx / l, mz / l
+  local speed = l < 1.5 and p.speed * 0.6 or p.speed
+  if someone_ahead(id, x, z, mx, mz) then
+    local c, s = math.cos(0.6), math.sin(0.6)
+    mx, mz = mx * c - mz * s, mx * s + mz * c
+  end
+  engine.set_vel(id, mx * speed, vy, mz * speed)
+  engine.set_yaw(id, yaw + U.angle_diff(yaw, math.atan(mx, mz)) * math.min(1, dt * 10))
+  -- Blocked by a stall's corner or a crowd: try another stall.
+  p.stuck = actual_speed2 < 0.1 and p.stuck + dt or 0
+  if p.stuck > 2 then
+    p.stuck = 0
+    next_spot(p, x, z)
+  end
+end
+
 local function walk(id, p, dt)
   local x, y, z = engine.pos(id)
   local vx, vy, vz = engine.vel(id)
   -- Read the previous physics result before replacing velocity with AI intent.
   -- Sampling after set_vel always saw commanded walking speed, even at a wall.
   local actual_speed2 = vx * vx + vz * vz
+  if p.state == "browse" then return browse(id, p, dt, x, z, vy, actual_speed2) end
   local mx, mz, speed
   if p.state == "flee" then
     if engine.time() > p.until_t then
       p.state = "walk"
-      if city.network() then
+      if p.spots then
+        p.state = "browse"
+        next_spot(p, x, z)
+      elseif city.network() then
         net.rejoin(p, x, z)
       else
         p.i, p.j = block_of(x, z)
