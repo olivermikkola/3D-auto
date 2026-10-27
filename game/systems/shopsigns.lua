@@ -23,6 +23,7 @@ local LETTER = 0.42  -- letter height
 local PLATE_H = 0.72
 local PLATE_D = 0.1
 local OVER = 3.55    -- the plate's middle, over the ground: above the shop windows (render.rs: to 3.15 m), below the first floor's
+local ON_BOX = 3.15  -- on a box building: under its floor's band (lib/city building_mesh, 3.6 m up)
 local BAND = 4.3     -- where a big shop's sign band is (render.rs facade 5)
 local REACH = 45     -- how far from its street a place may be
 local APART = 5      -- signs at least this far from each other
@@ -218,7 +219,7 @@ local function by_outline(grid, p)
   if wall_ray(hx + nx * 0.15, y, hz + nz * 0.15, nx, nz, 6) or roadnet.on_carriageway(hx + nx * 0.5, hz + nz * 0.5, 0.3) then
     return nil, "no open wall"
   end
-  return hx, hz, w and y or U.ground(hx + nx * 0.6, hz + nz * 0.6) + OVER, nx, nz, w ~= nil
+  return hx, hz, w and y or U.ground(hx + nx * 0.6, hz + nz * 0.6) + ON_BOX, nx, nz, w ~= nil
 end
 
 -- Where p's sign goes: x, z, height, the wall's normal, whether that's a
@@ -243,7 +244,7 @@ local function site(grid, p)
   if nx * -dx + nz * -dz < 0.35 then return nil, "wall turned away" end
   if roadnet.on_carriageway(hx + nx * 0.5, hz + nz * 0.5, 0.3) then return nil, "road" end
   if w then return hx, hz, height(w), nx, nz, true end
-  return hx, hz, U.ground(hx + nx * 0.6, hz + nz * 0.6) + OVER, nx, nz
+  return hx, hz, U.ground(hx + nx * 0.6, hz + nz * 0.6) + ON_BOX, nx, nz
 end
 
 function S.build()
