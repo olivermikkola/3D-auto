@@ -232,7 +232,12 @@ engine.on("tick", function(dt)
   wait = wait - dt
   if wait > 0 or not K.spots then return end
   wait = 1
+  -- (A still picture has one frame: everyone at once, wherever, near its
+  -- camera rather than the player.)
+  local still = os.getenv("SHOT_CAM")
   local x, _, z = U.player_pos()
+  if still then x, z = still:match("^([^,]+),[^,]+,([^,]+)") end
+  x, z = tonumber(x), tonumber(z)
   if not x then return end
   local peds = require "systems.peds"
   local hour = require("lib.daynight").hour
@@ -252,8 +257,6 @@ engine.on("tick", function(dt)
     end
   end
   if not open then return end
-  -- (A still picture has one frame: everyone at once, wherever.)
-  local still = os.getenv("SHOT_CAM")
   for _ = 1, still and 200 or 3 do
     if n >= quality.pick(SHOPPERS) then break end
     local k = math.random(#K.spots)
