@@ -385,10 +385,11 @@ local function walk(id, p, dt)
       mx, mz = ax / l, az / l
     end
   end
-  -- Up against a street lamp or traffic light: step round it, a second off to whichever
+  -- Up against a street lamp, traffic light or bus shelter: step round it, a second off to whichever
   -- side it isn't, rather than turning back.
   if p.state == "walk" and speed > 0 and actual_speed2 < 0.1 and not p.round then
     local post = engine.nearest(x, y - 0.9, z, 1.2, "lamp") or engine.nearest(x, y - 0.9, z, 1.2, "signal") -- (a post's position is its foot)
+      or engine.nearest(x, y + 0.35, z, 2.4, "shelter") -- (a shelter's, its middle)
     if post then
       local ox, _, oz = engine.pos(post)
       local best, turn = -1, 1

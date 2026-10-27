@@ -11,7 +11,7 @@
 local roadnet = require "lib.roadnet"
 
 -- Things that have no business on the asphalt.
-local CLUTTER = {"tree", "lamp", "signal", "prop", "wall", "scenery", "landmark", "fountain", "fence", "barrier", "stall",
+local CLUTTER = {"tree", "lamp", "signal", "shelter", "prop", "wall", "scenery", "landmark", "fountain", "fence", "barrier", "stall",
                  "crate", "cone", "container", "shop", "building", "garage", "guardhouse"}
 local MOVING = {car = true, ped = true, player = true, bus = true, boat = true, cop = true, pickup = true}
 

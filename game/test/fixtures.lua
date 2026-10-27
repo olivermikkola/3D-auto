@@ -47,7 +47,7 @@ end
 -- ray alone misses the car's sides; the ragdoll also needs vertical room.
 -- Walk through dynamic hits so a pedestrian cannot mask a building behind it.
 local BACKSTOP = {building = true, container = true, landmark = true, wall = true,
-                  tree = true, lamp = true, signal = true, carpark = true, garage = true, fountain = true}
+                  tree = true, lamp = true, signal = true, shelter = true, carpark = true, garage = true, fountain = true}
 function F.clear_flight(x, z, dx, dz, car)
   -- Thin poles can fall BETWEEN swept rays; reserve their full footprint.
   for _, tag in ipairs{"lamp", "signal", "tree", "car", "cop", "wreck"} do
