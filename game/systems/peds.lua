@@ -378,6 +378,17 @@ end
 
 local function browse(id, p, dt, x, z, vy, actual_speed2)
   local yaw = engine.yaw(id)
+  -- Somewhere to go instead (p.to, a bus's door): there, p.arrive(id, p).
+  -- Given up on after 15 s, as if they got there.
+  if p.to then
+    p.to_t = p.to_t or engine.time() + 15
+    local mx, mz = p.to[1] - x, p.to[2] - z
+    local l = math.sqrt(mx * mx + mz * mz)
+    if l < 0.8 or engine.time() > p.to_t then return p.arrive(id, p) end
+    engine.set_vel(id, mx / l * p.speed * 1.3, vy, mz / l * p.speed * 1.3)
+    engine.set_yaw(id, yaw + U.angle_diff(yaw, math.atan(mx, mz)) * math.min(1, dt * 10))
+    return
+  end
   if p.until_t then -- standing at a stall, looking at it
     engine.set_vel(id, 0, vy, 0)
     engine.set_yaw(id, yaw + U.angle_diff(yaw, p.spots[p.k][3]) * math.min(1, dt * 4))
