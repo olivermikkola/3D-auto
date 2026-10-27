@@ -22,7 +22,7 @@ local S = {list = {}, ids = {}, why = {}} -- list: {x, z, y, yaw, word}; ids: th
 local LETTER = 0.42  -- letter height
 local PLATE_H = 0.72
 local PLATE_D = 0.1
-local OVER = 3.2     -- the plate's middle, over the ground: between the shop's windows and the first floor's
+local OVER = 3.55    -- the plate's middle, over the ground: above the shop windows (render.rs: to 3.15 m), below the first floor's
 local BAND = 4.3     -- where a big shop's sign band is (render.rs facade 5)
 local REACH = 45     -- how far from its street a place may be
 local APART = 5      -- signs at least this far from each other
