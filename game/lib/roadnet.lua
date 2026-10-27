@@ -1793,7 +1793,7 @@ build = function(map, kit)
         local x, z, yaw = from_end(e, j, ctl.stop)
         if x then
           local hy = yaw + math.pi -- heading in, toward the junction
-          local rx, rz = math.cos(hy), -math.sin(hy)
+          local rx, rz = -math.cos(hy), math.sin(hy) -- its right (x east, z south): traffic keeps right
           local w = e.width / 2 - 0.3
           local o = e.oneway and 0 or w / 2 + 0.15
           if e.oneway then w = e.width - 0.6 end
