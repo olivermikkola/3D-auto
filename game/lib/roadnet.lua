@@ -21,6 +21,7 @@ local NET -- the loaded network
 -- On a map with terrain, the height of the ground (or water) at x, z; nil on
 -- a flat map. BASE, while set, stands in for it (a building's footprint).
 local GROUND, BASE
+local FOOTPRINTS = {} -- the drawn outlines: {pts, base, h, kind}
 local wet_rows -- the water's strips by row, built when first needed
 
 local function dist_seg(px, pz, ax, az, bx, bz)
@@ -1358,6 +1359,7 @@ local build
 -- its y, unless it says abs = true (it was placed on the ground already).
 function R.build(map, kit)
   GROUND, BASE = nil, nil
+  FOOTPRINTS = {}
   local t = map.terrain
   if not t then
     classify(map)
@@ -1388,6 +1390,10 @@ end
 -- The ground's height at x, z: the terrain, or water's level over it; 0 on a
 -- flat map.
 function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
+
+-- The buildings drawn as their map outlines (they collide through boxes
+-- inside them): {pts = {{x, z}...}, base, h, kind}.
+function R.footprints() return FOOTPRINTS end
 
 build = function(map, kit)
   baked_chunks = {} -- the last city's are gone
@@ -2792,6 +2798,7 @@ build = function(map, kit)
   local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
   for _, o in pairs(OUT) do
     if o.placed then
+      FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind}
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
       local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
                     or (o.year and select(2, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)))
