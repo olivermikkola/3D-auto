@@ -49,6 +49,9 @@ local function spots_for(v)
   local spots = {taken = {}}
   for _, out in ipairs{2.2, 2.9} do
     for along = -4.2, 4.2, 1.2 do
+      -- (Not in a neat row: a little either way.)
+      local j1, j2 = hash(cx + along, cz + out) - 0.5, hash(cz + along, cx + out) - 0.5
+      along, out = along + j1 * 0.7, out + j2 * 0.5
       local x, z = cx + fx * along + nx * (kerb + out), cz + fz * along + nz * (kerb + out)
       local y = U.ground(x, z)
       local hit = engine.raycast(x, y + 4, z, 0, -1, 0, 3.8)
@@ -60,6 +63,12 @@ local function spots_for(v)
       end
     end
   end
+  -- Filled in a mixed order, so a small crowd stands in a loose group or
+  -- two rather than a row from one end.
+  local order = {}
+  for i, sp in ipairs(spots) do order[i] = {sp, hash(sp[1], sp[2], 5)} end
+  table.sort(order, function(a, b) return a[2] < b[2] end)
+  for i, o in ipairs(order) do spots[i] = o[1] end
   return #spots >= 3 and spots or nil
 end
 
