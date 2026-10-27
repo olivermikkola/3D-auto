@@ -171,9 +171,9 @@ vec3 ground_surface(float id, vec3 c, vec2 p) {
         float grit = hash(floor(p * 9.0));
         vec2 cell = floor(p / vec2(7.0, 4.0));
         vec2 in_cell = fract(p / vec2(7.0, 4.0));
-        float redone = step(hash(cell + 17.0), 0.07) * step(0.15, in_cell.x) * step(in_cell.x, 0.8) * step(0.2, in_cell.y) * step(in_cell.y, 0.85);
+        float redone = step(hash(cell + 17.0), 0.05) * step(0.15, in_cell.x) * step(in_cell.x, 0.8) * step(0.2, in_cell.y) * step(in_cell.y, 0.85);
         c *= 0.9 + 0.2 * wear + 0.06 * (grit - 0.5);
-        return mix(c, c * 0.72, redone);
+        return mix(c, c * 0.8, redone);
     }
     // Setts: rows of 0.16 m stones, every other row half a stone along,
     // each its own shade, in darker joints.
