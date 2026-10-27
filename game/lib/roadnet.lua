@@ -2830,6 +2830,7 @@ build = function(map, kit)
     end
   end
 
+  local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
   for _, o in pairs(OUT) do
     if o.placed then
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
