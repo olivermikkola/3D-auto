@@ -90,6 +90,38 @@ pub fn facade_bay(id: u8) -> f32 {
     }
 }
 
+/// Lettering from the bitmap font (`font.rs`) as a mesh: each column's run
+/// of lit pixels is one box from `cube`, `depth` deep. The text is centred on
+/// x, stands on y = 0 and reads from +z; a letter is `height` tall.
+pub fn text(cube: &Mesh, s: &str, height: f32, depth: f32) -> Mesh {
+    let px = height / 7.0;
+    let n = s.chars().count() as f32;
+    let x0 = -(n * crate::font::ADVANCE - 1.0) * px / 2.0;
+    let mut out = Mesh::default();
+    for (i, ch) in s.chars().enumerate() {
+        let mut cols = [0u8; 5];
+        crate::font::glyph(ch, |x, y| cols[x as usize] |= 1 << y);
+        for (x, col) in cols.iter().enumerate() {
+            let mut y = 0;
+            while y < 7 {
+                if col >> y & 1 == 0 {
+                    y += 1;
+                    continue;
+                }
+                let top = y;
+                while y < 7 && col >> y & 1 == 1 {
+                    y += 1;
+                }
+                let run = (y - top) as f32;
+                let cx = x0 + (i as f32 * crate::font::ADVANCE + x as f32 + 0.5) * px;
+                let cy = (7.0 - top as f32 - run / 2.0) * px;
+                out.append_tilted(cube, v3(cx, cy, 0.0), (0.0, 0.0, 0.0), v3(px, run * px, depth), Vec3::ONE, 0.0);
+            }
+        }
+    }
+    out
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
     pub verts: Vec<Vertex>,
@@ -522,6 +554,25 @@ fn parse_mtl(txt: &str, out: &mut HashMap<String, (Vec3, f32)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_is_a_box_per_run_of_lit_pixels_centred_on_x() {
+        // "I": a full-height middle column and the serifs' four single pixels.
+        let m = text(&cube(), "I", 0.7, 0.05);
+        let (lo, hi) = m.verts.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), v| (a.min(v.pos[1]), b.max(v.pos[1])));
+        assert!(lo.abs() < 1e-4 && (hi - 0.7).abs() < 1e-4, "stands on 0, 0.7 tall: {lo}..{hi}");
+        let xs: f32 = m.verts.iter().map(|v| v.pos[0]).sum::<f32>() / m.verts.len() as f32;
+        assert!(xs.abs() < 0.05, "centred: mean x {xs}");
+        // "AB" is twice "A"'s advance wide, less the trailing gap.
+        let w = |s: &str| {
+            let m = text(&cube(), s, 0.7, 0.05);
+            let (a, b) = m.verts.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), v| (a.min(v.pos[0]), b.max(v.pos[0])));
+            b - a
+        };
+        assert!((w("AB") - 1.1).abs() < 1e-3, "two letters 11 pixels of 0.1 m: {}", w("AB"));
+        assert!(text(&cube(), " ", 0.7, 0.05).verts.is_empty());
+        assert!(!text(&cube(), "Ä", 0.7, 0.05).verts.is_empty());
+    }
 
     #[test]
     fn a_facade_counts_heights_from_its_foot_and_survives_copying() {

@@ -23,9 +23,23 @@ local SHIFTS = {0, 3, -3, 6, -6, 9, -9} -- along the road from the stop, to find
 
 local IGNORE = {ped = true, car = true, player = true, cop = true, bus = true, pickup = true, sidewalk = true}
 
-local function mesh()
+-- The adverts on the shelters' ends, one per shelter in turn: the game's
+-- parody brands and a little Turku satire. Up to six letters a line.
+S.ADS = {
+  {lines = {"HÄS-", "BURGER"}, bg = {0.78, 0.1, 0.08}, fg = {1, 0.96, 0.7}},
+  {lines = {"PÖLI", "KORTTI"}, bg = {0.95, 0.82, 0.08}, fg = {0.12, 0.12, 0.14}},
+  {lines = {"LUMIS", "TURVA"}, bg = {0.1, 0.25, 0.6}, fg = {1, 1, 1}},
+  {lines = {"VICK-", "LUND", "ALE!"}, bg = {0.08, 0.38, 0.22}, fg = {1, 1, 1}},
+  {lines = {"TORI", "VALMIS", "2031?"}, bg = {0.92, 0.9, 0.84}, fg = {0.15, 0.15, 0.16}},
+  {lines = {"TUNNIN", "JUNA", "HKI?"}, bg = {0.2, 0.2, 0.24}, fg = {1, 0.8, 0.45}},
+  {lines = {"PUS-", "KURI", "TAKUU"}, bg = {0.95, 0.5, 0.1}, fg = {0.1, 0.1, 0.12}},
+  {lines = {"VERK-", "KARI", "TÄNÄÄN"}, bg = {0.55, 0.12, 0.45}, fg = {1, 1, 1}},
+}
+
+local function mesh(ad_n)
   local frame, glass, roof = {0.2, 0.21, 0.23}, {0.62, 0.74, 0.8}, {0.3, 0.31, 0.33}
-  local yellow, wood, ad = {0.95, 0.82, 0.08}, {0.55, 0.36, 0.2}, {0.9, 0.42, 0.55}
+  local advert = S.ADS[ad_n]
+  local yellow, wood, ad = {0.95, 0.82, 0.08}, {0.55, 0.36, 0.2}, advert.bg
   local y0 = -H / 2 -- parts from the foot; the entity stands at its middle
   local parts = {
     -- back and sides of glass in a dark frame
@@ -52,7 +66,16 @@ local function mesh()
   parts[#parts + 1] = {mesh = "cube", pos = {-W / 2 - 0.45, y0 + 1.4, D / 2 - 0.1}, size = {0.07, 2.8, 0.07}, color = frame}
   parts[#parts + 1] = {mesh = "cube", pos = {-W / 2 - 0.45, y0 + 2.55, D / 2 - 0.1}, size = {0.06, 0.5, 0.5}, color = yellow, emissive = 0.2}
   parts[#parts + 1] = {mesh = "cube", pos = {-W / 2 - 0.45, y0 + 2.55, D / 2 - 0.1}, size = {0.07, 0.22, 0.32}, color = {0.12, 0.12, 0.14}}
-  engine.mesh("shelter", parts)
+  -- The advert's lettering, on both faces of its end, lit with it at night.
+  local LETTER = 0.15
+  for side = -1, 1, 2 do
+    for k, line in ipairs(advert.lines) do
+      local y = y0 + 1.25 + (#advert.lines / 2 - k) * LETTER * 1.5 + LETTER * 0.25
+      parts[#parts + 1] = {text = line, height = LETTER, depth = 0.02, pos = {W / 2 - 0.05 + side * 0.05, y, -0.2},
+                           yaw = side * math.pi / 2, color = advert.fg, emissive = 0.6}
+    end
+  end
+  engine.mesh("shelter" .. ad_n, parts)
 end
 
 -- Nothing in the way from the kerb to behind the shelter's back, at knee
@@ -113,7 +136,7 @@ local function site(x, z)
 end
 
 function S.build()
-  mesh()
+  for n = 1, #S.ADS do mesh(n) end
   S.pending = city.network() ~= nil and quality.tier() > 1
 end
 
@@ -141,7 +164,7 @@ local function put_up()
       if x and U.dist2d(s.x, s.z, x, z) < 12 then near = true break end
     end
     if x and not near then
-      local id = engine.spawn{mesh = "shelter", pos = {x, y + H / 2, z}, yaw = yaw, size = {W, H, D},
+      local id = engine.spawn{mesh = "shelter" .. (#S.list % #S.ADS + 1), pos = {x, y + H / 2, z}, yaw = yaw, size = {W, H, D},
                               tag = "shelter", body = "static"}
       S.list[#S.list + 1] = {id = id, x = x, z = z, yaw = yaw, name = p.name}
     end
