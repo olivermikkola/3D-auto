@@ -26,9 +26,21 @@ end
 
 function W.add(n) W.set(math.min(5, W.level + n)) end
 
+-- A crime against the police in a chase (ramming a squad car, running an
+-- officer down): a star, but not more than one every CRIME_GAP seconds.
+-- Ploughing through a roadblock (two cars, their officers) took the
+-- stars from three to five in one second.
+local CRIME_GAP = 8
+function W.crime()
+  local now = engine.time()
+  if now < (W.next_crime or 0) then return end
+  W.next_crime = now + CRIME_GAP
+  W.add(1)
+end
+
 function W.clear()
   local old = W.level
-  W.level, W.heat, W.unseen_for = 0, 0, 0
+  W.level, W.heat, W.unseen_for, W.next_crime = 0, 0, 0, nil
   changed(old)
 end
 
@@ -74,11 +86,23 @@ engine.on("contact", function(a, b, speed)
   -- Ramming a suspect from a police car (systems/vigilante) is the job.
   local vigilante = package.loaded["systems.vigilante"]
   if vigilante and vigilante.is_suspect(other) then return end
+  -- And the one driving into the other: a cop ramming the player from
+  -- behind or the side (as a chase does, again and again) is not the
+  -- player hitting a cop, and raised the stars to five within seconds.
+  local x, _, z = engine.pos(me)
+  local ox, _, oz = engine.pos(other)
+  if x and ox then
+    local dx, dz = ox - x, oz - z
+    local d = math.sqrt(dx * dx + dz * dz) + 1e-6
+    local vx, _, vz = engine.vel(me)
+    local wx, _, wz = engine.vel(other)
+    if (vx * dx + vz * dz) / d <= -(wx * dx + wz * dz) / d then return end
+  end
   local now = engine.time()
   if (recent[other] or 0) > now then return end
   recent[other] = now + 1.5
   if engine.tag(other) == "cop" then
-    W.add(1)
+    W.crime()
   elseif engine.tag(other) == "car" and speed > 10 then
     W.heat_up(0.4)
   end

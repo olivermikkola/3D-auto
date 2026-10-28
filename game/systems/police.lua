@@ -16,6 +16,8 @@ local DEPLOY_STARS, DEPLOY_RANGE, SHOOT_RANGE = 2, 28, 35
 local COPS_PER_LEVEL = {1, 2, 3, 5, 7}
 local SIGHT = 90
 local STATION_RANGE = 250 -- a station this close sends some of the backup (it arrives in seconds)
+local RESPAWN_AFTER = 6 -- seconds before a car left behind or wrecked is replaced
+local spawn_timer, busted_for = 0, 0
 local LANE = 3.2 -- meters right of the center line on a grid (on a road map: city.lane)
 
 function P.build()
@@ -75,12 +77,45 @@ local function road_dist(to, limit)
   end
 end
 
+-- Would a car turning up at (x, y, z) be unfair: in plain sight of the
+-- player, so it's on them the moment it appears (and resets the escape),
+-- or on their tail while they're getting away? The player in a fast car
+-- has driven past wherever "behind" is; it should have come from ahead.
+-- (Out in the open there may be nowhere in range out of sight: then
+-- spawn_point asks again, `lenient`, and in sight will do.)
+local lenient = false
+local function unfair(x, y, z)
+  local target = G.vehicle or G.player
+  if not target then return false end
+  local px, py, pz = engine.pos(target)
+  local d = U.dist2d(x, z, px, pz)
+  if d < 60 then return true end
+  local vx, _, vz = engine.vel(target)
+  local v = math.sqrt(vx * vx + vz * vz)
+  if v > 8 and d < 140 and ((x - px) * vx + (z - pz) * vz) / (d * v) < -0.5 then return true end
+  if lenient or d > SIGHT + 15 then return false end
+  y = (y or U.ground(x, z)) + 1
+  local dx, dy, dz = px - x, py + 0.4 - y, pz - z
+  local hit = engine.raycast(x, y, z, dx, dy, dz, math.sqrt(dx * dx + dy * dy + dz * dz), nil)
+  return hit == nil or hit == target
+end
+
 -- A junction 70-130 m from where the cops think the player is (further,
 -- in a town whose junctions are far apart). On a map drawn as roads,
 -- 70-160 m by road (up to 320 up a long dead end): a junction that's close as the crow flies can be a long
 -- drive round, and a cop sent the long way ends up too far off and is
 -- recycled, again and again.
+local spawn_point_at
 local function spawn_point()
+  lenient = false
+  local x, z, yaw, y, launch = spawn_point_at()
+  if x then return x, z, yaw, y, launch end
+  lenient = true
+  x, z, yaw, y, launch = spawn_point_at()
+  lenient = false
+  return x, z, yaw, y, launch
+end
+function spawn_point_at()
   local px, pz, py = wanted.center[1], wanted.center[2], wanted.center[3]
   -- Not down in a tunnel when they're up in the street, or the other way.
   local function level(j)
@@ -104,7 +139,7 @@ local function spawn_point()
       while #cands > 0 and not j do
         local i = math.random(#cands)
         local x, z = city.pos(cands[i])
-        if occupied(x, z) then
+        if occupied(x, z) or unfair(x, city.level(cands[i]), z) then
           cands[i] = cands[#cands]
           cands[#cands] = nil
         else
@@ -142,7 +177,7 @@ local function spawn_point()
     local j = city.random_near(px, pz, 70, 130) or city.random_near(px, pz, 40, 260)
     if not j then return end
     local x, z = city.pos(j)
-    if not occupied(x, z) and level(j) then return x, z, math.atan(px - x, pz - z), city.level(j) end
+    if not occupied(x, z) and level(j) and not unfair(x, city.level(j), z) then return x, z, math.atan(px - x, pz - z), city.level(j) end
   end
   -- A town's junctions can be few and far apart (and busy): anywhere
   -- along a road in range will do, in the lane heading for the player.
@@ -160,7 +195,7 @@ local function spawn_point()
     local yaw = math.atan(b[1] - a[1], b[2] - a[2])
     local rx, rz = U.right(yaw)
     x, z = x + rx * 3.2, z + rz * 3.2
-    if d >= 60 and d <= 200 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) then
+    if d >= 60 and d <= 200 and not occupied(x, z) and not (py and y and math.abs(y - py) >= 4) and not unfair(x, y, z) then
       return x, z, yaw, y
     end
   end
@@ -175,7 +210,7 @@ local function station_exit(px, pz)
   if U.dist2d(sx, sz, px, pz) > STATION_RANGE then return end
   local roadnet = require "lib.roadnet"
   local _, _, rx, rz = roadnet.nearest_edge(sx, sz)
-  if occupied(rx, rz) then return end
+  if occupied(rx, rz) or unfair(rx, nil, rz) then return end
   return rx, rz, math.atan(px - rx, pz - rz)
 end
 
@@ -475,7 +510,9 @@ local function drive_cop(c, dt)
     local gx, gz = c.goal[1], c.goal[2]
     local rx, rz = U.right(math.atan(gx - x, gz - z))
     local fx, fz = U.forward(yaw)
-    local hit, d = engine.raycast(x + fx * 2.5, 0.8, z + fz * 2.5, fx, 0, fz, 16, id)
+    -- (At the car's own height: 0.8 m above sea level, on Turku's hills,
+    -- went through the ground or over the traffic, and cops drove into it.)
+    local hit, d = engine.raycast(x + fx * 2.5, y, z + fz * 2.5, fx, 0, fz, 16, id)
     local tag = hit and engine.tag(hit)
     if (tag == "car" or tag == "cop") and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5 then c.overtake = 2 end
     -- On a road map, a parked or stuck car in the lane is passed too.
@@ -616,7 +653,7 @@ engine.on("killed", function(id, by, dx, dy, dz)
   P.officers[id] = nil
   local body = H.ragdoll(id, "officer", dx, dy, dz, 5)
   require("systems.peds").down[body] = engine.time() + 12
-  if by == G.player or by == G.vehicle then wanted.add(1) end
+  if by == G.player or by == G.vehicle then wanted.crime() end
 end)
 
 -- Run them over and they go down too.
@@ -782,7 +819,7 @@ end
 
 -- ---- the loop ------------------------------------------------------------
 
-local spawn_timer, busted_for = 0, 0
+
 
 local function busted()
   local fine = math.min(G.cash, 100 + math.floor(G.cash * 0.1))
@@ -821,6 +858,9 @@ engine.on("tick", function(dt)
     if not x or c.wrecked_for > 3 or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
       remove(id)
       if x then engine.despawn(id) end
+      -- Left behind (or wrecked): a breather before the next one turns up,
+      -- so getting away from one is worth something.
+      spawn_timer = math.max(spawn_timer, RESPAWN_AFTER)
     end
   end
 
