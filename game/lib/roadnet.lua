@@ -586,9 +586,15 @@ end
 -- What's streamed and what's built now (tests).
 function R.streams() return streams end
 
--- (All of them at once the first time, before the first frame, and for a
--- still picture; then two a tick.)
+-- (All of them at once the first time, as the game loads (main.lua calls
+-- R.stream_now once the player stands at the start), and for a still
+-- picture; then two a tick.)
 local streamed_once = false
+function R.stream_now()
+  if #streams == 0 then return end
+  update_streams(math.huge)
+  streamed_once = true
+end
 engine.on("tick", function()
   if #streams == 0 then return end
   update_streams((not streamed_once or os.getenv("SHOT_CAM")) and math.huge or 2)
