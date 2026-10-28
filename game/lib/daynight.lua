@@ -8,7 +8,10 @@ local D = {hour = 16.5, DAY_LENGTH = 48 * 60}
 local function lerp3(a, b, t) return {U.lerp(a[1], b[1], t), U.lerp(a[2], b[2], t), U.lerp(a[3], b[3], t)} end
 
 local PALETTES = {
-  night = {sky = {0.03, 0.05, 0.10}, top = {0.0, 0.01, 0.04}, sun = {0.10, 0.12, 0.20}, ambient = {0.07, 0.08, 0.14}, ground = {0.02, 0.02, 0.03}, glow = 1},
+  -- A night you can drive in, as in the games: blue and moonlit, not black
+  -- (the playtest: "aivan saatanan pimeää yöllä"); the lamps and windows
+  -- still stand out.
+  night = {sky = {0.08, 0.12, 0.22}, top = {0.02, 0.04, 0.10}, sun = {0.34, 0.38, 0.55}, ambient = {0.27, 0.29, 0.40}, ground = {0.07, 0.07, 0.09}, glow = 1},
   dusk = {sky = {0.95, 0.52, 0.30}, top = {0.22, 0.27, 0.52}, sun = {1.0, 0.55, 0.28}, ambient = {0.34, 0.30, 0.36}, ground = {0.10, 0.08, 0.08}, glow = 0.45},
   day = {sky = {0.68, 0.79, 0.90}, top = {0.30, 0.50, 0.85}, sun = {0.95, 0.88, 0.76}, ambient = {0.42, 0.45, 0.52}, ground = {0.13, 0.12, 0.11}, glow = 0},
 }
