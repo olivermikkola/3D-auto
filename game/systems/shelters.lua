@@ -142,22 +142,33 @@ end
 
 -- None on the lowest quality: taken down when it's picked, put up again
 -- when it's raised.
+local queue -- (put_up's, below: a half-done one starts over)
 local function take_down()
   for _, s in ipairs(S.list) do
     if engine.exists(s.id) then engine.despawn(s.id) end
   end
-  S.list = {}
+  S.list, queue = {}, nil
 end
 quality.watch(function(tier)
   if tier == 1 then take_down(); S.pending = false
   elseif #S.list == 0 and city.network() and S.pending == false then S.pending = true end
 end)
 
-local function put_up()
-  local stops = {}
-  for _, p in ipairs(pois.find{highway = "bus_stop", road = false}) do stops[#stops + 1] = p end
-  table.sort(stops, function(a, b) return a.x < b.x or (a.x == b.x and a.z < b.z) end)
-  for _, p in ipairs(stops) do
+-- The stops are looked at a few each tick (all at once for a still
+-- picture), in the same order as ever, so the same shelters go up without
+-- the 0.6 s stall Turku's 703 stops made in one tick.
+local PER_TICK = os.getenv("SHOT_CAM") and math.huge or 25
+local at
+
+local function put_up(n)
+  if not queue then
+    queue, at = {}, 1
+    for _, p in ipairs(pois.find{highway = "bus_stop", road = false}) do queue[#queue + 1] = p end
+    table.sort(queue, function(a, b) return a.x < b.x or (a.x == b.x and a.z < b.z) end)
+  end
+  local last = math.min(#queue, at + n - 1)
+  for i = at, last do
+    local p = queue[i]
     local x, z, y, yaw = site(p.x, p.z)
     local near = false
     for _, s in ipairs(S.list) do
@@ -169,14 +180,15 @@ local function put_up()
       S.list[#S.list + 1] = {id = id, x = x, z = z, yaw = yaw, name = p.name}
     end
   end
-  print(string.format("shelters: %d at %d bus stops", #S.list, #stops))
+  at = last + 1
+  if at <= #queue then return false end
+  print(string.format("shelters: %d at %d bus stops", #S.list, #queue))
+  queue = nil
+  return true
 end
 
 engine.on("tick", function()
-  if S.pending and engine.ticks() > 1 then
-    S.pending = false
-    put_up()
-  end
+  if S.pending and engine.ticks() > 1 and put_up(PER_TICK) then S.pending = false end
 end)
 
 return S

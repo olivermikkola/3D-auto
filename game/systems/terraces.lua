@@ -202,7 +202,8 @@ end
 
 local wait = 0
 engine.on("tick", function(dt)
-  if T.pending and engine.ticks() > 1 then
+  -- (Once the shelters are up: a terrace mustn't go where one will stand.)
+  if T.pending and engine.ticks() > 1 and not require("systems.shelters").pending then
     T.pending = false
     put_up()
   end
