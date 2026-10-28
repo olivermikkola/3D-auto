@@ -492,6 +492,10 @@ end
 local U = require "lib.util"
 local CHUNK = 300
 local baked_chunks = {} -- chunk_key -> {entity_ids...}
+-- Parts built a chunk at a time only near the player (or a still picture's
+-- camera), and let go again when it's gone: {name, tag, chunks = {key ->
+-- what gen needs}, gen(what, add), live = {key -> entity or false}}.
+local streams = {}
 
 local function chunked()
   local c = {}
@@ -536,6 +540,60 @@ local function update_chunk_streaming()
     end
   end
 end
+
+-- Build the streamed chunks within STREAM_RADIUS of the player, nearest
+-- first, at most `budget` of them; let go of those beyond one more.
+local STREAM_RADIUS = 4
+local function update_streams(budget)
+  local px, pz
+  local still = os.getenv("SHOT_CAM")
+  -- (A still picture is taken before the far chunks are hidden, so it shows
+  -- the city out to the fog: 8 chunks.)
+  local radius = still and 8 or STREAM_RADIUS
+  if still then
+    local x, _, z = still:match("^([^,]+),([^,]+),([^,]+)")
+    px, pz = tonumber(x), tonumber(z)
+  else
+    local x, _, z = U.player_pos()
+    px, pz = x, z
+  end
+  if not px then return end
+  local pi, pj = math.floor(px / CHUNK), math.floor(pz / CHUNK)
+  local want = {}
+  for _, s in ipairs(streams) do
+    for k in pairs(s.chunks) do
+      local ci, cj = k:match("([^,]+),([^,]+)")
+      local d = math.max(math.abs(tonumber(ci) - pi), math.abs(tonumber(cj) - pj))
+      local id = s.live[k]
+      if id ~= nil and d > radius + 1 then
+        if id then engine.despawn(id) end
+        engine.mesh(s.name .. k, {}) -- (its GPU buffers go)
+        s.live[k] = nil
+      elseif id == nil and d <= radius then
+        want[#want + 1] = {s = s, k = k, d = d}
+      end
+    end
+  end
+  table.sort(want, function(a, b) if a.d ~= b.d then return a.d < b.d end return a.k < b.k end)
+  for i = 1, math.min(#want, budget) do
+    local w = want[i]
+    local parts = {}
+    w.s.gen(w.s.chunks[w.k], function(_, _, part) parts[#parts + 1] = part end)
+    w.s.live[w.k] = bake(w.s.name .. w.k, parts, 0, w.s.tag) or false
+  end
+end
+
+-- What's streamed and what's built now (tests).
+function R.streams() return streams end
+
+-- (All of them at once the first time, before the first frame, and for a
+-- still picture; then two a tick.)
+local streamed_once = false
+engine.on("tick", function()
+  if #streams == 0 then return end
+  update_streams((not streamed_once or os.getenv("SHOT_CAM")) and math.huge or 2)
+  streamed_once = true
+end)
 
 local last_stream_check = 0
 engine.on("tick", function()
@@ -1396,7 +1454,7 @@ end
 function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
 
 build = function(map, kit)
-  baked_chunks = {} -- the last city's are gone
+  baked_chunks, streams = {}, {} -- the last city's are gone
   capped = {}
   local sx, sz = map.size[1], map.size[2]
   local midx, midz = (map.center or {0, 0})[1], (map.center or {0, 0})[2] -- the map's middle
@@ -2903,7 +2961,7 @@ build = function(map, kit)
   -- The outlines whose boxes stood: walls in the building's colour, a
   -- band of windows on every wall each floor (some lit at night), a dark
   -- flat roof. Baked a chunk at a time; they collide through their boxes.
-  local walls, GLASS, ROOF = chunked(), {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
+  local GLASS, ROOF = {0.25, 0.3, 0.38}, {0.4, 0.4, 0.41}
   local copings, plinths = 0, 0
   -- Balconies on the flats' sunny walls (south to west, as built): one
   -- every third window bay (render.rs draws 2.7 m bays, as many whole ones
@@ -2911,7 +2969,7 @@ build = function(map, kit)
   -- the windows from whichever corner the shader counts. Some blocks have
   -- them glazed in, a sheet of glass up the stack. Not out over a road.
   local balcony_count = 0
-  local function balconies(mx, mz, fx, fz, nx, nz, len, base, h, color, i)
+  local function balconies(add, mx, mz, fx, fz, nx, nz, len, base, h, color, i)
     if quality.tier() == 1 then return end
     local nb = math.max(1, math.floor(len / 2.7 + 0.5))
     local bay = len / nb
@@ -2935,9 +2993,9 @@ build = function(map, kit)
           for f = 1, floors - 1 do
             local y = base + f * kit.FLOOR
             if y < over + 0.3 then goto next end
-            walls.add(bx, bz, {mesh = "cube", pos = {bx, y + 0.08, bz}, yaw = yaw, size = {1.3, 0.16, w}, color = slab, abs = true})
+            add(bx, bz, {mesh = "cube", pos = {bx, y + 0.08, bz}, yaw = yaw, size = {1.3, 0.16, w}, color = slab, abs = true})
             if not glazed then
-              walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
+              add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, y + 0.6, bz + nz * 0.6}, yaw = yaw, size = {0.1, 0.9, w},
                                  color = rail, abs = true})
             end
             balcony_count = balcony_count + 1
@@ -2946,7 +3004,7 @@ build = function(map, kit)
           local first = math.max(1, math.ceil((over + 0.3 - base) / kit.FLOOR))
           if glazed and floors - 1 >= first then -- glazed in: one sheet of glass up the stack
             local y0, y1 = base + first * kit.FLOOR, base + (floors - 1) * kit.FLOOR + 2.6
-            walls.add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, (y0 + y1) / 2, bz + nz * 0.6}, yaw = yaw, size = {0.08, y1 - y0, w},
+            add(bx, bz, {mesh = "cube", pos = {bx + nx * 0.6, (y0 + y1) / 2, bz + nz * 0.6}, yaw = yaw, size = {0.08, y1 - y0, w},
                                color = {0.42, 0.52, 0.58}, abs = true})
           end
         end
@@ -2955,8 +3013,10 @@ build = function(map, kit)
   end
 
   local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
-  for _, o in pairs(OUT) do
-    if o.placed then
+  -- One building's walls, trim, windows and balconies, each part handed to
+  -- add(x, z, part).
+  local function building_walls(o, add)
+    do
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
       local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
                     or (o.year and select(2, era_look(o.year, o.kind, math.floor(h / kit.FLOOR + 0.5), o.i)))
@@ -2970,8 +3030,8 @@ build = function(map, kit)
       end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
-      walls.add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
-      walls.add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
+      add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
+      add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
       local floors = (o.kind == "works" or facade) and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
         local a, b = o.pts[k], o.pts[k % n + 1]
@@ -2982,24 +3042,24 @@ build = function(map, kit)
           local nx, nz = dz / len, -dx / len
           if inside_poly(o.pts, mx + nx * 0.3, mz + nz * 0.3) then nx, nz = -nx, -nz end
           if facade == OLD_TOWN then -- the cornice under the roof
-            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
+            add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.18, base + h - 0.35, mz + nz * 0.18}, yaw = math.atan(dx, dz),
                                size = {0.36, 0.7, len + 0.36}, color = {color[1] * 0.9, color[2] * 0.9, color[3] * 0.88}, abs = true})
             -- and a plinth a shade darker along its foot
             plinths = plinths + 1
-            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
+            add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
                                size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
           elseif facade and facade ~= GLASS_F then -- the parapet's coping, a lighter edge to the roof
             copings = copings + 1
-            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
+            add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
                                size = {0.24, 0.4, len + 0.24}, color = {math.min(1, color[1] * 1.2 + 0.1), math.min(1, color[2] * 1.2 + 0.1),
                                math.min(1, color[3] * 1.2 + 0.1)}, abs = true})
           end
           if facade == FLATS_F and len > 6 and h >= 3 * kit.FLOOR and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
-            balconies(mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
+            balconies(add, mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
           end
           for f = 0, floors - 1 do
             local lit = (f * 7 + o.i * 3 + k) % 3 == 0
-            walls.add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + f * kit.FLOOR + 1.9, mz + nz * 0.06},
+            add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + f * kit.FLOOR + 1.9, mz + nz * 0.06},
                                yaw = math.atan(dx, dz), size = {0.1, 1.4, len - 1.2}, color = GLASS, emissive = lit and 1 or 0,
                                abs = true})
           end
@@ -3007,9 +3067,25 @@ build = function(map, kit)
       end
     end
   end
+  -- Counted once for the whole city (the trim and balconies a city has),
+  -- then built a chunk at a time, by the building's middle, as the player
+  -- comes near (see streams): far chunks' walls never take memory.
+  local nothing = function() end
+  local placed = {}
+  for oi, o in pairs(OUT) do if o.placed then placed[#placed + 1] = oi end end
+  table.sort(placed)
+  local wall_chunks = {}
+  for _, oi in ipairs(placed) do
+    local o = OUT[oi]
+    building_walls(o, nothing)
+    local k = math.floor((o.x0 + o.x1) / 2 / CHUNK) .. "," .. math.floor((o.z0 + o.z1) / 2 / CHUNK)
+    wall_chunks[k] = wall_chunks[k] or {}
+    table.insert(wall_chunks[k], o)
+  end
   print(string.format("outline trim: %d copings, %d plinths", copings, plinths))
   print(string.format("balconies: %d", balcony_count))
-  walls.bake("outline", "outline")
+  streams[#streams + 1] = {name = "outline", tag = "outline", chunks = wall_chunks, live = {},
+                           gen = function(list, add) for _, o in ipairs(list) do building_walls(o, add) end end}
   roofs.bake("roofs_", "outline")
   -- A tree or two in the yards round homes, once every building stands.
   pine_mesh()

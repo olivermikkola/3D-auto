@@ -146,6 +146,7 @@ if os.getenv("SAVE_TEST") then require "test.save" end
 if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("CITY_TEST") then require "test.city" end
+if os.getenv("STREAM_TEST") then require "test.stream_probe" end
 if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("MISSION_TEST") then require "test.missions" end
