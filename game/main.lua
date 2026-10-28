@@ -121,6 +121,7 @@ engine.on("init", function()
   require("systems.shelters").build()
   require("systems.shopsigns").build()
   require("systems.parking").build()
+  require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
   require("systems.heli").build()
   require("systems.terraces").build()
   require("systems.cyclists").build()
@@ -152,6 +153,7 @@ if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
 if os.getenv("BUSINESS_TEST") then require "test.businesses_probe" end
 if os.getenv("CITY_TEST") then require "test.city" end
+if os.getenv("STREAM_TEST") then require "test.stream_probe" end
 if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
 if os.getenv("MISSION_TEST") then require "test.missions" end
