@@ -64,7 +64,10 @@ local function script()
     local p = peds.peds[id]
     local x, y, z = engine.pos(id)
     local s = K.spots[p.k]
-    if math.abs(y - 0.9 - s[4]) < 0.4 then on_square = on_square + 1 end
+    -- (Feet on what's under them: the square slopes, so one walking to a
+    -- stall 20 m off isn't at that stall's height.)
+    local _, d = engine.raycast(x, y, z, 0, -1, 0, 3, id)
+    if d and math.abs(d - 0.9) < 0.4 and math.abs(y - 0.9 - s[4]) < 1.5 then on_square = on_square + 1 end
     if p.until_t and U.dist2d(x, z, s[1], s[2]) < 0.8 then
       standing = standing + 1
       if math.abs(U.angle_diff(engine.yaw(id), s[3])) < 0.5 then facing = facing + 1 end
