@@ -187,6 +187,7 @@ if os.getenv("TEMPLATE_TEST") then require "test.template_probe" end
 if os.getenv("DRIVE_SWEEP") then require "test.drive_sweep" end
 if os.getenv("PED_SWEEP") then require "test.ped_sweep" end
 if os.getenv("PROFILE_DRIVE") then require "test.profile_drive" end
+if os.getenv("CHASE_TEST") then require "test.chase_probe" end
 if os.getenv("PLAYER_SWEEP") then require "test.player_sweep" end
 if os.getenv("BRIDGE_AUDIT") then require "test.bridge_audit" end
 if os.getenv("HEIST_TEST") then require "test.heist_probe" end
@@ -205,6 +206,7 @@ if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
 if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("TOUCH_SHOT") then require "test.touch_shot" end
 if os.getenv("LOOKBACK_TEST") then require "test.lookback_probe" end
+if os.getenv("PED_ROAD_TEST") then require "test.ped_road_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
@@ -250,3 +252,4 @@ end)
 
 -- Mods last, so their "init" handlers run after the city exists.
 engine.load_mods("mods")
+if os.getenv("TRAFFIC_CALM_TEST") then require "test.traffic_calm_probe" end

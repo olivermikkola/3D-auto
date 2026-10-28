@@ -44,7 +44,10 @@ local function setup(px, pz)
               local q = {e = ei, dir = -1, hand = -h, wp = i - 1}
               local ax, az = Ped.net.point(p, i - 1)
               local bx, bz = Ped.net.point(p, i)
-              local dx, dz = (bx - ax) / len, (bz - az) / len
+              -- (Along the pavement's line: at a road's end its point is the
+              -- pavement's corner, short of the junction, so not len apart.)
+              local pl = U.dist2d(ax, az, bx, bz)
+              local dx, dz = (bx - ax) / pl, (bz - az) / pl
               local x0, z0 = mx - dx * 5, mz - dz * 5
               local x1, z1 = mx + dx * 5, mz + dz * 5
               local o = (e.width / 2 + roadnet.SIDEWALK / 2) * h
