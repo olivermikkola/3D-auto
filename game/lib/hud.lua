@@ -372,7 +372,8 @@ engine.on("wanted_changed", function(level, old)
 end)
 
 -- The city radio (lib/story.lua) speaks in the same place.
-engine.on("story", function(text) radio = {text = text, till = engine.time() + 6} end)
+-- (Longer lines stay up longer: time to read them.)
+engine.on("story", function(text) radio = {text = text, till = engine.time() + math.max(6, 3 + #text / 20)} end)
 
 -- The controls: shown for the first half minute until someone has seen them
 -- through (or closed them), then only while the HELP OVERLAY setting is on.
@@ -479,7 +480,21 @@ engine.on("frame", function(dt)
     end
   end
 
-  if radio and radio.till > engine.time() then centered(radio.text, 170, 14, 0.6, 0.8, 1) end
+  if radio and radio.till > engine.time() then
+    -- Wrapped to the screen, word by word.
+    local w = engine.screen()
+    local lines, line = {}, ""
+    for word in radio.text:gmatch("%S+") do
+      local try = line == "" and word or line .. " " .. word
+      if line ~= "" and engine.text_width(try, 14) > math.min(w - 60, 900) then
+        lines[#lines + 1], line = line, word
+      else
+        line = try
+      end
+    end
+    lines[#lines + 1] = line
+    for i, l in ipairs(lines) do centered(l, 170 + (i - 1) * 20, 14, 0.6, 0.8, 1) end
+  end
 
   -- Big messages, newest last.
   local now, y, keep = engine.time(), h * 0.35, {}
