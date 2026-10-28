@@ -251,3 +251,4 @@ end)
 
 -- Mods last, so their "init" handlers run after the city exists.
 engine.load_mods("mods")
+if os.getenv("TRAFFIC_CALM_TEST") then require "test.traffic_calm_probe" end
