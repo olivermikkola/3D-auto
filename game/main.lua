@@ -79,6 +79,7 @@ engine.on("init", function()
   require("systems.harbor").build(city.map())
   require("systems.kauppatori").build(city.map())
   require("systems.suurtori").build(city.map())
+  require("systems.landmarks").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
