@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Turku's cycle paths are painted: bicycles along them, and the squares of
-a cycle crossing where one crosses a street."""
+"""Turku's cycle paths are painted: bicycles along them, a line down the
+middle of the segregated ones, and the squares of a cycle crossing where
+one crosses a street."""
 import os
 from pathlib import Path
 import re
@@ -19,10 +20,11 @@ class CyclePathTests(unittest.TestCase):
                              text=True, encoding="utf-8", errors="replace", timeout=600)
         out = res.stdout + res.stderr
         self.assertEqual(res.returncode, 0, out)
-        m = re.search(r"cycle paths: (\d+) bicycles painted, (\d+) crossings", out)
+        m = re.search(r"cycle paths: (\d+) bicycles painted, (\d+) crossings, (\d+) pieces with a line", out)
         self.assertIsNotNone(m, out[-2000:])
         self.assertGreater(int(m.group(1)), 1000)
         self.assertGreater(int(m.group(2)), 150)
+        self.assertGreater(int(m.group(3)), 300) # the segregated ones
 
 
 if __name__ == "__main__":

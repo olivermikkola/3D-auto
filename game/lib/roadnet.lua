@@ -2028,21 +2028,22 @@ build = function(map, kit)
       return out
     end
     -- Cycle paths (the map's 3 m paths are its cycleways) in white paint,
-    -- as in Finland: a bicycle on the asphalt every so often, and where one
-    -- crosses a street, the squares of its crossing along both sides
-    -- (pyörätien jatke).
+    -- as in Finland: a bicycle on the asphalt every so often, a line down
+    -- the middle of one whose foot half is marked off (segregated), and
+    -- where one crosses a street, the squares of its crossing along both
+    -- sides (pyörätien jatke).
     local CYCLE_W, PAINT, EVERY = 3, {0.9, 0.9, 0.86}, 100
-    local cyc, cycle_counts = chunked(), {bikes = 0, crossings = 0}
+    local cyc, cycle_counts = chunked(), {bikes = 0, crossings = 0, dividers = 0}
     local function paint(x, z, yaw, across, long, pitch, hf, lift)
       local y = (hf or GROUND or function() return 0 end)(x, z)
-      cyc.add(x, z, {mesh = "plane", pos = {x, y + (lift or 0.06), z}, yaw = yaw, pitch = pitch,
+      cyc.add(x, z, {mesh = "plane", pos = {x, y + (lift or 0.08), z}, yaw = yaw, pitch = pitch,
                      size = {across, 1, long}, color = PAINT, abs = true})
     end
     -- A bicycle at (x, z) for someone riding along (fx, fz) to read: drawn
     -- side on, its wheels across the path and its top ahead, stretched a
     -- third along the path as such paint is; in strips.
     local function bicycle(x, z, fx, fz)
-      local rx, rz = fz, -fx
+      local rx, rz = -fz, fx -- its right (x east, z south)
       local pitch
       if GROUND then pitch = -math.atan(GROUND(x + fx, z + fz) - GROUND(x - fx, z - fz), 2) end
       local function line(h0, v0, h1, v1) -- h across (to the right), v up the picture (ahead)
@@ -2085,7 +2086,7 @@ build = function(map, kit)
             local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
             local u = want - s
             -- (Its foot half on the left: the bicycle on the right.)
-            bicycle(a[1] + fx * u + fz * 0.75, a[2] + fz * u - fx * 0.75, fx, fz)
+            bicycle(a[1] + fx * u - fz * 0.75, a[2] + fz * u + fx * 0.75, fx, fz)
             break
           end
           s, i = s + len, i + 1
@@ -2156,8 +2157,26 @@ build = function(map, kit)
       end
       cycle_counts.crossings = cycle_counts.crossings + 1
     end
-    local function cycle_paint(runs)
+    -- A segregated one: a solid line down its middle between the foot and
+    -- the cycle halves, in pieces of at most 3 m that follow the ground.
+    local function divider(pts)
+      for i = 2, #pts do
+        local a, b = pts[i - 1], pts[i]
+        local len = U.dist2d(a[1], a[2], b[1], b[2])
+        local n = math.ceil(len / 3)
+        for k = 0, n - 1 do
+          local x0, z0 = a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n
+          local x1, z1 = a[1] + (b[1] - a[1]) * (k + 1) / n, a[2] + (b[2] - a[2]) * (k + 1) / n
+          local pitch
+          if GROUND then pitch = -math.atan(GROUND(x1, z1) - GROUND(x0, z0), len / n) end
+          paint((x0 + x1) / 2, (z0 + z1) / 2, math.atan(b[1] - a[1], b[2] - a[2]), 0.1, len / n + 0.05, pitch)
+        end
+      end
+      cycle_counts.dividers = cycle_counts.dividers + 1
+    end
+    local function cycle_paint(runs, segregated)
       for i, pts in ipairs(runs) do
+        if segregated then divider(pts) end
         bikes_along(pts)
         if runs[i + 1] then crossing(pts[#pts], runs[i + 1][1]) end
       end
@@ -2205,11 +2224,12 @@ build = function(map, kit)
         for k = first, #parts do parts[k].ground = p.stone and SETTS or ASPHALT end
         for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
       end
-      if p.path and p[1] == CYCLE_W and not p.stone then cycle_paint(runs) end
+      if p.path and p[1] == CYCLE_W and not p.stone then cycle_paint(runs, p.segregated) end
     end
     ch.bake("paved", "cover")
     cyc.bake("cyclemarks", "cover")
-    print(string.format("cycle paths: %d bicycles painted, %d crossings", cycle_counts.bikes, cycle_counts.crossings))
+    print(string.format("cycle paths: %d bicycles painted, %d crossings, %d pieces with a line down the middle",
+                        cycle_counts.bikes, cycle_counts.crossings, cycle_counts.dividers))
   end
 
   -- Railways: a bed of ballast and two rails, 1524 mm apart; masts for
