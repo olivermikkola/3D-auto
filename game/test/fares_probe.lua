@@ -132,7 +132,8 @@ local function script()
   local heat_up = wanted.heat_up
   wanted.heat_up = function() end
   local cash0 = G.cash
-  driver = robot.gps_driver(14, 6)
+  -- (It stops with 6 m of the line left: a fare pays within 9.)
+  driver = robot.gps_driver(14, 6, 6)
   local t0 = engine.time()
   wait(function() return fares.state() == "ride" end, 240, "the robot gets to the pickup by the GPS")
   print(string.format("FARES_PROBE %s: picked up at %s in %.0f s", map, f.pickup.name, engine.time() - t0))
@@ -152,7 +153,8 @@ local function script()
   t0 = engine.time()
   wait(function() return fares.state() == nil end, 600, "the robot gets them there by the GPS")
   local last = fares.last
-  check(last and G.cash - cash0 == last.base + last.tip, string.format("paid $%d + $%d tip for %.0f m in %.0f s",
+  check(last ~= nil, "the fare was paid")
+  check(G.cash - cash0 == last.base + last.tip, string.format("paid $%d + $%d tip for %.0f m in %.0f s",
     last.base, last.tip, last.drive, last.took))
   check(last.base >= fares.BASE + fares.PER_KM * 0.4 - 1, "the fare is by the distance")
   check(G.errand == nil and gps.target() == nil, "done: no errand, no route")
