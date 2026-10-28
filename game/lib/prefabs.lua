@@ -419,16 +419,30 @@ function P.build()
   }
   engine.mesh("turun_linna", castle_parts)
 
-  -- Suomen Joutsen: Historic three-masted full-rigged museum ship at Forum Marinum
+  -- Suomen Joutsen: Historic three-masted full-rigged museum ship at Forum
+  -- Marinum. A ship's shape, not a box's: a bow that narrows to the stem, a
+  -- rounded stern, a low forecastle and poop behind rails, the gilt line
+  -- along the hull, shrouds up to the mast tops and the bowsprit raked up.
   local joutsen_hull, teak, mast_color = {0.96, 0.96, 0.96}, {0.52, 0.40, 0.28}, {0.88, 0.85, 0.75}
+  local boot, gilt, tar = {0.12, 0.12, 0.13}, {0.85, 0.68, 0.22}, {0.16, 0.14, 0.12}
   local joutsen_parts = {
-    -- Main white steel hull
-    {mesh = "cube", pos = {0, 1.2, 0}, size = {7.6, 2.8, 54.0}, color = joutsen_hull},
-    -- Raised forecastle and poop deck
-    {mesh = "cube", pos = {0, 3.0, 20.0}, size = {7.2, 1.2, 12.0}, color = joutsen_hull},
-    {mesh = "cube", pos = {0, 3.0, -20.0}, size = {7.2, 1.2, 12.0}, color = joutsen_hull},
-    -- Teak main deck
-    {mesh = "cube", pos = {0, 2.45, 0}, size = {7.0, 0.1, 48.0}, color = teak},
+    -- The hull amidships, its waterline dark.
+    {mesh = "cube", pos = {0, 1.3, -1}, size = {7.6, 2.6, 44.0}, color = joutsen_hull},
+    {mesh = "cube", pos = {0, -0.05, -1}, size = {7.66, 0.5, 44.0}, color = boot},
+    {mesh = "cube", pos = {0, 2.2, -1}, size = {7.66, 0.16, 44.0}, color = gilt},
+    -- Teak main deck, bulwarks along both sides.
+    {mesh = "cube", pos = {0, 2.62, -1}, size = {7.0, 0.06, 44.0}, color = teak},
+    {mesh = "cube", pos = {3.7, 3.05, -1}, size = {0.14, 0.9, 44.0}, color = joutsen_hull},
+    {mesh = "cube", pos = {-3.7, 3.05, -1}, size = {0.14, 0.9, 44.0}, color = joutsen_hull},
+    -- Low forecastle and poop, teak on top.
+    {mesh = "cube", pos = {0, 3.0, 17.5}, size = {7.4, 0.8, 9.0}, color = joutsen_hull},
+    {mesh = "cube", pos = {0, 3.42, 17.5}, size = {7.2, 0.06, 9.0}, color = teak},
+    {mesh = "cube", pos = {0, 3.0, -19.5}, size = {7.4, 0.8, 7.0}, color = joutsen_hull},
+    {mesh = "cube", pos = {0, 3.42, -19.5}, size = {7.2, 0.06, 7.0}, color = teak},
+    -- Two deckhouses and the wheel aft.
+    {mesh = "cube", pos = {0, 3.4, 6.0}, size = {3.2, 1.6, 5.0}, color = teak},
+    {mesh = "cube", pos = {0, 3.4, -8.5}, size = {3.6, 1.6, 6.0}, color = teak},
+    {mesh = "cylinder", axis = "z", pos = {0, 4.4, -21.0}, size = {1.2, 1.2, 0.12}, color = tar},
     -- Fore-mast, Main-mast, Mizzen-mast
     {mesh = "cylinder", pos = {0, 14.0, 14.0}, size = {0.45, 24.0, 0.45}, color = mast_color},
     {mesh = "cylinder", pos = {0, 15.5, -1.0}, size = {0.45, 27.0, 0.45}, color = mast_color},
@@ -439,9 +453,33 @@ function P.build()
     {mesh = "cylinder", axis = "x", pos = {0, 13.5, -1.0}, size = {16.0, 0.2, 0.2}, color = mast_color},
     {mesh = "cylinder", axis = "x", pos = {0, 20.0, -1.0}, size = {11.0, 0.16, 0.16}, color = mast_color},
     {mesh = "cylinder", axis = "x", pos = {0, 11.5, -16.0}, size = {13.0, 0.2, 0.2}, color = mast_color},
-    -- Bowsprit
-    {mesh = "cylinder", pos = {0, 3.8, 32.0}, size = {0.3, 9.0, 0.3}, color = mast_color},
+    -- Bowsprit and jib boom, raked up off the stem.
+    {mesh = "cylinder", axis = "z", pos = {0, 4.6, 33.5}, pitch = -0.2, size = {0.4, 0.4, 10.0}, color = mast_color},
   }
+  -- The bow narrowing to the stem, the stern rounding off: a hull, deck and
+  -- gilt line on each step.
+  for _, s in ipairs{{21, 2.4, 6.9}, {23.2, 2.0, 5.6}, {25.0, 1.6, 4.0}, {26.4, 1.2, 2.4}, {27.4, 0.8, 1.0},
+                     {-23.2, 2.0, 6.4}, {-24.8, 1.2, 4.6}} do
+    local z, l, w = s[1], s[2], s[3]
+    local rise = z > 0 and (z - 21) * 0.12 or 0 -- the sheer: the bow stands higher
+    joutsen_parts[#joutsen_parts + 1] = {mesh = "cube", pos = {0, 1.3 + rise / 2, z}, size = {w, 2.6 + rise, l}, color = joutsen_hull}
+    joutsen_parts[#joutsen_parts + 1] = {mesh = "cube", pos = {0, -0.05, z}, size = {w + 0.06, 0.5, l}, color = boot}
+    joutsen_parts[#joutsen_parts + 1] = {mesh = "cube", pos = {0, 2.2 + rise, z}, size = {w + 0.06, 0.16, l}, color = gilt}
+    if z > 0 then
+      joutsen_parts[#joutsen_parts + 1] = {mesh = "cube", pos = {0, 2.6 + rise + 0.02, z}, size = {w - 0.4, 0.06, l}, color = teak}
+    end
+  end
+  -- Shrouds from each side up to the mast tops.
+  for _, m in ipairs{{14.0, 25.5}, {-1.0, 28.5}, {-16.0, 24.5}} do
+    local z, top = m[1], m[2]
+    for _, side in ipairs{-1, 1} do
+      for _, dz in ipairs{-1.2, 0, 1.2} do
+        local dx, dy = 3.7, top - 3.4
+        joutsen_parts[#joutsen_parts + 1] = {mesh = "cylinder", pos = {side * dx / 2, 3.4 + dy / 2, z + dz}, roll = side * math.atan(dx, dy),
+                                             size = {0.06, math.sqrt(dx * dx + dy * dy), 0.06}, color = tar}
+      end
+    end
+  end
   engine.mesh("suomen_joutsen", joutsen_parts)
 
   -- Kakolan funikulaari (Turku slope elevator cabin)
@@ -473,6 +511,24 @@ function P.build()
     {mesh = "cube", pos = {0, 3.4, 0}, size = {6.8, 0.35, 8.5}, color = f_zinc},
   }
   engine.mesh("funicular_station", station_parts)
+
+  -- An old navy ship of Forum Marinum (Keihässalmi, Karjala): a grey hull
+  -- with a dark waterline, a bridge and funnel amidships, a mast, a gun forward.
+  local navy_grey, navy_dark = {0.55, 0.58, 0.6}, {0.2, 0.21, 0.23}
+  local navy_parts = {
+    {mesh = "cube", pos = {0, 1.1, -1}, size = {6, 2.4, 34}, color = navy_grey},
+    {mesh = "cube", pos = {0, 0, -1}, size = {6.06, 0.5, 34}, color = navy_dark},
+    {mesh = "cube", pos = {0, 1.2, 17.2}, size = {4, 2.6, 2.6}, color = navy_grey},
+    {mesh = "cube", pos = {0, 1.3, 19.2}, size = {1.8, 2.6, 1.6}, color = navy_grey},
+    {mesh = "cube", pos = {0, 3.4, -1}, size = {4.2, 2.2, 9}, color = navy_grey},
+    {mesh = "cube", pos = {0, 5.2, 1.5}, size = {3.6, 1.6, 3}, color = navy_grey},
+    {mesh = "cube", pos = {0, 5.6, 3.05}, size = {3.4, 0.7, 0.06}, color = navy_dark},
+    {mesh = "cylinder", pos = {0, 6, -3}, size = {1.6, 3.2, 2}, color = navy_dark},
+    {mesh = "cylinder", pos = {0, 9.5, 0.5}, size = {0.25, 9, 0.25}, color = navy_dark},
+    {mesh = "cylinder", pos = {0, 2.7, 11}, size = {1.8, 0.8, 1.8}, color = navy_grey},
+    {mesh = "cylinder", axis = "z", pos = {0, 3, 13}, size = {0.25, 0.25, 3.4}, color = navy_dark},
+  }
+  engine.mesh("navy_ship", navy_parts)
 
   -- s/s Bore (Historic 1960 passenger steamship at Forum Marinum / Turku Harbor)
   local bore_white, bore_blue, bore_teak = {0.95, 0.95, 0.96}, {0.15, 0.28, 0.55}, {0.55, 0.42, 0.30}

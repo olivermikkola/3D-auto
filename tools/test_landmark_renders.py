@@ -40,8 +40,8 @@ SHOTS = {
     "yliopistonmaki": ((760, 40, -210), (807, 12, -300), [((164, 164, 76), 14, 0.09)]),
     # Portsa's wooden houses: ochre and red.
     "portsa": ((-1300, 70, 520), (-1430, 10, 660), [((160, 136, 56), 20, 0.03), ((120, 40, 8), 20, 0.04)]),
-    # Suomen Joutsen's white hull at Forum Marinum.
-    "forum_marinum": ((-1675, 12, 1565), (-1708, 4, 1601), [((248, 248, 248), 12, 0.03)]),
+    # Suomen Joutsen at Forum Marinum: its teak decks and white stern.
+    "forum_marinum": ((-1772, 12, 1643), (-1805, 4, 1679), [((164, 122, 82), 16, 0.035), ((248, 248, 248), 12, 0.005)]),
     # The Föri mid-river, its orange side in shade.
     "fori": ((-1192, 5, 1118), (-1212, 1, 1145), [((68, 34, 4), 14, 0.012)]),
     # Koroinen's stone cross, lit side and shaded side.
