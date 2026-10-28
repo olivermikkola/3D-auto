@@ -6,6 +6,8 @@
 --   PROFILE=1 PROFILE_DRIVE=1 MAP=turku auto game --headless 12000
 -- PROFILE_DRIVE_SECS=n: drive this long (default 180), then quit.
 -- PROFILE_DRIVE_WANTED=s: at s seconds in, two stars (default 60; 0 = never).
+-- PROFILE_DRIVE_STARS=n: that many stars instead of two.
+-- PROFILE_DRIVE_SPEED=m: top speed in m/s (default 17, city speed).
 local G = require "lib.state"
 local U = require "lib.util"
 local city = require "lib.city"
@@ -15,9 +17,10 @@ local robot = require "test.robot"
 
 local SECS = tonumber(os.getenv("PROFILE_DRIVE_SECS") or "") or 180
 local WANTED = tonumber(os.getenv("PROFILE_DRIVE_WANTED") or "") or 60
+local STARS = tonumber(os.getenv("PROFILE_DRIVE_STARS") or "") or 2
 
 local pts, last_j = {}, nil
-local driver = robot.driver(pts, 17, 7)
+local driver = robot.driver(pts, tonumber(os.getenv("PROFILE_DRIVE_SPEED") or "") or 17, 7)
 -- Another leg, 500-1500 m on from where the last one ended.
 local function extend()
   local x, z = city.pos(last_j)
@@ -43,6 +46,7 @@ end
 engine.on("tick", function(dt)
   t = t + dt
   if t > SECS then
+    if _G.__chase_report then _G.__chase_report() end
     print(string.format("PROFILE_DRIVE: drove %.1f km in %.0f s, %d stuck spot(s), up to %d police cars", km, SECS, #stucks, cops))
     for _, s in ipairs(stucks) do print(string.format("  stuck at %.0f, %.0f (%.0f s in)", s[1], s[2], s[3])) end
     engine.quit()
@@ -63,7 +67,7 @@ engine.on("tick", function(dt)
     engine.emit("vehicle_enter", car)
     print("PROFILE_DRIVE: driving from " .. string.format("%.0f, %.0f", p[1], p[2]))
   end
-  if WANTED > 0 and t > WANTED and t - dt <= WANTED then require("lib.wanted").set(2) end
+  if WANTED > 0 and t > WANTED and t - dt <= WANTED then require("lib.wanted").set(STARS) end
   cops = math.max(cops, require("systems.police").count())
   local car = G.vehicle
   if not car then return end
