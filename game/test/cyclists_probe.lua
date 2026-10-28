@@ -94,16 +94,23 @@ local function script()
   check(moving >= n * 0.6, "riding, not stood still")
   check(went >= old * 0.6, string.format("going somewhere (%d of %d)", went, old))
 
-  -- Knocked off by a car.
+  -- Knocked off by a car: one driven at them from 7 m behind, along their
+  -- own path (west of them, it might start in a fence or a kerb's step),
+  -- kept at speed.
   local rc = riders()[1]
   local id, c = rc[1], rc[2]
   c.speed = 0
   sleep(1)
   local x, y, z = engine.pos(id)
-  local car = engine.spawn{mesh = "car1", pos = {x - 7, y + 0.2, z}, size = {1.9, 1.4, 4.4}, yaw = math.pi / 2,
-                           body = "dynamic", mass = 1300, friction = 0.5, tag = "car"}
-  engine.set_vel(car, 14, 0, 0)
-  wait(function() return C.riders[id] == nil end, 4, "a car knocks the rider off")
+  local yaw = engine.yaw(id)
+  local fx, fz = math.sin(yaw), math.cos(yaw)
+  local car = engine.spawn{mesh = "car1", pos = {x - fx * 7, U.ground(x - fx * 7, z - fz * 7) + 0.8, z - fz * 7},
+                           size = {1.9, 1.4, 4.4}, yaw = yaw, body = "dynamic", mass = 1300, friction = 0.5, tag = "car"}
+  wait(function()
+    local _, vy = engine.vel(car)
+    engine.set_vel(car, fx * 14, vy, fz * 14)
+    return C.riders[id] == nil
+  end, 4, "a car knocks the rider off")
   sleep(0.5)
   local fallen = #engine.find("ped_down")
   check(fallen >= 1, "the rider tumbles (" .. fallen .. " down)")
