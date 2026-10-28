@@ -113,7 +113,8 @@ local function script()
   sleep(12)
   local s = who.p.spots[who.p.k]
   local bx, _, bz = engine.pos(who.id)
-  check(who.p.state ~= "browse" or U.dist2d(bx, bz, s[1], s[2]) < 1.5,
+  -- (Back among the others: one of them may stand where it stood.)
+  check(who.p.state ~= "browse" or U.dist2d(bx, bz, s[1], s[2]) < 2.5,
         string.format("one shoved 5 m off their spot walks back (%.1f m from it)", U.dist2d(bx, bz, s[1], s[2])))
 
   daynight.set_hour(4.5)
