@@ -258,6 +258,33 @@ end)
 
 engine.on("minimized", M.show)
 
+-- Left alone, the game pauses itself: no key, button, stick or tap for
+-- IDLE_PAUSE seconds of play opens this menu, and paused it hardly uses the
+-- machine (one left running for a Moonlight session kept Turku going for
+-- nine hours on three quarters of a core). Not in a mission's cutscene or
+-- a headless run: only frames count, and they stop while paused.
+M.IDLE_PAUSE = tonumber(os.getenv("IDLE_PAUSE") or "") or 180
+local idle = 0
+local function touched() idle = 0 end
+engine.on("key", touched)
+engine.on("touch", touched)
+engine.on("frame", function(dt)
+  if M.open or engine.paused() then idle = 0 return end
+  local p = engine.pad()
+  if p then
+    for _, k in ipairs{"lx", "ly", "rx", "ry", "lt", "rt"} do
+      if math.abs(p[k] or 0) > 0.2 then idle = 0 break end
+    end
+  end
+  local mx, my = engine.mouse()
+  if mx and (mx ~= 0 or my ~= 0) then idle = 0 end
+  idle = idle + dt
+  if idle >= M.IDLE_PAUSE then
+    idle = 0
+    M.show("main")
+  end
+end)
+
 -- A click or a tap at x, y: a row, or on the map the BACK corner or the map.
 -- The map gets the touch's own point (V.touch), not the mouse cursor.
 function M.tap(px, py, touch)
