@@ -160,6 +160,9 @@ engine.on("tick", function(dt)
   end
 end)
 
+-- The radio notices a purchase (story/radio.lua has a line for each).
+engine.on("business_bought", function(...) require("lib.story").react("business_bought", ...) end)
+
 -- The taxi firm's share of every fare.
 engine.on("fare_paid", function(base, tip)
   local amount = (base or 0) + (tip or 0)
