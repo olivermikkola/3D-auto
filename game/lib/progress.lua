@@ -1,5 +1,6 @@
 -- Progress that survives quitting: cash, missions passed, personal bests,
--- ammo, and the car you bought.
+-- ammo, the car you bought, and the businesses you own (with what's in
+-- their tills) and the one you were last at.
 -- It's the "progress" save (see engine.save), written a couple of seconds
 -- after anything changes and again when the game closes or reloads.
 -- Tab shows it; holding Backspace on that screen starts over.
@@ -19,7 +20,7 @@ local function blank()
                                             fares = 0, fares_called = 0, patients = 0, ambulance_calls = 0,
                                             suspects = 0, suspects_caught = 0, fires_out = 0, fire_calls = 0,
                                             bus_routes = 0, bus_routes_done = 0, bus_passengers = 0},
-          ammo = {pistol = AMMO.pistol, smg = AMMO.smg}, car = nil}
+          ammo = {pistol = AMMO.pistol, smg = AMMO.smg}, car = nil, businesses = {}, home = nil}
 end
 
 -- Keep only what we recognise, so a hand-edited save can't break the game.
@@ -48,6 +49,12 @@ local function clean(t)
   if type(t.car) == "table" and math.type(t.car.color) == "integer" and t.car.color >= 1 and t.car.color <= colors then
     p.car = {color = t.car.color}
   end
+  if type(t.businesses) == "table" then
+    for id, till in pairs(t.businesses) do
+      if type(id) == "string" and #id < 32 and type(till) == "number" then p.businesses[id] = U.clamp(till, 0, 1e7) end
+    end
+  end
+  if type(t.home) == "string" and p.businesses[t.home] then p.home = t.home end
   return p
 end
 
@@ -56,6 +63,7 @@ M.load_error = err
 if err then print("progress: " .. err) end
 local p = clean(data)
 G.cash, G.passed, G.stats, G.owned_car = p.cash, p.missions, p.stats, p.car
+G.businesses, G.home = p.businesses, p.home
 -- systems.weapons sets the starting ammo when it loads; ours replaces it once everything has.
 local loaded_ammo = p.ammo
 engine.on("init", function() G.ammo.pistol, G.ammo.smg = loaded_ammo.pistol, loaded_ammo.smg end)
@@ -68,7 +76,8 @@ function M.touch() dirty = true end
 function M.save()
   local ammo = G.ammo or loaded_ammo
   local ok, e = engine.save(KEY, {version = 1, cash = G.cash, missions = G.passed, stats = G.stats,
-                                  ammo = {pistol = ammo.pistol, smg = ammo.smg}, car = G.owned_car})
+                                  ammo = {pistol = ammo.pistol, smg = ammo.smg}, car = G.owned_car,
+                                  businesses = G.businesses, home = G.home})
   saved_cash, saved_pistol, saved_smg, dirty, due = G.cash, ammo.pistol, ammo.smg, false, nil
   if not ok then
     print("progress: " .. e)
@@ -86,6 +95,7 @@ end
 function M.reset()
   local fresh = blank()
   G.cash, G.passed, G.stats, G.owned_car = fresh.cash, fresh.missions, fresh.stats, nil
+  G.businesses, G.home = fresh.businesses, nil
   if G.ammo then G.ammo.pistol, G.ammo.smg = fresh.ammo.pistol, fresh.ammo.smg end
   local mission = require "lib.mission"
   for _, def in ipairs(mission.defs) do def.passed = nil end
@@ -140,10 +150,13 @@ engine.on("frame", function(dt)
   local defs = require("lib.mission").defs
   local done = 0
   for _, def in ipairs(defs) do if G.passed[def.id] then done = done + 1 end end
+  local owned = 0
+  for _ in pairs(G.businesses) do owned = owned + 1 end
   local s = G.stats
   local rows = {
     {"CASH", string.format("$%d", G.cash)},
     {"MISSIONS", string.format("%d / %d", done, #defs)},
+    {"BUSINESSES", string.format("%d / %d", owned, #require("systems.businesses").list)},
     {"STUNTS", tostring(s.stunts)},
     {"BEST AIRTIME", string.format("%.1f S", s.best_air)},
     {"MOST FLIPS", tostring(s.best_flips)},

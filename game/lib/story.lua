@@ -92,7 +92,8 @@ function S.reset() next_at, last_said = 0, {} end
 
 S.EVENTS = {"stunt", "busted", "wanted_changed", "mission_passed", "carjacked", "explosion", "respawned",
             "vehicle_enter", "purchase", "weather", "cashvan_robbed", "heli", "racer_won", "racer_lost",
-            "fare_paid", "fare_lost", "patient_saved", "patient_lost", "suspect_caught", "suspect_escaped", "fire_out", "fire_lost", "bus_route_done", "bus_route_lost"}
+            "fare_paid", "fare_lost", "patient_saved", "patient_lost", "suspect_caught", "suspect_escaped", "fire_out", "fire_lost", "bus_route_done", "bus_route_lost",
+            "business_bought"}
 for _, ev in ipairs(S.EVENTS) do
   engine.on(ev, function(...) S.react(ev, ...) end)
 end
