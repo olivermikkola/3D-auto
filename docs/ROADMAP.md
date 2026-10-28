@@ -77,12 +77,18 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   phone's low preset, mall and works facades, gulls and bells, parody adverts, the CI flakes.
 - Wave 2, buildings: cornices and floor lines, shop signs from OSM `shop=*`, balconies. Not yet:
   LOD2 roofs beyond the old town, Ylioppilaskylä (both wait for the playtest).
-- Wave 3, streets: stop lines and edge lines, worn and patched asphalt, setts on the old lanes.
+- Wave 3, streets: stop lines and edge lines, worn and patched asphalt, setts on the old lanes,
+  cycle paths you can see (painted bicycles, a line down the segregated ones, the squares of cycle
+  crossings). Not yet: lane arrows (the importer doesn't export `turn:lanes`).
 - Wave 4, life: cyclists, people at the shelters boarding the buses, market day on Kauppatori,
   terraces along the river, crowds outside the bars at night (every night: the game has no days
   of the week).
 - Wave 6 begun before the playtest: businesses to buy (`systems/businesses.lua`) and a story
   through the missions (`story/arc.lua`), both first drafts for the playtest to tune.
+- Wave 7 begun: big meshes go to the GPU as they're made and the CPU copy is dropped (the browser's
+  peak on Turku 583 -> 353 MB); building walls stream in by 300 m chunk near the player; in the
+  browser the collector keeps up while the city loads. The browser's number is CI's `web-check`
+  artifact (`wasm_peak_bytes`), and `tools/web_check.py` gives the same number locally.
 - The playtest itself: `docs/PLAYTEST.md`.
 
 ## Next (agreed with Oliver, 27 October 2026)
