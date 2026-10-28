@@ -49,7 +49,9 @@ function C.explode(id)
       engine.set_vel(other, ovx + dx * s, ovy + 6 * k + dy * s, ovz + dz * s)
     end
     local tag = engine.tag(other)
-    if VEHICLE[tag] then H.damage(other, 70 * k + 10, wreck)
+    -- (A car next to one blowing up is badly hurt, not finished: at
+    -- 70 * k + 10 a row of parked cars or a jam went up one after another.)
+    if VEHICLE[tag] then H.damage(other, 50 * k, wreck)
     elseif tag == "ped" or tag == "officer" then H.damage(other, 200 * k, wreck, dx, dy, dz)
     elseif other == G.player then H.hurt_player(90 * k, wreck) end
   end

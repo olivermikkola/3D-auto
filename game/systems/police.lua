@@ -475,7 +475,9 @@ local function drive_cop(c, dt)
     local gx, gz = c.goal[1], c.goal[2]
     local rx, rz = U.right(math.atan(gx - x, gz - z))
     local fx, fz = U.forward(yaw)
-    local hit, d = engine.raycast(x + fx * 2.5, 0.8, z + fz * 2.5, fx, 0, fz, 16, id)
+    -- (At the car's own height: 0.8 m above sea level, on Turku's hills,
+    -- went through the ground or over the traffic, and cops drove into it.)
+    local hit, d = engine.raycast(x + fx * 2.5, y, z + fz * 2.5, fx, 0, fz, 16, id)
     local tag = hit and engine.tag(hit)
     if (tag == "car" or tag == "cop") and math.cos(U.angle_diff(yaw, engine.yaw(hit))) > 0.5 then c.overtake = 2 end
     -- On a road map, a parked or stuck car in the lane is passed too.

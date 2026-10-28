@@ -267,7 +267,9 @@ local function update(id, c, dt)
       local light = signals.state(c.to, math.atan(b[1] - a[1], b[2] - a[2]))
       if light and light ~= "green" then
         local stop = signals.stop_line(c.to)
-        local left = U.dist2d(x, z, b[1], b[2]) - stop -- to the line
+        -- To the line, from the nose (a bus's is 4 m further on than a car's:
+        -- it stood with its front out in the junction, across the traffic).
+        local left = U.dist2d(x, z, b[1], b[2]) - stop - (c.is_bus and 3.9 or 0)
         local room = c.speed * c.speed / 10 + 1 -- what braking at 5 m/s2 takes
         if left > -1 and (light == "red" or left > room) then
           want = math.min(want, math.max(0, left * 0.8))
@@ -275,7 +277,11 @@ local function update(id, c, dt)
         end
       end
     end
-    local hit, d = engine.raycast(x + fx * 2.3, y, z + fz * 2.3, fx, 0, fz, 12, id)
+    -- From the nose, a little above the wheels: from a bus's middle (1.6 m
+    -- up, 4 m back from its nose) the ray passed over the cars ahead, and
+    -- buses drove into and up onto them.
+    local nose, low = c.is_bus and 6.3 or 2.3, c.is_bus and 1.0 or 0
+    local hit, d = engine.raycast(x + fx * nose, y - low, z + fz * nose, fx, 0, fz, 12, id)
     if hit then
       local tag = engine.tag(hit)
       -- Queue behind cars going our way; ignore cross traffic unless it's in our face.

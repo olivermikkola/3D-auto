@@ -282,6 +282,9 @@ function P.build()
       pasi_parts[#pasi_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side * 1.03, -0.05, z_pos}, size = {0.45, 0.55, 0.55}, color = camo_dark}
     end
   end
+  -- Down onto the bottom of its box (2.5 m tall, lib/vehicle): drawn
+  -- around its middle, the wheels hung 0.6 m above the road.
+  for _, part in ipairs(pasi_parts) do part.pos[2] = part.pos[2] - 0.625 end
   engine.mesh("pasi", pasi_parts)
   P.person("soldier", {0.24, 0.32, 0.19}, {0.16, 0.22, 0.14}, {0.8, 0.62, 0.48}, {0.08, 0.08, 0.08})
 
@@ -313,6 +316,9 @@ function P.build()
       bus_parts[#bus_parts + 1] = {mesh = "cylinder", axis = "x", pos = {side * 1.02, -0.05, z_pos}, size = {0.36, 0.45, 0.45}, color = bumper}
     end
   end
+  -- Down onto the bottom of its box (3.2 m tall, lib/vehicle): drawn
+  -- around its middle, the bus rode a metre above the road.
+  for _, part in ipairs(bus_parts) do part.pos[2] = part.pos[2] - 1.075 end
   engine.mesh("bus", bus_parts)
 
   -- The Föri: Turku's famous historic city cable ferry (bright orange hull)
