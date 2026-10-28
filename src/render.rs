@@ -8,6 +8,7 @@
 
 use crate::engine::Engine;
 use crate::math::{Mat4, Vec3, v3};
+use crate::mesh::Mesh;
 use miniquad::*;
 
 pub const MAX_LIGHTS: usize = 16;
@@ -658,38 +659,59 @@ impl Renderer {
         self.gpu_timer = GpuTimer::new(&self.ctx.info().gl_version_string);
     }
 
-    fn sync(&mut self, eng: &Engine) {
-        if eng.epoch != self.epoch {
+    /// A new engine (a reload) means new meshes: drop the old ones' buffers.
+    fn reset_if(&mut self, epoch: u64) {
+        if epoch != self.epoch {
             for m in self.meshes.drain(..).flatten() {
                 self.ctx.delete_buffer(m.bind.vertex_buffers[0]);
                 self.ctx.delete_buffer(m.bind.index_buffer);
             }
-            self.epoch = eng.epoch;
+            self.epoch = epoch;
         }
-        self.meshes.resize_with(eng.meshes.len(), || None);
+    }
+
+    /// Mesh i at revision rev onto the GPU, replacing what was there.
+    fn put(&mut self, i: usize, rev: u32, m: &Mesh) {
+        if self.meshes.len() <= i {
+            self.meshes.resize_with(i + 1, || None);
+        }
+        if let Some(old) = self.meshes[i].take() {
+            self.ctx.delete_buffer(old.bind.vertex_buffers[0]);
+            self.ctx.delete_buffer(old.bind.index_buffer);
+        }
+        if m.indices.is_empty() {
+            return;
+        }
+        let vb = self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.verts));
+        let ib = self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.indices));
+        let (center, radius) = mesh_bounds(m);
+        self.meshes[i] = Some(GpuMesh {
+            bind: Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![self.shadow_tex] },
+            count: m.indices.len() as i32,
+            radius,
+            center,
+            rev,
+        });
+    }
+
+    /// A mesh the engine is about to drop its vertices for (Engine::uploader).
+    pub fn upload(&mut self, epoch: u64, i: usize, rev: u32, m: &Mesh) {
+        self.reset_if(epoch);
+        self.put(i, rev, m);
+    }
+
+    fn sync(&mut self, eng: &Engine) {
+        self.reset_if(eng.epoch);
+        self.meshes.resize_with(self.meshes.len().max(eng.meshes.len()), || None);
         for (i, m) in eng.meshes.iter().enumerate() {
             let rev = eng.mesh_revs[i];
-            if self.meshes[i].as_ref().is_some_and(|g| g.rev == rev) {
+            if self.meshes[i].as_ref().is_some_and(|g| g.rev == rev) || eng.gpu_only.contains(&i) {
                 continue;
             }
-            if let Some(old) = self.meshes[i].take() {
-                self.ctx.delete_buffer(old.bind.vertex_buffers[0]);
-                self.ctx.delete_buffer(old.bind.index_buffer);
+            self.put(i, rev, m);
+            if self.meshes[i].is_some() {
+                self.uploaded.push(i);
             }
-            if m.indices.is_empty() {
-                continue;
-            }
-            let vb = self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.verts));
-            let ib = self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.indices));
-            let (center, radius) = mesh_bounds(m);
-            self.meshes[i] = Some(GpuMesh {
-                bind: Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![self.shadow_tex] },
-                count: m.indices.len() as i32,
-                radius,
-                center,
-                rev,
-            });
-            self.uploaded.push(i);
         }
     }
 

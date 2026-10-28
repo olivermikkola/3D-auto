@@ -289,6 +289,12 @@ impl Profile {
     }
 }
 
+/// Engine::uploader for the windowed game: straight to this renderer.
+fn uploader(gfx: &Rc<RefCell<render::Renderer>>) -> engine::Uploader {
+    let gfx = gfx.clone();
+    Box::new(move |epoch, id, rev, m| gfx.borrow_mut().upload(epoch, id, rev, m))
+}
+
 fn load(eng: &Shared) -> Option<Script> {
     match Script::load(eng) {
         Ok(s) => {
@@ -388,7 +394,7 @@ struct App {
     eng: Shared,
     _audio: Option<audio::Output>,
     script: Option<Script>,
-    gfx: render::Renderer,
+    gfx: Rc<RefCell<render::Renderer>>,
     profile: Profile,
     acc: f64,
     last: f64,
@@ -435,6 +441,7 @@ impl App {
         // Drop the old Lua state before building the new one.
         self.script = None;
         *self.eng.borrow_mut() = Engine::new(root, mixer);
+        self.eng.borrow_mut().uploader = Some(uploader(&self.gfx));
         self.eng.borrow_mut().screen = screen;
         self.eng.borrow_mut().saves = saves;
         self.eng.borrow_mut().fullscreen = fullscreen;
@@ -518,28 +525,37 @@ impl EventHandler for App {
             }
         }
         let t = now();
-        self.gfx.draw(&self.eng.borrow());
+        // (The borrow ends before anything can run Lua: a script making a big
+        // mesh sends it to this renderer.)
+        let gfx_rc = self.gfx.clone();
+        let mut gfx = gfx_rc.borrow_mut();
+        gfx.draw(&self.eng.borrow());
         self.profile.draw += now() - t;
-        let uploaded = self.gfx.take_uploaded();
+        let uploaded = gfx.take_uploaded();
         self.eng.borrow_mut().release_uploaded(&uploaded);
         self.eng.borrow_mut().unblend(saved);
         self.frame += 1;
+        let mut shot_done = false;
         if let Some((path, at)) = &self.shot
             && self.frame == *at
         {
-            match self.gfx.screenshot(path, w as i32, h as i32) {
-                Ok(()) => println!("screenshot: {path} ({} draw calls)", self.gfx.draw_calls),
+            match gfx.screenshot(path, w as i32, h as i32) {
+                Ok(()) => println!("screenshot: {path} ({} draw calls)", gfx.draw_calls),
                 Err(e) => eprintln!("screenshot failed: {e}"),
             }
-            self.close();
-            window::order_quit();
+            shot_done = true;
         }
-        self.gfx.commit();
-        if let (Some(timer), Some(gpu)) = (&mut self.gfx.gpu_timer, &mut self.profile.gpu) {
+        gfx.commit();
+        if let (Some(timer), Some(gpu)) = (&mut gfx.gpu_timer, &mut self.profile.gpu) {
             let (s, n) = timer.take();
             *gpu = (gpu.0 + s, gpu.1 + n);
         }
-        self.profile.frame_done(self.gfx.draw_calls, self.gfx.triangles, self.script.as_ref());
+        self.profile.frame_done(gfx.draw_calls, gfx.triangles, self.script.as_ref());
+        drop(gfx);
+        if shot_done {
+            self.close();
+            window::order_quit();
+        }
         if let Some(target) = self.target_frame {
             let elapsed = miniquad::date::now() - self.frame_start;
             if elapsed < target {
@@ -759,14 +775,18 @@ fn main() {
         let eng: Shared = Rc::new(RefCell::new(Engine::new(root.clone(), mixer)));
         eng.borrow_mut().saves = saves;
         eng.borrow_mut().fullscreen = fullscreen;
+        // The renderer first, so the city's meshes can go to the GPU as
+        // they're built (see Engine::uploader).
+        let gfx = Rc::new(RefCell::new(render::Renderer::new()));
+        eng.borrow_mut().uploader = Some(uploader(&gfx));
         let script = load(&eng);
         let mtime = newest_mtime(&root);
-        let mut gfx = render::Renderer::new();
         let mut profile = Profile { on: script::profiling(), ..Default::default() };
         if profile.on {
-            gfx.time_gpu();
-            profile.gpu = gfx.gpu_timer.as_ref().map(|_| (0.0, 0));
-            profile.gpu_name = Some(gfx.gpu_name());
+            let mut g = gfx.borrow_mut();
+            g.time_gpu();
+            profile.gpu = g.gpu_timer.as_ref().map(|_| (0.0, 0));
+            profile.gpu_name = Some(g.gpu_name());
         }
         Box::new(App {
             eng,
