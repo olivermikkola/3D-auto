@@ -150,6 +150,8 @@ pub struct Engine {
     /// While paused there are no ticks: physics, the clock and game sounds stop.
     pub paused: bool,
     pub fullscreen: bool,
+    /// Run with --headless: no window, nobody at the controls.
+    pub headless: bool,
     /// Mouse position in window pixels, for clicking on menus.
     pub cursor: (f32, f32),
     /// The first connected gamepad's sticks and triggers.
@@ -249,6 +251,7 @@ impl Engine {
             saves: Default::default(),
             paused: false,
             fullscreen: false,
+            headless: false,
             cursor: (0.0, 0.0),
             pad: None,
         };

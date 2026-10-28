@@ -313,6 +313,7 @@ fn run_headless(root: PathBuf, ticks: u64, saves: save::Store, fullscreen: bool)
     let eng: Shared = Rc::new(RefCell::new(Engine::new(root, mixer.clone())));
     eng.borrow_mut().saves = saves;
     eng.borrow_mut().fullscreen = fullscreen;
+    eng.borrow_mut().headless = true;
     // Mix (and discard) audio in step with ticks so headless runs exercise it too.
     let mut sink = vec![0.0f32; 2 * (audio::RATE as f64 / TICK_HZ) as usize];
     let mut script = load(&eng);
