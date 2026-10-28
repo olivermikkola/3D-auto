@@ -9,7 +9,7 @@
 local G = require "lib.state"
 local U = require "lib.util"
 local roadnet = require "lib.roadnet"
-local input = require "lib.input"
+local player = require "lib.player"
 local vehicle = require "lib.vehicle"
 
 local STUCK_FOR, NEAR = 3, 15
@@ -42,7 +42,7 @@ engine.on("tick", function(dt)
       if id == G.vehicle then
         local e = roadnet.on_carriageway(x, z, 0, y)
         if e and vehicle.on_wheels(id) then road[id] = {x, y, z, engine.yaw(id)} end
-        local throttle = input.drive()
+        local throttle = player.throttle or 0
         stuck = (math.abs(throttle) > 0.5 and math.abs(vehicle.speed(id)) < 1) and stuck + dt or 0
         if stuck > STUCK_FOR and not e and road[id] and near_water(x, z) then
           stuck = 0
