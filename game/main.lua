@@ -130,6 +130,7 @@ engine.on("init", function()
   require("systems.parking").build()
   require("systems.heli").build()
   require("systems.terraces").build()
+  require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
   engine.grab_mouse(true)
 end)
 
