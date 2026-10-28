@@ -110,6 +110,7 @@ engine.on("init", function()
   require("systems.garage").build()
   require("systems.gunshop").build()
   require("systems.paintshop").build()
+  require("systems.businesses").build()
   require("systems.dealer").build()
   require("systems.nightlife").build()
   require("systems.cashvan").build()
@@ -148,6 +149,7 @@ if os.getenv("GARAGE_TEST") then require "test.garage" end
 if os.getenv("SAVE_TEST") then require "test.save" end
 if os.getenv("MENU_TEST") then require "test.menu" end
 if os.getenv("SHOP_TEST") then require "test.shops" end
+if os.getenv("BUSINESS_TEST") then require "test.businesses_probe" end
 if os.getenv("CITY_TEST") then require "test.city" end
 if os.getenv("PAD_TEST") then require "test.pad" end
 if os.getenv("RELIABILITY_TEST") then require "test.reliability" end

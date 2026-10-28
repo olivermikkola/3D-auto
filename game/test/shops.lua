@@ -46,7 +46,8 @@ local steps = {}
 
 if phase == 1 then
   steps[30] = function()
-    check(#shop.list == 3, "three shops open for business")
+    -- (and the businesses for sale, systems/businesses, at their own zones)
+    check(#shop.list - #require("systems.businesses").list == 3, "three shops open for business")
     check(G.cash == 0 and G.ammo.pistol == 36 and G.ammo.smg == 0 and G.owned_car == nil, "a new game: no cash, starting ammo, no car")
 
     -- Gun shop, on foot.

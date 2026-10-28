@@ -80,3 +80,10 @@ add{id = "bus_route_late", on = "bus_route_done", cooldown = 900, when = functio
     text = "RADIO: Pöli apologises for the delays near {street}. The driver says every traffic light was red. Every one."}
 add{id = "bus_route_lost", on = "bus_route_lost", cooldown = 600,
     text = "RADIO: Passengers on {street} were left waiting for a bus that never came. Business as usual, say regulars."}
+
+add{id = "bought_grill", on = "business_bought", cooldown = 60, when = function(_, id) return id == "grill" end,
+    text = "RADIO: A kebab grill near {street} has a new owner. The regulars hope the garlic sauce stays the same."}
+add{id = "bought_kiosk", on = "business_bought", cooldown = 60, when = function(_, id) return id == "kiosk" end,
+    text = "RADIO: The Ä-Kioski on {street} changes hands. Lottery tickets and liquorice as usual, the new owner promises."}
+add{id = "bought_taxi", on = "business_bought", cooldown = 60, when = function(_, id) return id == "taxi" end,
+    text = "RADIO: Taksi Åbo has been bought by someone nobody at the rank had heard of. The drivers are keeping their heads down."}
