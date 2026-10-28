@@ -2039,19 +2039,20 @@ build = function(map, kit)
       cyc.add(x, z, {mesh = "plane", pos = {x, y + (lift or 0.08), z}, yaw = yaw, pitch = pitch,
                      size = {across, 1, long}, color = PAINT, abs = true})
     end
-    -- A bicycle at (x, z) for someone riding along (fx, fz) to read: drawn
-    -- side on, its wheels across the path and its top ahead, stretched a
-    -- third along the path as such paint is; in strips.
-    local function bicycle(x, z, fx, fz)
-      local rx, rz = -fz, fx -- its right (x east, z south)
-      local pitch
-      if GROUND then pitch = -math.atan(GROUND(x + fx, z + fz) - GROUND(x - fx, z - fz), 2) end
-      local function line(h0, v0, h1, v1) -- h across (to the right), v up the picture (ahead)
-        v0, v1 = (v0 - 0.39) * 1.3, (v1 - 0.39) * 1.3
-        local x0, z0 = x + rx * h0 + fx * v0, z + rz * h0 + fz * v0
-        local x1, z1 = x + rx * h1 + fx * v1, z + rz * h1 + fz * v1
+    -- A bicycle for someone riding along +z to read: drawn side on, its
+    -- wheels across the path and its top ahead, stretched a third along the
+    -- path as such paint is. In strips, one mesh made once; each bicycle on
+    -- a path is one part of it (a part a stroke was 72,000 parts in Turku:
+    -- the browser's memory took 100 MB more to build them).
+    local bike_mesh
+    local function bicycle_mesh()
+      local strokes = {}
+      local function line(h0, v0, h1, v1) -- h across to the rider's right, v up the picture (ahead)
+        -- (A part's yaw turns +z to its heading and +x to its left: right is -x.)
+        local x0, z0, x1, z1 = -h0, (v0 - 0.39) * 1.3, -h1, (v1 - 0.39) * 1.3
         local len = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
-        paint((x0 + x1) / 2, (z0 + z1) / 2, math.atan(x1 - x0, z1 - z0), 0.09, len + 0.05, pitch)
+        strokes[#strokes + 1] = {mesh = "plane", pos = {(x0 + x1) / 2, 0, (z0 + z1) / 2}, yaw = math.atan(x1 - x0, z1 - z0),
+                                 size = {0.09, 1, len + 0.05}, color = {1, 1, 1}}
       end
       for _, c in ipairs{-0.4, 0.4} do -- the wheels
         for k = 0, 7 do
@@ -2067,6 +2068,16 @@ build = function(map, kit)
       line(-0.05, 0.25, -0.25, 0.72) -- seat tube up to the saddle
       line(-0.33, 0.72, -0.15, 0.72) -- saddle
       line(0.25, 0.6, 0.2, 0.78)     -- handlebar
+      engine.mesh("cycle_bike", strokes)
+      return "cycle_bike"
+    end
+    -- One at (x, z) for a rider heading (fx, fz).
+    local function bicycle(x, z, fx, fz)
+      bike_mesh = bike_mesh or bicycle_mesh()
+      local pitch
+      if GROUND then pitch = -math.atan(GROUND(x + fx, z + fz) - GROUND(x - fx, z - fz), 2) end
+      local y = GROUND and GROUND(x, z) or 0
+      cyc.add(x, z, {mesh = bike_mesh, pos = {x, y + 0.08, z}, yaw = math.atan(fx, fz), pitch = pitch, color = PAINT, abs = true})
       cycle_counts.bikes = cycle_counts.bikes + 1
     end
     -- The bicycles along one piece of path 30 m or more: one 3 m in from
@@ -2093,8 +2104,6 @@ build = function(map, kit)
         end
       end
     end
-    -- Where a path stops at one kerb and goes on from the other within a
-    -- street's width, it crossed the street: squares along both its sides.
     -- The top of the asphalt at (x, z): the highest of the roads there (at
     -- a junction their strips overlap), nil off them.
     local function road_top(x, z)
@@ -2125,6 +2134,8 @@ build = function(map, kit)
       end
       return top
     end
+    -- Where a path stops at one kerb and goes on from the other within a
+    -- street's width, it crossed the street: squares along both its sides.
     local function crossing(a, b)
       local len = U.dist2d(a[1], a[2], b[1], b[2])
       if len < 4 or len > 28 then return end
@@ -2148,9 +2159,9 @@ build = function(map, kit)
         local u = (k + 0.5) * len / n
         for _, side in ipairs{-1, 1} do
           local x, z = a[1] + fx * u + rx * side * (CYCLE_W / 2 - 0.25), a[2] + fz * u + rz * side * (CYCLE_W / 2 - 0.25)
-          -- (On the asphalt only.)
-          -- (A hand's breadth over it: where a sloping road bends its
-          -- strip twists, and paint level with the slope's height sinks.)
+          -- (On the asphalt only, a hand's breadth over it: where a sloping
+          -- road bends its strip twists, and paint level with the slope's
+          -- height sinks.)
           local top = road_top(x, z)
           if top then paint(x, z, yaw, 0.5, 0.5, nil, function() return top end, 0.1) end
         end
@@ -2158,19 +2169,15 @@ build = function(map, kit)
       cycle_counts.crossings = cycle_counts.crossings + 1
     end
     -- A segregated one: a solid line down its middle between the foot and
-    -- the cycle halves, in pieces of at most 3 m that follow the ground.
+    -- the cycle halves, one strip along it as high over the ground as the
+    -- path's own and a little more (so it follows it on any slope), with a
+    -- skirt only 2 cm deep.
     local function divider(pts)
-      for i = 2, #pts do
-        local a, b = pts[i - 1], pts[i]
-        local len = U.dist2d(a[1], a[2], b[1], b[2])
-        local n = math.ceil(len / 3)
-        for k = 0, n - 1 do
-          local x0, z0 = a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n
-          local x1, z1 = a[1] + (b[1] - a[1]) * (k + 1) / n, a[2] + (b[2] - a[2]) * (k + 1) / n
-          local pitch
-          if GROUND then pitch = -math.atan(GROUND(x1, z1) - GROUND(x0, z0), len / n) end
-          paint((x0 + x1) / 2, (z0 + z1) / 2, math.atan(b[1] - a[1], b[2] - a[2]), 0.1, len / n + 0.05, pitch)
-        end
+      local parts = {}
+      strip(parts, pts, 0.1, 0.07, PAINT, false)
+      for _, part in ipairs(parts) do
+        part.depth = 0.02
+        cyc.add(part.pos[1], part.pos[3], part)
       end
       cycle_counts.dividers = cycle_counts.dividers + 1
     end
