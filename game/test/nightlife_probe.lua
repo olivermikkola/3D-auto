@@ -88,11 +88,33 @@ local function script()
       local p = peds.peds[id]
       local x, _, z = engine.pos(id)
       if p and p.until_t then still = still + 1 end
-      if p and U.dist2d(x, z, v.spots[p.k][1], v.spots[p.k][2]) > 12 then moved = moved + 1 end
+      -- Standing somewhere other than by the door. (Not anyone a crash in
+      -- the street sent running, on their way back: the market probe
+      -- checks they come back.)
+      if p and p.state == "browse" and p.until_t and U.dist2d(x, z, v.spots[p.k][1], v.spots[p.k][2]) > 12 then moved = moved + 1 end
     end
   end
   check(moved == 0, "they stay by the door")
   check(still > late * 0.5, string.format("mostly standing about (%d)", still))
+
+  -- One shoved off their spot (a car nudging through) walks back to it.
+  local who
+  for _, v in ipairs(N.venues) do
+    for _, id in ipairs(v.people or {}) do
+      local p = peds.peds[id]
+      if not who and p and p.state == "browse" and p.until_t then who = {id = id, p = p} end
+    end
+  end
+  check(who ~= nil, "someone standing by a door")
+  local x, y, z = engine.pos(who.id)
+  local pushed = {x + 5, z}
+  if roadnet.on_carriageway(x + 5, z, 0.5) then pushed = {x - 5, z} end
+  engine.set_pos(who.id, pushed[1], y, pushed[2])
+  sleep(12)
+  local s = who.p.spots[who.p.k]
+  local bx, _, bz = engine.pos(who.id)
+  check(who.p.state ~= "browse" or U.dist2d(bx, bz, s[1], s[2]) < 1.5,
+        string.format("one shoved 5 m off their spot walks back (%.1f m from it)", U.dist2d(bx, bz, s[1], s[2])))
 
   daynight.set_hour(4.5)
   step_away_and_back()
