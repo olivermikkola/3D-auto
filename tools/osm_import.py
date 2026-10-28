@@ -706,6 +706,63 @@ def splice_furniture(dest, els, P, f):
     print(f"{dest}: {len(crossings)} painted crossings, {len(signals)} traffic lights", file=sys.stderr)
 
 
+def paved_of(els, P, inside):
+    """Service roads and paved paths: (width, service road?, points, look)."""
+    paved = []
+    for el in els:
+        t = el.get("tags", {})
+        hw = t.get("highway")
+        if el["type"] != "way" or hw not in PAVED or t.get("area") == "yes": continue
+        if hw in ("path", "footway") and t.get("surface") not in ("asphalt", "paved", "concrete", "paving_stones"): continue
+        if hw == "service" and t.get("service") in ("driveway",): continue
+        pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 1.0)
+        pts = [p for p in pts if inside(*p)]
+        if len(pts) >= 2:
+            # How it looks: a foot or cycle path, one mapped as a street's
+            # pavement, paving stones, a cycle path with its foot half
+            # marked off (segregated).
+            look = []
+            if hw != "service": look.append("path = true")
+            if t.get("footway") == "sidewalk" or t.get("cycleway") == "sidewalk": look.append("sidewalk = true")
+            if t.get("surface") in STONE: look.append("stone = true")
+            if hw == "cycleway" and t.get("segregated") == "yes": look.append("segregated = true")
+            paved.append((PAVED[hw], hw == "service", pts, look))
+    return paved
+
+
+def paved_lines(paved, f):
+    L = ["  -- {width, service road?, points..., path = a foot or cycle path?, sidewalk = a street's pavement?,",
+         "  -- stone = paving stones?, segregated = a cycle path's foot half marked off?}",
+         "  paved = {"]
+    for wd, svc, pts, look in paved:
+        L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
+                 + "".join(", " + a for a in look) + "},")
+    L.append("  },")
+    return L
+
+
+def splice_paved(dest, els, P, f):
+    """Put the service roads and paved paths into an already generated map,
+    inside its bounds, leaving the rest of it as it was."""
+    text = dest.read_text()
+    m = re.search(r"\n  bounds = \{(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\},", text)
+    X0, Z0, X1, Z1 = map(float, m.groups())
+    def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
+    paved = paved_of(els, P, inside)
+    lines, out, skipping = text.split("\n"), [], False
+    for i, line in enumerate(lines):
+        if line.startswith("  -- {width, service road?, points..."):
+            out.extend(paved_lines(paved, f))
+            skipping = True
+            continue
+        if skipping:
+            if line == "  },": skipping = False
+            continue
+        out.append(line)
+    dest.write_text("\n".join(out))
+    print(f"{dest}: {len(paved)} paved ways", file=sys.stderr)
+
+
 def fetch_pois(cache, cfg, fetch):
     """<area>_pois.json, downloaded if asked to or not there yet."""
     path = cache.with_name(cache.stem + "_pois.json")
@@ -776,13 +833,16 @@ def main():
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
     ap.add_argument("--only-pois", action="store_true",
                     help="only put points of interest into the existing map (no terrain or map cache needed)")
+    ap.add_argument("--only-paved", action="store_true",
+                    help="only put service roads and paved paths into the existing map (from the map cache)")
     ap.add_argument("--only-furniture", action="store_true",
                     help="only put painted crossings and traffic lights into the existing map (from the map cache)")
     ap.add_argument("--terrain", nargs="+", type=Path,
                     help="explicit local EPSG:3067 GeoTIFF source tiles (2 m for Turku)")
     args = ap.parse_args()
     cfg = AREAS[args.area]
-    if cfg.get("require_terrain") and not args.terrain and not args.only_railways and not args.only_pois and not args.only_furniture:
+    if cfg.get("require_terrain") and not args.terrain and not args.only_railways and not args.only_pois and not args.only_furniture \
+            and not args.only_paved:
         ap.error(f"{args.area} requires verified 2 m terrain; no flat-map fallback is permitted")
     elevation = None
     if args.terrain:
@@ -820,6 +880,10 @@ def main():
         elif small.exists(): els = els + bus_stops_of(json.loads(small.read_text())["elements"])
         splice_pois(dest, els, P,
                     lambda v: f"{v:.1f}".rstrip("0").rstrip("."), lambda v: json.dumps(v, ensure_ascii=False))
+        return
+    if args.only_paved:
+        P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
+        splice_paved(dest, json.loads(cache.read_text())["elements"], P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."))
         return
     if args.only_furniture:
         P = Proj(*(cfg.get("origin") or ((s + n) / 2, (w + e) / 2)))
@@ -1051,23 +1115,7 @@ def main():
         sys.exit(f"no junction named {cfg['first']!r}; near: {near}")
 
     # ---- paved but not driven: service roads, paths ----
-    paved = []
-    for el in els:
-        t = el.get("tags", {})
-        hw = t.get("highway")
-        if el["type"] != "way" or hw not in PAVED or t.get("area") == "yes": continue
-        if hw in ("path", "footway") and t.get("surface") not in ("asphalt", "paved", "concrete", "paving_stones"): continue
-        if hw == "service" and t.get("service") in ("driveway",): continue
-        pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 1.0)
-        pts = [p for p in pts if inside(*p)]
-        if len(pts) >= 2:
-            # How it looks: a foot or cycle path, one mapped as a street's
-            # pavement, paving stones.
-            look = []
-            if hw != "service": look.append("path = true")
-            if t.get("footway") == "sidewalk" or t.get("cycleway") == "sidewalk": look.append("sidewalk = true")
-            if t.get("surface") in STONE: look.append("stone = true")
-            paved.append((PAVED[hw], hw == "service", pts, look))
+    paved = paved_of(els, P, inside)
 
     # ---- kerbside parking ----
     # A street with parking by its kerb is that much wider than its lanes,
@@ -1504,13 +1552,7 @@ def main():
             attrs += ", tunnel = true, roof = {" + ", ".join(f"{h:.1f}".rstrip("0").rstrip(".") for h in ed["roof"]) + "}"
         L.append(f"    {{{attrs}, {', '.join(bits)}}},")
     L.append("  },")
-    L.append("  -- {width, service road?, points..., path = a foot or cycle path?, sidewalk = a street's pavement?,")
-    L.append("  -- stone = paving stones?}")
-    L.append("  paved = {")
-    for wd, svc, pts, look in paved:
-        L.append(f"    {{{wd}, {'true' if svc else 'false'}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
-                 + "".join(", " + a for a in look) + "},")
-    L.append("  },")
+    L.extend(paved_lines(paved, f))
     L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or false, year built or false,")
     L.append("  -- pitched roof's height or nil}: yaw turns the box's w side off the x axis; height is to the eaves")
     L.append("  footprints = {")
