@@ -86,8 +86,17 @@ local function script()
   check(engine.mesh_of(G.vehicle) == p.mesh, "the same car")
   local car = G.vehicle
 
-  -- Shove one: a car into it at 12 m/s.
-  local id2, q = next(P.list)
+  -- Shove one: a car into it at 12 m/s, from 9 m behind, where nothing
+  -- else stands in between (the first in the list may have its neighbour
+  -- there, or a lamp).
+  local id2, q
+  for i, c in pairs(P.list) do
+    local fx, fz = math.sin(c.yaw), math.cos(c.yaw)
+    local gx, gz = c.x - fx * 9, c.z - fz * 9
+    local hit = engine.raycast(gx, U.ground(gx, gz) + 0.7, gz, fx, 0, fz, 10)
+    if hit == i and not id2 then id2, q = i, c end
+  end
+  if not id2 then id2, q = next(P.list) end
   local fx, fz = math.sin(q.yaw), math.cos(q.yaw)
   local sx, sz = q.x - fx * 9, q.z - fz * 9
   local ram = vehicle.spawn(sx, sz, q.yaw, 1)
