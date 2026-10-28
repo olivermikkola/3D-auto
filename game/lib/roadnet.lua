@@ -501,6 +501,7 @@ local function chunked()
     table.insert(c[k], part)
   end
   function c.bake(prefix, tag)
+    local parts = 0
     local keys = {}
     for k, v in pairs(c) do if type(v) == "table" then keys[#keys + 1] = k end end
     table.sort(keys)
@@ -510,7 +511,14 @@ local function chunked()
         baked_chunks[k] = baked_chunks[k] or {}
         table.insert(baked_chunks[k], id)
       end
+      -- Its parts are garbage now; after a big batch, clear them out before
+      -- the next is built, so they don't pile up (Turku: the pavements and
+      -- the building outlines, 33,000 and 70,000 parts; load peak -64 MB,
+      -- +0.1 s).
+      parts = parts + #c[k]
+      c[k] = nil
     end
+    if parts > 30000 then collectgarbage("collect") end
   end
   return c
 end
