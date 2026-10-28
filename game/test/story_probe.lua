@@ -39,6 +39,29 @@ engine.on("tick", function()
   check(#heard == 1, "a stunt gets a line on the radio: " .. (heard[1] and heard[1].text or "none"))
   engine.emit("explosion", 0, 0, 0)
   check(#heard == 1, "but not another straight after")
+
+  -- The story (story/arc): every mission on the map has a call when it
+  -- starts and a line when it's passed, out at once even straight after
+  -- another line, and the last one passed brings the ending.
+  local G = require "lib.state"
+  local arc = require "story.arc"
+  local defs = {}
+  for _, def in ipairs(require("lib.mission").defs) do if arc[def.id] then defs[#defs + 1] = def end end
+  check(#defs >= 8, #defs .. " story missions on the map")
+  for _, def in ipairs(defs) do
+    local a = story.pick(ctx("mission_started", "Kupittaa", 12, 0, def), 1000)
+    local b = story.pick(ctx("mission_passed", "Kupittaa", 12, 0, def), 1000)
+    check(a and a.id == "arc_start_" .. def.id and b and b.id == "arc_pass_" .. def.id, "the story covers " .. def.id)
+  end
+  local before = #heard
+  engine.emit("mission_started", defs[1])
+  check(#heard == before + 1 and heard[#heard].id == "arc_start_" .. defs[1].id, "a mission's call goes out straight after another line")
+  local saved = G.passed
+  G.passed = {}
+  for i = 1, #defs - 1 do G.passed[defs[i].id] = true end
+  check(story.pick(ctx("mission_passed", "Kupittaa", 12, 0, defs[1]), 1000).id == "arc_pass_" .. defs[1].id, "one left: not the ending yet")
+  check(story.pick(ctx("mission_passed", "Kupittaa", 12, 0, defs[#defs]), 1000).id == "arc_end", "the last one passed: the ending")
+  G.passed = saved
   print("STORY TEST PASSED")
   engine.quit()
 end)

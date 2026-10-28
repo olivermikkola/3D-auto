@@ -4,7 +4,7 @@
 -- the same pick, so tests stay stable. Variety comes from cooldowns.
 --
 --   story.add{id = "...", on = "stunt", text = "..." or function(ctx) return "..." end,
---             weight = 1, cooldown = 120, area = "Kupittaa", hours = {22, 4},
+--             weight = 1, cooldown = 120, area = "Kupittaa", hours = {22, 4}, urgent = true,
 --             stars = {1, 5}, when = function(ctx, ...) return true end}
 --
 -- ctx: event, area and street (by name, on maps drawn from survey data),
@@ -75,13 +75,13 @@ function S.text(f, ctx)
 end
 
 -- An event happened: say the best fragment for it, if one fits and the
--- last one wasn't just now.
+-- last one wasn't just now (a fragment marked `urgent`, the story's own,
+-- goes out anyway).
 function S.react(event, ...)
   local now = engine.time()
-  if now < next_at then return end
   local ctx = S.context(event, ...)
   local f = S.pick(ctx, now)
-  if not f then return end
+  if not f or (now < next_at and not f.urgent) then return end
   last_said[f.id], next_at = now, now + S.GAP
   engine.emit("story", S.text(f, ctx), f.id)
   return f
@@ -92,7 +92,8 @@ function S.reset() next_at, last_said = 0, {} end
 
 S.EVENTS = {"stunt", "busted", "wanted_changed", "mission_passed", "carjacked", "explosion", "respawned",
             "vehicle_enter", "purchase", "weather", "cashvan_robbed", "heli", "racer_won", "racer_lost",
-            "fare_paid", "fare_lost", "patient_saved", "patient_lost", "suspect_caught", "suspect_escaped", "fire_out", "fire_lost", "bus_route_done", "bus_route_lost"}
+            "fare_paid", "fare_lost", "patient_saved", "patient_lost", "suspect_caught", "suspect_escaped", "fire_out", "fire_lost", "bus_route_done", "bus_route_lost",
+            "mission_started"}
 for _, ev in ipairs(S.EVENTS) do
   engine.on(ev, function(...) S.react(ev, ...) end)
 end
