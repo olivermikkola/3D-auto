@@ -97,6 +97,25 @@ local function script()
   check(moved == 0, "they stay by the door")
   check(still > late * 0.5, string.format("mostly standing about (%d)", still))
 
+  -- One shoved off their spot (a car nudging through) walks back to it.
+  local who
+  for _, v in ipairs(N.venues) do
+    for _, id in ipairs(v.people or {}) do
+      local p = peds.peds[id]
+      if not who and p and p.state == "browse" and p.until_t then who = {id = id, p = p} end
+    end
+  end
+  check(who ~= nil, "someone standing by a door")
+  local x, y, z = engine.pos(who.id)
+  local pushed = {x + 5, z}
+  if roadnet.on_carriageway(x + 5, z, 0.5) then pushed = {x - 5, z} end
+  engine.set_pos(who.id, pushed[1], y, pushed[2])
+  sleep(12)
+  local s = who.p.spots[who.p.k]
+  local bx, _, bz = engine.pos(who.id)
+  check(who.p.state ~= "browse" or U.dist2d(bx, bz, s[1], s[2]) < 1.5,
+        string.format("one shoved 5 m off their spot walks back (%.1f m from it)", U.dist2d(bx, bz, s[1], s[2])))
+
   daynight.set_hour(4.5)
   step_away_and_back()
   check(out() == 0, "home by half past four")
