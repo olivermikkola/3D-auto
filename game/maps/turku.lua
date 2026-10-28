@@ -33,6 +33,7 @@ return {
   pools = osm.pools,
   footbridges = osm.footbridges,
   railways = osm.railways,
+  rail_bridges = osm.rail_bridges,
   outlines = osm.outlines,
   photo_trees = osm.photo_trees, -- street and yard trees seen in the aerial photo
   zebras = osm.zebras, -- painted crossings, x, z, ...

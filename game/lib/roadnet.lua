@@ -2557,6 +2557,70 @@ build = function(map, kit)
   end
   lines.bake("lines", "cover")
 
+  -- Railway bridges: a concrete deck carrying the track over a road, a path
+  -- or the river, level with the track's ends on the embankments (the
+  -- tracks themselves stop at a bridge: see railways above), parapets
+  -- along it, the rails on top, and piers where it stands high, off the
+  -- roads. (The underpass between Yliopistonmäki and Ylioppilaskylä.)
+  local rail_skipped = 0
+  for _, b in ipairs(map.rail_bridges or {}) do
+    local total = 0
+    for i = 2, #b do total = total + U.dist2d(b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) end
+    local g0 = GROUND and GROUND(b[1][1], b[1][2]) or 0
+    local g1 = GROUND and GROUND(b[#b][1], b[#b][2]) or 0
+    -- Its pieces, 6 m or less, and the room under each over a carriageway:
+    -- where the map's street under it runs as high as its ends (graded
+    -- level, not down in its underpass), a deck would stand in the way of
+    -- the traffic, so that bridge is left out (as before: the track just
+    -- stops either side).
+    local pieces, need, sv = {}, 0, 0
+    for i = 2, #b do
+      local ax, az, bx, bz = b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]
+      local seg = U.dist2d(ax, az, bx, bz)
+      local n = math.max(1, math.ceil(seg / 6))
+      local yaw = math.atan(bx - ax, bz - az)
+      for k = 0, n - 1 do
+        local t0, t1 = k / n, (k + 1) / n
+        local y0 = g0 + (g1 - g0) * (sv + seg * t0) / math.max(total, 1e-3) + 0.3
+        local y1 = g0 + (g1 - g0) * (sv + seg * t1) / math.max(total, 1e-3) + 0.3
+        local x, z = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
+        local ce = R.on_carriageway(x, z, 0.5)
+        if ce then
+          local room = (y0 + y1) / 2 - 0.8 - (NET.edges[ce].height or GROUND or function() return 0 end)(x, z)
+          need = math.max(need, 4.4 - room)
+        end
+        pieces[#pieces + 1] = {x, z, yaw, seg / n, y0, y1, k, (sv + seg * t0) / math.max(total, 1e-3), (sv + seg * t1) / math.max(total, 1e-3)}
+      end
+      sv = sv + seg
+    end
+    -- Short of room by up to 2 m, it arches up to make it (its ends stay
+    -- level with the track); more than that, it's left out.
+    local low = need > 2
+    if low then rail_skipped = rail_skipped + 1 end
+    for _, pc in ipairs(low and {} or pieces) do
+      local x, z, yaw, l, k = pc[1], pc[2], pc[3], pc[4], pc[7]
+      local y0, y1 = pc[5] + math.max(need, 0) * math.sin(math.pi * pc[8]), pc[6] + math.max(need, 0) * math.sin(math.pi * pc[9])
+      local rx, rz = math.cos(yaw), -math.sin(yaw)
+      local pitch, mid = -math.atan(y1 - y0, l), (y0 + y1) / 2
+      kit.static{mesh = "cube", pos = {x, mid - 0.4, z}, yaw = yaw, pitch = pitch, size = {5.6, 0.8, l * 1.02},
+                 color = {0.6, 0.6, 0.58}, tag = "bridge"}
+      for _, side in ipairs{-1, 1} do
+        kit.static{mesh = "cube", pos = {x + rx * side * 2.7, mid + 0.5, z + rz * side * 2.7}, yaw = yaw, pitch = pitch,
+                   size = {0.25, 1.0, l * 1.02}, color = {0.66, 0.66, 0.63}, tag = "wall"}
+        engine.spawn{mesh = "cube", pos = {x + rx * side * 0.76, mid + 0.08, z + rz * side * 0.76}, yaw = yaw, pitch = pitch,
+                     size = {0.1, 0.16, l * 1.02}, color = {0.7, 0.69, 0.68}}
+      end
+      local foot = engine.terrain_height(x, z) or 0
+      if k % 2 == 1 and mid - foot > 3 and not R.on_carriageway(x, z, 1.5) then
+        kit.static{mesh = "cube", pos = {x, (mid - 0.8 + foot) / 2, z}, yaw = yaw, size = {4.6, mid - 0.8 - foot, 1.2},
+                   color = {0.58, 0.58, 0.56}, tag = "bridge"}
+      end
+    end
+  end
+  if map.rail_bridges then
+    print(string.format("rail bridges: %d, %d left out (over a street at their own level)", #map.rail_bridges - rail_skipped, rail_skipped))
+  end
+
   -- Foot and cycle bridges over roads: a deck high enough to drive under,
   -- ramping down to the paths at its ends (unless an end is `up`: it meets
   -- a raised deck there); solid where it's up. `concrete` ones have the
