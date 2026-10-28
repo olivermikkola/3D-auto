@@ -592,6 +592,9 @@ function R.streams() return streams end
 local streamed_once = false
 function R.stream_now()
   if #streams == 0 then return end
+  -- (The city's build leaves garbage behind; gone first, the walls' parts
+  -- don't pile on top of it. In the browser that high point is kept.)
+  collectgarbage("collect")
   update_streams(math.huge)
   streamed_once = true
 end
