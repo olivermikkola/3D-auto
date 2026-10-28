@@ -2027,6 +2027,141 @@ build = function(map, kit)
       end
       return out
     end
+    -- Cycle paths (the map's 3 m paths are its cycleways) in white paint,
+    -- as in Finland: a bicycle on the asphalt every so often, and where one
+    -- crosses a street, the squares of its crossing along both sides
+    -- (pyörätien jatke).
+    local CYCLE_W, PAINT, EVERY = 3, {0.9, 0.9, 0.86}, 100
+    local cyc, cycle_counts = chunked(), {bikes = 0, crossings = 0}
+    local function paint(x, z, yaw, across, long, pitch, hf, lift)
+      local y = (hf or GROUND or function() return 0 end)(x, z)
+      cyc.add(x, z, {mesh = "plane", pos = {x, y + (lift or 0.06), z}, yaw = yaw, pitch = pitch,
+                     size = {across, 1, long}, color = PAINT, abs = true})
+    end
+    -- A bicycle at (x, z) for someone riding along (fx, fz) to read: drawn
+    -- side on, its wheels across the path and its top ahead, stretched a
+    -- third along the path as such paint is; in strips.
+    local function bicycle(x, z, fx, fz)
+      local rx, rz = fz, -fx
+      local pitch
+      if GROUND then pitch = -math.atan(GROUND(x + fx, z + fz) - GROUND(x - fx, z - fz), 2) end
+      local function line(h0, v0, h1, v1) -- h across (to the right), v up the picture (ahead)
+        v0, v1 = (v0 - 0.39) * 1.3, (v1 - 0.39) * 1.3
+        local x0, z0 = x + rx * h0 + fx * v0, z + rz * h0 + fz * v0
+        local x1, z1 = x + rx * h1 + fx * v1, z + rz * h1 + fz * v1
+        local len = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
+        paint((x0 + x1) / 2, (z0 + z1) / 2, math.atan(x1 - x0, z1 - z0), 0.09, len + 0.05, pitch)
+      end
+      for _, c in ipairs{-0.4, 0.4} do -- the wheels
+        for k = 0, 7 do
+          local t0, t1 = k * math.pi / 4, (k + 1) * math.pi / 4
+          line(c + 0.25 * math.cos(t0), 0.25 + 0.25 * math.sin(t0), c + 0.25 * math.cos(t1), 0.25 + 0.25 * math.sin(t1))
+        end
+      end
+      line(-0.4, 0.25, -0.05, 0.25)  -- chain stay
+      line(-0.05, 0.25, 0.25, 0.6)   -- down tube
+      line(-0.4, 0.25, -0.2, 0.6)    -- seat stay
+      line(-0.2, 0.6, 0.25, 0.6)     -- top tube
+      line(0.25, 0.6, 0.4, 0.25)     -- fork
+      line(-0.05, 0.25, -0.25, 0.72) -- seat tube up to the saddle
+      line(-0.33, 0.72, -0.15, 0.72) -- saddle
+      line(0.25, 0.6, 0.2, 0.78)     -- handlebar
+      cycle_counts.bikes = cycle_counts.bikes + 1
+    end
+    -- The bicycles along one piece of path 30 m or more: one 3 m in from
+    -- each end, and one every EVERY metres between, on its right half.
+    local function bikes_along(pts)
+      local total = 0
+      for i = 2, #pts do total = total + U.dist2d(pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) end
+      if total < 30 then return end
+      local at, n = {}, math.max(1, math.floor((total - 6) / EVERY))
+      for k = 0, n do at[#at + 1] = 3 + (total - 6) * k / n end
+      local s, i = 0, 2
+      for _, want in ipairs(at) do
+        while i <= #pts do
+          local a, b = pts[i - 1], pts[i]
+          local len = U.dist2d(a[1], a[2], b[1], b[2])
+          if s + len >= want and len > 0 then
+            local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
+            local u = want - s
+            -- (Its foot half on the left: the bicycle on the right.)
+            bicycle(a[1] + fx * u + fz * 0.75, a[2] + fz * u - fx * 0.75, fx, fz)
+            break
+          end
+          s, i = s + len, i + 1
+        end
+      end
+    end
+    -- Where a path stops at one kerb and goes on from the other within a
+    -- street's width, it crossed the street: squares along both its sides.
+    -- The top of the asphalt at (x, z): the highest of the roads there (at
+    -- a junction their strips overlap), nil off them.
+    local function road_top(x, z)
+      local top
+      local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+      for i = ci - 1, ci + 1 do
+        for j = cj - 1, cj + 1 do
+          for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+            local o = NET.edges[it[1]]
+            if not (o.tunnel or o.deck or o.over) then
+              local c, d = o.pts[it[2] - 1], o.pts[it[2]]
+              local dd, cx, cz = dist_seg(x, z, c[1], c[2], d[1], d[2])
+              local hf = o.height or GROUND or function() return 0 end
+              if dd < o.width / 2 then
+                local h = hf(cx, cz) + 0.08
+                if not top or h > top then top = h end
+              end
+              -- (and the disc at its end, level with the junction)
+              for _, q in ipairs{o.pts[1], o.pts[#o.pts]} do
+                if U.dist2d(x, z, q[1], q[2]) < o.width / 2 then
+                  local h = hf(q[1], q[2]) + 0.08
+                  if not top or h > top then top = h end
+                end
+              end
+            end
+          end
+        end
+      end
+      return top
+    end
+    local function crossing(a, b)
+      local len = U.dist2d(a[1], a[2], b[1], b[2])
+      if len < 4 or len > 28 then return end
+      local mx, mz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+      local e = R.on_carriageway(mx, mz, 0, GROUND and GROUND(mx, mz))
+      if not e then return end
+      local fx, fz = (b[1] - a[1]) / len, (b[2] - a[2]) / len
+      -- Across the street, not along it.
+      local ed = NET.edges[e].pts
+      local best, bd
+      for q = 2, #ed do
+        local d = dist_seg(mx, mz, ed[q - 1][1], ed[q - 1][2], ed[q][1], ed[q][2])
+        if not bd or d < bd then best, bd = q, d end
+      end
+      local dx, dz = ed[best][1] - ed[best - 1][1], ed[best][2] - ed[best - 1][2]
+      local dl = math.sqrt(dx * dx + dz * dz)
+      if dl == 0 or math.abs((dx * fx + dz * fz) / dl) > 0.6 then return end
+      local yaw, rx, rz = math.atan(fx, fz), fz, -fx
+      local n = math.floor(len / 1)
+      for k = 0, n - 1 do
+        local u = (k + 0.5) * len / n
+        for _, side in ipairs{-1, 1} do
+          local x, z = a[1] + fx * u + rx * side * (CYCLE_W / 2 - 0.25), a[2] + fz * u + rz * side * (CYCLE_W / 2 - 0.25)
+          -- (On the asphalt only.)
+          -- (A hand's breadth over it: where a sloping road bends its
+          -- strip twists, and paint level with the slope's height sinks.)
+          local top = road_top(x, z)
+          if top then paint(x, z, yaw, 0.5, 0.5, nil, function() return top end, 0.1) end
+        end
+      end
+      cycle_counts.crossings = cycle_counts.crossings + 1
+    end
+    local function cycle_paint(runs)
+      for i, pts in ipairs(runs) do
+        bikes_along(pts)
+        if runs[i + 1] then crossing(pts[#pts], runs[i + 1][1]) end
+      end
+    end
     for _, p in ipairs(map.paved) do
       local runs, cur, last = {}, nil, nil
       -- (A lane of setts too: its stones would show on the road it joins.)
@@ -2070,8 +2205,11 @@ build = function(map, kit)
         for k = first, #parts do parts[k].ground = p.stone and SETTS or ASPHALT end
         for _, part in ipairs(parts) do ch.add(part.pos[1], part.pos[3], part) end
       end
+      if p.path and p[1] == CYCLE_W and not p.stone then cycle_paint(runs) end
     end
     ch.bake("paved", "cover")
+    cyc.bake("cyclemarks", "cover")
+    print(string.format("cycle paths: %d bicycles painted, %d crossings", cycle_counts.bikes, cycle_counts.crossings))
   end
 
   -- Railways: a bed of ballast and two rails, 1524 mm apart; masts for
