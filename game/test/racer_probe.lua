@@ -104,8 +104,11 @@ local function script()
   -- Another, and this time it wins.
   racer.soon()
   wait(function() return racer.state() == "waiting" end, 2, "another racer waits")
-  pull_up(mine)
-  wait(function() return racer.state() == "racing" end, 5, "and races")
+  -- Held beside it: this one may wait on a slope a parked car rolls down.
+  wait(function()
+    if racer.state() == "waiting" then pull_up(mine) end
+    return racer.state() == "racing"
+  end, 5, "and races")
   fx, fz = city.pos(racer.finish().junction)
   put(racer.car(), fx, fz)
   cash = G.cash

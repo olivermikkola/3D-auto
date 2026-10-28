@@ -27,16 +27,17 @@ local function open_from_road(x, z, rx, rz)
 end
 
 -- Spots on open ground off the roads, spread over the middle of the map:
--- every 130 m on a grid, kept if the nearest road of any kind is 20-60 m
--- off and straight down from 60 m up meets the terrain (no roof, no water);
+-- every 130 m on a grid, kept if the nearest road of any kind at its level
+-- is 20-60 m off and straight down from 60 m up meets the terrain (no roof, no water);
 -- an even spread of N of them, less any without a straight way in from
 -- that road (dropped, not replaced, so the rest stay the same spots).
 local function spots()
   local out = {}
   for gz = -1300, 1300, 130 do
     for gx = -1300, 1300, 130 do
-      local _, _, rx, rz, d = roadnet.nearest_edge(gx, gz)
+      -- (Roads at its level: a viaduct overhead is no way in.)
       local g = engine.terrain_height(gx, gz)
+      local _, _, rx, rz, d = roadnet.nearest_edge(gx, gz, nil, g)
       if d and d >= 20 and d <= 60 and g and g > 0.5 then
         local hit = engine.raycast(gx, g + 60, gz, 0, -1, 0, 70)
         if hit and engine.tag(hit) == "terrain" then out[#out + 1] = {gx, gz, rx, rz} end
