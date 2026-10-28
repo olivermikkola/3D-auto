@@ -57,32 +57,29 @@ function A.build(map)
   end
 
   -- Restaurant boats along the quay between Auransilta and Myllysilta, as they lie in summer.
-  local boat_moorings = {
-    {pos = {-101, 356}, yaw = -1.0, name = "Donna"},
-    {pos = {-177, 396}, yaw = -1.0, name = "Papa Joe"},
-    {pos = {-254, 436}, yaw = -1.2, name = "Aussie Bar"},
-    {pos = {-322, 472}, yaw = -1.3, name = "Cindy"},
-    {pos = {-410, 521}, yaw = -1.3, name = "Svarte Rudolf"},
+  -- The ships moored for good, where the map has them (OSM building=ship):
+  -- the restaurant boats on the river's quays, Suomen Joutsen and Sigyn,
+  -- the old navy ships at Forum Marinum. (s/s Bore: systems/harbor.lua.)
+  -- Each mesh stretched to the ship's mapped length and beam.
+  local MESHES = { -- mesh, its length and beam, the y its deck may rise by
+    ["Suomen Joutsen"] = {"suomen_joutsen", 66, 7.6, true}, ["Sigyn"] = {"suomen_joutsen", 66, 7.6, true},
+    ["Keihässalmi"] = {"navy_ship", 40, 6, false}, ["Karjala"] = {"navy_ship", 40, 6, false},
   }
-  for _, m in ipairs(boat_moorings) do
-    local bid = engine.spawn{
-      mesh = "riverboat",
-      pos = {m.pos[1], 0.1, m.pos[2]},
-      yaw = m.yaw,
-      tag = "prop",
-      body = "static",
-    }
-    A.riverboats[#A.riverboats + 1] = bid
+  for _, sh in ipairs(map.ships or {}) do
+    local x, z, len, beam, yaw, name = sh[1], sh[2], sh[3], sh[4], sh[5], sh[6]
+    if name ~= "Bore" then
+      local m = MESHES[name] or {"riverboat", 24, 5.2, false}
+      local k = len / m[2]
+      local id = engine.spawn{
+        mesh = m[1], pos = {x, 0.15, z}, yaw = yaw,
+        -- (a tall ship scaled as a whole, its masts with it; a boat to its beam, not taller)
+        scale = m[4] and {k, k, k} or {beam / m[3], 1, k},
+        tag = m[1] == "riverboat" and "prop" or "ship", body = "static",
+      }
+      if m[1] == "riverboat" then A.riverboats[#A.riverboats + 1] = {id = id, len = len, beam = beam}
+      elseif name == "Suomen Joutsen" then A.joutsen = {id = id, len = len, beam = beam} end
+    end
   end
-
-  -- Suomen Joutsen moored at Forum Marinum
-  engine.spawn{
-    mesh = "suomen_joutsen",
-    pos = {-1708, 0.2, 1601},
-    yaw = -0.7,
-    tag = "ship",
-    body = "static",
-  }
 
   -- It runs between the quays, on the part of the line that's water, its
   -- ramps a few meters short of either side.
@@ -122,8 +119,10 @@ function A.build(map)
   local river_banks = A.BANKS
 
   -- The banks are drawn by hand and run over the riverside streets in
-  -- places: nothing goes down on a carriageway.
-  local function off_road(x, z, r) return not R.on_carriageway(x, z, r) end
+  -- places, and out over the water in others (283 lamps, benches, bollards
+  -- and quay walls stood in the river): nothing goes down on a carriageway
+  -- or in the water.
+  local function off_road(x, z, r) return not R.on_carriageway(x, z, r) and not R.wet(x, z) end
   local quay_stone = {0.52, 0.50, 0.48}
   local bollard_iron = {0.18, 0.18, 0.20}
 

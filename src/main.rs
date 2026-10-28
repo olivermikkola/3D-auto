@@ -398,6 +398,8 @@ struct App {
     profile: Profile,
     acc: f64,
     last: f64,
+    /// When a key, button, the mouse or a touch last did anything.
+    input_at: f64,
     /// Seconds between the last two frames.
     frame_time: f32,
     watch_at: f64,
@@ -473,6 +475,21 @@ impl EventHandler for App {
         let Some(script) = &self.script else { return };
         if self.eng.borrow().paused {
             self.acc = 0.0;
+            // Paused, nothing moves: about 20 frames a second is plenty for
+            // the menu, and 4 once it's been left alone for a few seconds
+            // (lib/menu pauses a game left alone), so the machine gets its
+            // cores back: a game left in its menu drew the whole city at
+            // full rate. A pad's sticks count as a touch too.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let stick =
+                    self.eng.borrow().pad.as_ref().is_some_and(|p| [p.lx, p.ly, p.rx, p.ry, p.lt, p.rt].iter().any(|v| v.abs() > 0.2));
+                if stick {
+                    self.input_at = now;
+                }
+                let ms = if now - self.input_at > 5.0 { 250 } else { 45 };
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
             return;
         }
         // Fixed timestep; in screenshot mode advance exactly one tick per frame.
@@ -597,12 +614,14 @@ impl EventHandler for App {
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.input_at = miniquad::date::now();
         self.eng.borrow_mut().cursor = (x, y);
     }
 
     /// Touches go to the scripts as they are (lib/touch.lua draws the
     /// controls), not as mouse clicks: a tap would fire the gun.
     fn touch_event(&mut self, phase: miniquad::TouchPhase, id: u64, x: f32, y: f32) {
+        self.input_at = miniquad::date::now();
         let phase = match phase {
             miniquad::TouchPhase::Started => "start",
             miniquad::TouchPhase::Moved => "move",
@@ -634,6 +653,7 @@ impl EventHandler for App {
 impl App {
     /// A key, mouse button or pad button went down or up.
     fn press(&mut self, name: &str, down: bool) {
+        self.input_at = miniquad::date::now();
         if down {
             self.eng.borrow_mut().keys.insert(name.to_string());
         } else {
@@ -796,6 +816,7 @@ fn main() {
             acc: 0.0,
             frame_time: (1.0 / TICK_HZ) as f32,
             last: miniquad::date::now(),
+            input_at: miniquad::date::now(),
             watch_at: 0.0,
             mtime,
             reload: false,

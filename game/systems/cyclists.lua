@@ -3,6 +3,7 @@
 -- there, or turn back. They slow for whatever is ahead of them, and a car
 -- that hits one knocks the rider off: a crime, like running anyone over.
 local U = require "lib.util"
+local G = require "lib.state"
 local city = require "lib.city"
 local quality = require "lib.quality"
 local roadnet = require "lib.roadnet"
@@ -69,6 +70,8 @@ local function cell(x, z) return math.floor(x / CELL) .. "," .. math.floor(z / C
 function C.build()
   C.routes, C.cells, C.riders = {}, {}, {}
   local function pick(t, i) return t[i % #t + 1] end
+  -- You on a bike you've taken (lib/vehicle's "bike").
+  rider_mesh("cyclist_you", FRAMES[1], {0.22, 0.26, 0.32}, {0.15, 0.2, 0.4}, SKINS[1], HAIR[1])
   for i = 1, VARIANTS do
     rider_mesh("cyclist" .. i, pick(FRAMES, i * 3), pick(SHIRTS, i * 5), pick(PANTS, i), pick(SKINS, i * 7), pick(HAIR, i * 3))
     engine.mesh("bike" .. i, bike_parts(pick(FRAMES, i * 3)))
@@ -199,7 +202,7 @@ local function remove(id)
 end
 
 -- Off the bike: the rider tumbles one way and the bike another.
-local function fall(id, vx, vy, vz, by)
+local function fall(id, vx, vy, vz, by, keep_bike)
   local c = C.riders[id]
   if not c then return end
   C.riders[id] = nil
@@ -211,13 +214,35 @@ local function fall(id, vx, vy, vz, by)
                             body = "dynamic", mass = 70, friction = 0.8, tag = "ped_down"}
   engine.set_vel(body, vx * 0.9, math.max(vy, 0) + 3, vz * 0.9)
   engine.set_angvel(body, (rand() - 0.5) * 8, (rand() - 0.5) * 4, (rand() - 0.5) * 8)
+  P.down[body] = engine.time() + 12
+  engine.emit("ped_down", body, by)
+  if keep_bike then return x, y, z, yaw end
   local bike = engine.spawn{mesh = "bike" .. c.n, pos = {x, y - 0.3, z}, yaw = yaw, size = {0.4, 1.0, 1.6},
-                            body = "dynamic", mass = 15, friction = 0.8, tag = "prop"}
+                            body = "dynamic", mass = 15, friction = 0.8, tag = "fallen_bike"}
   engine.set_vel(bike, vx * 0.6, 1.5, vz * 0.6)
   engine.set_angvel(bike, 0, (rand() - 0.5) * 3, 4 + rand() * 4)
-  P.down[body] = engine.time() + 12
   P.down[bike] = engine.time() + 20
-  engine.emit("ped_down", body, by)
+end
+
+-- Taking a bike (lib/player's enter): pull a rider within reach off theirs,
+-- or pick up one lying where its rider was knocked off. Returns the bike,
+-- now yours to ride (lib/vehicle's "bike"), or nil.
+function C.take(x, y, z)
+  local vehicle = require "lib.vehicle"
+  local id, d = engine.nearest(x, y, z, 3, "cyclist")
+  if id and C.riders[id] then
+    local rx, rz = U.right(engine.yaw(id))
+    local bx, by, bz, yaw = fall(id, -rx * 2, 0, -rz * 2, G.player, true)
+    return vehicle.spawn(bx, bz, yaw, nil, nil, "bike", by - 1.0)
+  end
+  local fb = engine.nearest(x, y, z, 2.5, "fallen_bike")
+  if fb then
+    local bx, by, bz = engine.pos(fb)
+    local yaw = engine.yaw(fb)
+    peds().down[fb] = nil
+    engine.despawn(fb)
+    return vehicle.spawn(bx, bz, yaw, nil, nil, "bike")
+  end
 end
 
 engine.on("contact", function(a, b, speed)

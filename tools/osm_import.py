@@ -108,6 +108,14 @@ ROADS = {
 }
 # Drawn but not driven by the AI: service roads and paved paths.
 PAVED = {"service": 5, "footway": 2.5, "cycleway": 3, "path": 2, "pedestrian": 6}
+
+
+def no_cars(t):
+    """A street class that cars may not use: Itäinen Rantakatu by the river,
+    the bus street Läntinen Pitkäkatu. It's paved like a pedestrian street,
+    and not a road."""
+    return (t.get("motor_vehicle") in ("no", "private") or t.get("motorcar") in ("no", "private")
+            or t.get("vehicle") in ("no", "private"))
 # Streets that have pavements unless the map data says otherwise; smaller
 # ones don't (a suburban street in Finland mostly has none, or a separate
 # foot and cycle path, which the map data has as a path of its own).
@@ -390,6 +398,11 @@ def is_stand(t, poly):
     return min(sw, sd) < 35 and max(sw, sd) > 2.5 * min(sw, sd)
 
 
+# Tagged building but not one: a ship moored for good (the restaurant boats
+# on the Aurajoki, Suomen Joutsen) is a ship (see `ships`), not a box on the water.
+NOT_BUILDINGS = ("no", "roof", "construction", "ruins", "ship")
+
+
 def building_kind(t, A):
     b = t.get("building", "yes")
     if t.get("amenity") == "police": return "police"
@@ -581,7 +594,7 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None):
     out = []
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
@@ -719,7 +732,9 @@ def paved_of(els, P, inside):
     for el in els:
         t = el.get("tags", {})
         hw = t.get("highway")
-        if el["type"] != "way" or hw not in PAVED or t.get("area") == "yes": continue
+        car_free = hw in ROADS and no_cars(t) and t.get("access") not in ("private", "no")
+        if el["type"] != "way" or (hw not in PAVED and not car_free) or t.get("area") == "yes": continue
+        if car_free: hw = "pedestrian"
         if hw in ("path", "footway") and t.get("surface") not in ("asphalt", "paved", "concrete", "paving_stones"): continue
         if hw == "service" and t.get("service") in ("driveway",): continue
         pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 1.0)
@@ -995,7 +1010,7 @@ def main():
     for el in els:
         t = el.get("tags", {})
         if el["type"] != "way" or t.get("highway") not in ROADS or t.get("area") == "yes": continue
-        if t.get("access") in ("private", "no"): continue
+        if t.get("access") in ("private", "no") or no_cars(t): continue
         g = el.get("geometry") or []
         # Without node ids (out geom), a node is its coordinates.
         nodes = el.get("nodes") or [f'{p["lat"]:.7f},{p["lon"]:.7f}' for p in g]
@@ -1131,7 +1146,7 @@ def main():
     corners = Grid(25)
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if len(poly) < 3: continue
@@ -1168,7 +1183,7 @@ def main():
     footprints, dropped, trimmed = [], 0, 0
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if not all(inside(*p, pad=5) for p in poly): continue
@@ -1319,12 +1334,20 @@ def main():
             footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts,
                                 not over))
 
-    # ---- towers, gantry cranes, piers ----
-    towers, cranes, piers = [], [], []
+    # ---- towers, gantry cranes, piers, ships ----
+    towers, cranes, piers, ships = [], [], [], []
     for el in els:
         t = el.get("tags", {})
         mm = t.get("man_made")
-        if mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower", "lighting"):  # not floodlights
+        if t.get("building") == "ship":
+            for ring in rings(el):
+                poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+                if len(poly) < 3: continue
+                ang, (cx, cz), sl, sw = min_rect(poly)
+                if sl < sw: ang, sl, sw = ang + math.pi / 2, sw, sl
+                # (yaw: the bow or the stern toward (sin, cos), as the game turns things)
+                if inside(cx, cz): ships.append((cx, cz, sl, sw, math.atan2(math.cos(ang), math.sin(ang)), t.get("name") or ""))
+        elif mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower", "lighting"):  # not floodlights
             g = el.get("geometry") or ([{"lat": el["lat"], "lon": el["lon"]}] if "lat" in el else [])
             if not g: continue
             pts = [P(p["lat"], p["lon"]) for p in g]
@@ -1596,6 +1619,8 @@ def main():
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
     L.append("  cranes = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(l)}, {f(w)}, {a:.3f}, {n}}}" for x, z, l, w, a, n in cranes) + "},")
+    L.append("  -- ships moored for good: {x, z, length, beam, yaw, name}")
+    L.append("  ships = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(l)}, {f(w)}, {a:.3f}, {q(n)}}}" for x, z, l, w, a, n in ships) + "},")
     L.append("  -- piers: {width, points...}")
     L.append("  piers = {")
     for wd, pts in piers:

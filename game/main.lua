@@ -206,8 +206,10 @@ if os.getenv("LAMP_TEST") then require "test.lamp_probe" end
 if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
 if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("TOUCH_SHOT") then require "test.touch_shot" end
+if os.getenv("LOOKBACK_TEST") then require "test.lookback_probe" end
 if os.getenv("PED_ROAD_TEST") then require "test.ped_road_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
+if os.getenv("WATER_TEST") then require "test.water_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
 if os.getenv("RACER_TEST") then require "test.racer_probe" end
@@ -231,6 +233,7 @@ if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
 if os.getenv("FIRE_TEST") then require "test.fire_probe" end
 if os.getenv("NIGHTLIFE_TEST") then require "test.nightlife_probe" end
 if os.getenv("CYCLISTS_TEST") then require "test.cyclists_probe" end
+if os.getenv("BIKE_TEST") then require "test.bike_probe" end
 if os.getenv("BUS_TEST") then require "test.bus_probe" end
 if os.getenv("YIELD_TEST") then require "test.yield_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end

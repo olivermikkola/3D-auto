@@ -23,12 +23,22 @@ engine.on("frame", function(dt)
   G.cam_yaw = G.cam_yaw - mx * sens + kx * stick * dt
   G.cam_pitch = U.clamp(G.cam_pitch + my * sens + ky * stick * 0.6 * dt, -0.2, 1.2)
 
+  -- Look behind while C or the right stick's click is held (in a car,
+  -- the way you came; on foot, over your shoulder); back as soon as it's let go.
+  local back = engine.key("c") or engine.key("pad_r3")
+  if back ~= M.back then
+    G.cam_yaw = engine.yaw(id) + (back and math.pi or 0)
+    if not back then last_look = -10 end -- and straight back behind the car
+    M.back, eye = back, nil -- (a cut, not a swing round through the car)
+  end
+  if back then G.cam_yaw = engine.yaw(id) + math.pi end
+
   local x, y, z = engine.pos(id)
   local dist, height = 6, 1.2
   if G.vehicle then
     dist, height = 10, 1.6
     -- Swing behind the car unless the player looked around recently.
-    if engine.time() - last_look > 1.5 then
+    if engine.time() - last_look > 1.5 and not back then
       local yaw = engine.yaw(id)
       if require("lib.vehicle").speed(id) < -1 then yaw = yaw + math.pi end
       G.cam_yaw = G.cam_yaw + U.angle_diff(G.cam_yaw, yaw) * math.min(1, dt * 3)

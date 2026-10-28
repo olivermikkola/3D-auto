@@ -24,15 +24,20 @@ engine.on("init", function()
   end
   print("AURAJOKI_OK bridges=" .. #aurajoki.bridges)
 
-  assert(#aurajoki.riverboats == 5, "expected 5 moored riverboats")
-  for _, id in ipairs(aurajoki.riverboats) do
-    local x, _, z = engine.pos(id)
-    assert(afloat(x, z, engine.yaw(id), 2.6, 12.8), string.format("riverboat at %.0f, %.0f is on land", x, z))
+  -- The restaurant boats on the quays, where the map has them, and none
+  -- of the map's boxes standing there as a house.
+  assert(#aurajoki.riverboats >= 6, "expected the map's moored boats, got " .. #aurajoki.riverboats)
+  for _, b in ipairs(aurajoki.riverboats) do
+    local x, _, z = engine.pos(b.id)
+    assert(afloat(x, z, engine.yaw(b.id), b.beam / 2 - 1, b.len / 2 - 3), string.format("riverboat at %.0f, %.0f is on land", x, z))
+    for _, f in ipairs(require("lib.city").map().footprints) do
+      assert(math.abs(f[1] - x) > 3 or math.abs(f[2] - z) > 3, string.format("a building box on the boat at %.0f, %.0f", x, z))
+    end
   end
-  local ship = engine.find("ship")[1]
+  local ship = aurajoki.joutsen
   assert(ship, "Suomen Joutsen missing")
-  local x, _, z = engine.pos(ship)
-  assert(afloat(x, z, engine.yaw(ship), 3.8, 27), "Suomen Joutsen is on land")
+  local x, _, z = engine.pos(ship.id)
+  assert(afloat(x, z, engine.yaw(ship.id), ship.beam / 2 - 1, ship.len / 2 - 8), "Suomen Joutsen is on land")
   x, _, z = engine.pos(aurajoki.speedboat)
   assert(R.water_level(x, z), "speedboat is on land")
   print("BOATS_AFLOAT_OK")
