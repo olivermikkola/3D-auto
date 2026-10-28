@@ -24,6 +24,7 @@ local NET -- the loaded network
 -- On a map with terrain, the height of the ground (or water) at x, z; nil on
 -- a flat map. BASE, while set, stands in for it (a building's footprint).
 local GROUND, BASE
+local FOOTPRINTS = {} -- the drawn outlines: {pts, base, h, kind}
 local wet_rows -- the water's strips by row, built when first needed
 
 local function dist_seg(px, pz, ax, az, bx, bz)
@@ -1431,6 +1432,7 @@ local build
 -- its y, unless it says abs = true (it was placed on the ground already).
 function R.build(map, kit)
   GROUND, BASE = nil, nil
+  FOOTPRINTS = {}
   local t = map.terrain
   if not t then
     classify(map)
@@ -1461,6 +1463,10 @@ end
 -- The ground's height at x, z: the terrain, or water's level over it; 0 on a
 -- flat map.
 function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
+
+-- The buildings drawn as their map outlines (they collide through boxes
+-- inside them): {pts = {{x, z}...}, base, h, kind}.
+function R.footprints() return FOOTPRINTS end
 
 build = function(map, kit)
   baked_chunks, streams = {}, {} -- the last city's are gone
@@ -3086,6 +3092,7 @@ build = function(map, kit)
   local wall_chunks = {}
   for _, oi in ipairs(placed) do
     local o = OUT[oi]
+    FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind}
     building_walls(o, nothing)
     local k = math.floor((o.x0 + o.x1) / 2 / CHUNK) .. "," .. math.floor((o.z0 + o.z1) / 2 / CHUNK)
     wall_chunks[k] = wall_chunks[k] or {}

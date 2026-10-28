@@ -40,6 +40,7 @@ require "systems.vigilante"
 require "systems.fire"
 require "systems.busroute"
 require "systems.shelters"
+require "systems.shopsigns"
 require "systems.ambience"
 require "systems.parking"
 require "lib.menu"
@@ -116,10 +117,11 @@ engine.on("init", function()
   require("systems.fire").build()
   require("systems.busroute").build()
   require("systems.shelters").build()
+  require("systems.shopsigns").build()
   require("systems.parking").build()
+  require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
   require("systems.heli").build()
   require("systems.terraces").build()
-  require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
   engine.grab_mouse(true)
 end)
 
@@ -197,6 +199,7 @@ if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
 if os.getenv("CONVOY_TEST") then require "test.convoy_probe" end
 if os.getenv("SIGNALS_TEST") then require "test.signals_probe" end
 if os.getenv("SHELTERS_TEST") then require "test.shelters_probe" end
+if os.getenv("SIGNS_TEST") then require "test.shopsigns_probe" end
 if os.getenv("QUALITY_TEST") then require "test.quality_probe" end
 if os.getenv("PARKING_TEST") then require "test.parking_probe" end
 if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
