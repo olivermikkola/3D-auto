@@ -78,9 +78,13 @@ def main():
             return peak; }""")
         check(0.001 < peak <= 1.0, f"the mix has sound (peak {peak:.4f})")
 
-        # Reading: a save put there before a reload comes back.
+        # Reading: a save put there before the game starts comes back. (Put
+        # there from another page of the site, not the running game's: it
+        # saves its own progress a couple of seconds after a change, and
+        # that sometimes landed over this one before the reload.)
+        page.goto(url.replace("index.html", "manifest.webmanifest").split("?")[0])
         page.evaluate(f"localStorage.setItem('gta/progress', {json.dumps(SAVE)})")
-        page.reload()
+        page.goto(url)
         check(wait_ready(page, a.wait), "the map loads again after a reload")
         time.sleep(3)
         if a.shot:
