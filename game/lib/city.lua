@@ -488,8 +488,11 @@ local function building_mesh(style, floors, facade)
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.1, 0}, size = {0.9, 0.2, 1.08}, color = {0.75, 0.75, 0.74}}
       parts[#parts + 1] = {mesh = "cube", pos = {0, -h / 2 + f * FLOOR + 0.75, 0}, size = {0.9, 1.1, 1.07}, color = {0.5, 0.6, 0.66}}
     end
-    for _, u in ipairs{-0.475, 0, 0.475} do
-      parts[#parts + 1] = {mesh = "cube", pos = {u, FLOOR / 2, 0}, size = {0.05, h - FLOOR, 1.09}, color = {0.76, 0.32, 0.18}}
+    -- The end panels stand proud of the end walls and stop under the roof:
+    -- flush with them they fought the wall's windows for the same depth and
+    -- flickered as the camera moved.
+    for _, u in ipairs{-0.5, 0, 0.5} do
+      parts[#parts + 1] = {mesh = "cube", pos = {u, FLOOR / 2 - 0.05, 0}, size = {u == 0 and 0.05 or 0.02, h - FLOOR - 0.1, 1.09}, color = {0.76, 0.32, 0.18}}
     end
   elseif style == "granite" then
     -- Finnish National Romantic granite fortress style (Kakola, Turun taidemuseo)
