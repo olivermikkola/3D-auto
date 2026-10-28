@@ -205,6 +205,7 @@ if os.getenv("LAMP_TEST") then require "test.lamp_probe" end
 if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
 if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
 if os.getenv("TOUCH_SHOT") then require "test.touch_shot" end
+if os.getenv("LOOKBACK_TEST") then require "test.lookback_probe" end
 if os.getenv("PED_ROAD_TEST") then require "test.ped_road_probe" end
 if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
