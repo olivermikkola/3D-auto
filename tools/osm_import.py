@@ -108,6 +108,14 @@ ROADS = {
 }
 # Drawn but not driven by the AI: service roads and paved paths.
 PAVED = {"service": 5, "footway": 2.5, "cycleway": 3, "path": 2, "pedestrian": 6}
+
+
+def no_cars(t):
+    """A street class that cars may not use: Itäinen Rantakatu by the river,
+    the bus street Läntinen Pitkäkatu. It's paved like a pedestrian street,
+    and not a road."""
+    return (t.get("motor_vehicle") in ("no", "private") or t.get("motorcar") in ("no", "private")
+            or t.get("vehicle") in ("no", "private"))
 # Streets that have pavements unless the map data says otherwise; smaller
 # ones don't (a suburban street in Finland mostly has none, or a separate
 # foot and cycle path, which the map data has as a path of its own).
@@ -712,7 +720,9 @@ def paved_of(els, P, inside):
     for el in els:
         t = el.get("tags", {})
         hw = t.get("highway")
-        if el["type"] != "way" or hw not in PAVED or t.get("area") == "yes": continue
+        car_free = hw in ROADS and no_cars(t) and t.get("access") not in ("private", "no")
+        if el["type"] != "way" or (hw not in PAVED and not car_free) or t.get("area") == "yes": continue
+        if car_free: hw = "pedestrian"
         if hw in ("path", "footway") and t.get("surface") not in ("asphalt", "paved", "concrete", "paving_stones"): continue
         if hw == "service" and t.get("service") in ("driveway",): continue
         pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 1.0)
@@ -988,7 +998,7 @@ def main():
     for el in els:
         t = el.get("tags", {})
         if el["type"] != "way" or t.get("highway") not in ROADS or t.get("area") == "yes": continue
-        if t.get("access") in ("private", "no"): continue
+        if t.get("access") in ("private", "no") or no_cars(t): continue
         g = el.get("geometry") or []
         # Without node ids (out geom), a node is its coordinates.
         nodes = el.get("nodes") or [f'{p["lat"]:.7f},{p["lon"]:.7f}' for p in g]
