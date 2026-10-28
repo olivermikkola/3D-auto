@@ -159,4 +159,40 @@ engine.on("init", function()
   local nblocked = 0
   for _, r in ipairs(rows) do if r:find("BLOCKED", 1, true) then nblocked = nblocked + 1 end end
   print(string.format("BRIDGE_AUDIT: %d bridge stretches, %d with a road under that a bus can't pass", #rows, nblocked))
+
+  -- The railway underpass between Yliopistonmäki and Ylioppilaskylä: find
+  -- its real road crossing from the map, then cast through the colliders.
+  if city.map().id == "turku" then
+    local bridge, best = nil, math.huge
+    for _, b in ipairs(city.map().rail_bridges or {}) do
+      for _, p in ipairs(b) do
+        local d = (p[1] - 741) ^ 2 + (p[2] + 963) ^ 2
+        if d < best then bridge, best = b, d end
+      end
+    end
+    local checked, failed = 0, false
+    for i = 2, #(bridge or {}) do
+      local a, b = bridge[i - 1], bridge[i]
+      local n = math.max(1, math.ceil(math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)))
+      for k = 0, n do
+        local x, z = a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n
+        local ei = roadnet.on_carriageway(x, z, 0)
+        if ei then
+          local low = (NET.edges[ei].height or G)(x, z)
+          local blocked = engine.raycast(x, low + 0.2, z, 0, 1, 0, 4.2)
+          local deck = engine.raycast(x, low + 12, z, 0, -1, 0, 12)
+          checked = checked + 1
+          if blocked or not deck or engine.tag(deck) ~= "bridge" then
+            failed = true
+            print(string.format("RAIL_UNDERPASS_BAD at %.1f, %.1f: blocked=%s deck=%s", x, z, tostring(blocked), tostring(deck)))
+          end
+        end
+      end
+    end
+    if checked > 0 and not failed then
+      print(string.format("RAIL_UNDERPASS_OK (%d spots)", checked))
+    else
+      print(string.format("RAIL_UNDERPASS_FAILED (%d spots)", checked))
+    end
+  end
 end)
