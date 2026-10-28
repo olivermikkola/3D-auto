@@ -1720,10 +1720,18 @@ build = function(map, kit)
     -- Where a deck is still down at the ground, a road forking off beside
     -- it is driven over its edge: no railing across that.
     local reach = r[2] - 0.5 - GROUND(x, z) < 1 and 3.5 or 0.5
-    local on_road = H.near(x, z, 40, function(it)
-      return it.edge and it.edge ~= ei and dist_seg(x, z, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
-                 and math.abs(((NET.edges[it.edge].height or GROUND)(x, z)) - r[2]) < 4
-    end)
+    -- Its middle and both ends: a piece is several metres long, and where a
+    -- slip road's deck meets the bridge's (Hämeensilta) the end of one
+    -- reached across the bridge's lane while its middle stood clear.
+    local hx, hz = math.sin(r[4]) * r[6] / 2, math.cos(r[4]) * r[6] / 2
+    local on_road = false
+    for _, k in ipairs{0, -1, 1} do
+      local px, pz = x + hx * k, z + hz * k
+      on_road = on_road or H.near(px, pz, 40, function(it)
+        return it.edge and it.edge ~= ei and dist_seg(px, pz, it.ax, it.az, it.bx, it.bz) < it.width / 2 + reach
+                   and math.abs(((NET.edges[it.edge].height or GROUND)(px, pz)) - r[2]) < 4
+      end) or (k ~= 0 and R.on_carriageway(px, pz, 0.1, r[2]) ~= nil and R.on_carriageway(px, pz, 0.1, r[2]) ~= ei)
+    end
     -- (On the inside of a bend, a railing piece can reach across the
     -- deck's own next stretch: none there either.)
     if not on_road and not R.on_carriageway(x, z, 0.1, r[2]) then
