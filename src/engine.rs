@@ -16,6 +16,10 @@ pub const TICK_HZ: f64 = 60.0;
 /// Meshes at least this big keep their vertices only on the GPU once drawn.
 const GPU_ONLY_VERTS: usize = 4096;
 
+/// Sends a mesh to the GPU as soon as it's made: (engine epoch, mesh id,
+/// revision, mesh). Set by the windowed game; headless runs have none.
+pub type Uploader = Box<dyn FnMut(u64, usize, u32, &Mesh)>;
+
 #[derive(Clone, Debug)]
 pub struct Entity {
     pub pos: Vec3,
@@ -113,6 +117,11 @@ pub struct Engine {
     pub mesh_revs: Vec<u32>,
     /// Big meshes whose vertices now live only on the GPU (see `release_uploaded`).
     pub gpu_only: HashSet<usize>,
+    /// When set, big meshes go to the GPU the moment they're made and their
+    /// vertices are dropped then, rather than after the first frame: a city
+    /// built in one go never holds all of them at once (in the browser,
+    /// memory once grown stays grown).
+    pub uploader: Option<Uploader>,
     /// Unique per Engine instance; a new epoch tells the renderer to drop GPU state.
     pub epoch: u64,
     pub camera: Camera,
@@ -204,6 +213,7 @@ impl Engine {
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
             gpu_only: HashSet::new(),
+            uploader: None,
             epoch: EPOCH.fetch_add(1, Ordering::Relaxed),
             camera: Camera { eye: v3(0., 10., -20.), target: Vec3::ZERO, fov: 70f32.to_radians() },
             env: Env {
@@ -250,16 +260,25 @@ impl Engine {
 
     /// Register (or replace) a named mesh. Returns its id.
     pub fn add_mesh(&mut self, name: &str, m: Mesh) -> usize {
-        if let Some(&id) = self.mesh_ids.get(name) {
+        let id = if let Some(&id) = self.mesh_ids.get(name) {
             self.meshes[id] = m;
             self.mesh_revs[id] += 1;
             self.gpu_only.remove(&id);
-            return id;
+            id
+        } else {
+            self.meshes.push(m);
+            self.mesh_revs.push(0);
+            self.mesh_ids.insert(name.to_string(), self.meshes.len() - 1);
+            self.meshes.len() - 1
+        };
+        if let Some(up) = self.uploader.as_mut()
+            && self.meshes[id].verts.len() >= GPU_ONLY_VERTS
+        {
+            up(self.epoch, id, self.mesh_revs[id], &self.meshes[id]);
+            self.meshes[id] = Mesh::default();
+            self.gpu_only.insert(id);
         }
-        self.meshes.push(m);
-        self.mesh_revs.push(0);
-        self.mesh_ids.insert(name.to_string(), self.meshes.len() - 1);
-        self.meshes.len() - 1
+        id
     }
 
     /// Drop the CPU copy of meshes the renderer has uploaded. Only big ones
