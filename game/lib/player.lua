@@ -77,6 +77,7 @@ end)
 engine.on("tick", function(dt)
   if G.vehicle then
     local throttle, steer, handbrake = input.drive()
+    M.throttle = throttle -- (for systems/shore: input.drive may be a test's robot, asked once a tick)
     vehicle.drive(G.vehicle, dt, {throttle = throttle, steer = steer, handbrake = handbrake})
   elseif G.player then
     walk(dt)
