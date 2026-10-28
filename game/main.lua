@@ -228,6 +228,7 @@ if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
 if os.getenv("FIRE_TEST") then require "test.fire_probe" end
 if os.getenv("NIGHTLIFE_TEST") then require "test.nightlife_probe" end
 if os.getenv("CYCLISTS_TEST") then require "test.cyclists_probe" end
+if os.getenv("BIKE_TEST") then require "test.bike_probe" end
 if os.getenv("BUS_TEST") then require "test.bus_probe" end
 if os.getenv("YIELD_TEST") then require "test.yield_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
