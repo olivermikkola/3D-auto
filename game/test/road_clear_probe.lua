@@ -96,7 +96,25 @@ engine.on("init", function()
   for _, t in ipairs(CLUTTER) do
     if clutter[t] then print(string.format("ROAD_CLUTTER tag %-10s %d", t, clutter[t])) end
   end
-  local max = tonumber(os.getenv("ROAD_CLEAR_MAX") or "")
+  -- And in the river: a lamp, a tree, a bench or a wall standing in the
+  -- water (not on a bridge or a pier over it).
+  local wet, wc = {}, 0
+  for _, tag in ipairs{"tree", "lamp", "signal", "shelter", "prop", "wall", "scenery", "fence", "barrier", "stall"} do
+    for _, id in ipairs(engine.find(tag)) do
+      local x, y, z = engine.pos(id)
+      local w = x and roadnet.wet(x, z) and roadnet.water_level(x, z)
+      local mesh = engine.mesh_of(id) or "-"
+      if w and y < w + 2.5 and mesh ~= "riverboat" then
+        wc = wc + 1
+        wet[tag] = (wet[tag] or 0) + 1
+        print(string.format("ROAD_WET at %-10s %8.1f %6.1f %8.1f  %s (water %.1f)", tag, x, y, z, mesh, w))
+      end
+    end
+  end
+  print(string.format("ROAD_WET total=%d", wc))
+  local max = tonumber(os.getenv("ROAD_WET_MAX") or "")
+  if max then assert(wc <= max, string.format("%d things stand in the water, at most %d allowed", wc, max)) end
+  max = tonumber(os.getenv("ROAD_CLEAR_MAX") or "")
   if max then assert(total <= max, string.format("%d obstacles in the carriageway, at most %d allowed", total, max)) end
   max = tonumber(os.getenv("ROAD_CLUTTER_MAX") or "")
   if max then assert(cc <= max, string.format("%d things stand in the carriageway, at most %d allowed", cc, max)) end

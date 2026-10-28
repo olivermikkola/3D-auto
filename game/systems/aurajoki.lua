@@ -119,8 +119,10 @@ function A.build(map)
   local river_banks = A.BANKS
 
   -- The banks are drawn by hand and run over the riverside streets in
-  -- places: nothing goes down on a carriageway.
-  local function off_road(x, z, r) return not R.on_carriageway(x, z, r) end
+  -- places, and out over the water in others (283 lamps, benches, bollards
+  -- and quay walls stood in the river): nothing goes down on a carriageway
+  -- or in the water.
+  local function off_road(x, z, r) return not R.on_carriageway(x, z, r) and not R.wet(x, z) end
   local quay_stone = {0.52, 0.50, 0.48}
   local bollard_iron = {0.18, 0.18, 0.20}
 
