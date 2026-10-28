@@ -2653,9 +2653,17 @@ build = function(map, kit)
     local total = 0
     for i = 2, #pts do total = total + math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2) end
     local up = b.up or {}
+    -- Heights from the ground at its ends (on a map with terrain the deck
+    -- used to be measured from sea level: buried in the hills, floating by
+    -- the river); one that meets a raised deck keeps to the decks' level.
+    -- A `low` one (over water, not a road) arches gently between its banks.
+    local g0 = (up[1] or up[2]) and 0 or (engine.terrain_height(pts[1][1], pts[1][2]) or 0)
+    local g1 = (up[1] or up[2]) and 0 or (engine.terrain_height(pts[#pts][1], pts[#pts][2]) or 0)
+    local top = b.low and math.min(1.6, 0.3 + total * 0.03) or TOP
+    local function base(sv) return g0 + (g1 - g0) * sv / math.max(total, 1e-3) end
     local function height(sv)
       local a, z = up[1] and math.huge or sv, up[2] and math.huge or total - sv
-      return math.min(TOP, math.min(a, z) * 0.35) + 0.2
+      return math.min(top, math.min(a, z) * 0.35) + 0.2
     end
     local sv = 0
     for i = 2, #pts do
@@ -2667,27 +2675,30 @@ build = function(map, kit)
       for k = 0, n - 1 do
         local t0, t1 = k / n, (k + 1) / n
         local h0, h1 = height(sv + seg * t0), height(sv + seg * t1)
+        local y0, y1 = base(sv + seg * t0), base(sv + seg * t1)
         local x, z = ax + (bx - ax) * (t0 + t1) / 2, az + (bz - az) * (t0 + t1) / 2
-        local l, pitch = seg / n, -math.atan(h1 - h0, seg / n)
-        local high = math.min(h0, h1) >= TOP
+        local l, pitch = seg / n, -math.atan(h1 + y1 - h0 - y0, seg / n)
+        local high = math.min(h0, h1) >= top
+        local mid = (h0 + h1 + y0 + y1) / 2
         if along_deck(x, z, yaw, width) then goto next_piece end
-        local deck = {mesh = "cube", pos = {x, (h0 + h1) / 2, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
+        local deck = {mesh = "cube", pos = {x, mid, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
                       color = {0.62, 0.62, 0.6}, tag = "bridge"}
         if high then kit.static(deck) else engine.spawn(deck) end
         for _, side in ipairs{-1, 1} do
           if b.concrete then
-            kit.static{mesh = "cube", pos = {x + rx * side * (width / 2 - 0.1), (h0 + h1) / 2 + 0.35, z + rz * side * (width / 2 - 0.1)},
+            kit.static{mesh = "cube", pos = {x + rx * side * (width / 2 - 0.1), mid + 0.35, z + rz * side * (width / 2 - 0.1)},
                        yaw = yaw, pitch = pitch, size = {0.25, 1.3, l * 1.02}, color = {0.72, 0.71, 0.68}, tag = "wall"}
           else
-            engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, (h0 + h1) / 2 + 0.6, z + rz * side * width / 2}, yaw = yaw,
+            engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, mid + 0.6, z + rz * side * width / 2}, yaw = yaw,
                          pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}}
           end
         end
         -- Pillars off the asphalt, every few pieces.
-        if k % 3 == 1 and (h0 + h1) / 2 > 2.5 then
+        local foot = engine.terrain_height(x, z) or 0
+        if k % 3 == 1 and mid - foot > 2.5 then
           local ei, _, _, _, d = R.nearest_edge(x, z)
           if not ei or d > NET.edges[ei].width / 2 + 1.5 then
-            kit.static{mesh = "cylinder", pos = {x, (h0 + h1) / 4, z}, size = {0.7, (h0 + h1) / 2, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge"}
+            kit.static{mesh = "cylinder", pos = {x, (mid + foot) / 2, z}, size = {0.7, mid - foot, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge"}
           end
         end
         ::next_piece::
