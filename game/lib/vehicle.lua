@@ -15,6 +15,7 @@ M.CLASSES = {
   car = CAR, cop = CAR, boat = CAR,
   bus = {top = 42, accel = 5, brake = 16, reverse = 6},
   pasi = {top = 44, accel = 6, brake = 18, reverse = 7},
+  bike = {top = 12, accel = 5, brake = 9, reverse = 1.5}, -- a bike you took: about 35 km/h
 }
 -- Cars by their kind of body (lib/prefabs CAR_KINDS): a sports car levels
 -- off at about 135 km/h and gets there quickly; a van at about 90.
@@ -41,7 +42,7 @@ function M.top_speed(id)
 end
 
 -- Anything tagged "car" or "cop" or "pasi" or "bus" or "boat" can be driven.
-M.tags = {car = true, cop = true, pasi = true, bus = true, boat = true}
+M.tags = {car = true, cop = true, pasi = true, bus = true, boat = true, bike = true}
 
 -- y is the road's height there when it isn't the ground's (on a bridge,
 -- in a tunnel).
@@ -54,6 +55,10 @@ function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local is_pasi = mesh == "pasi" or tag == "pasi"
   local is_bus = mesh == "bus" or tag == "bus"
   local is_boat = mesh == "speedboat" or tag == "boat"
+  if tag == "bike" then -- (systems/cyclists: the bike with you on it; body centre at 0, feet at -0.9)
+    return engine.spawn{mesh = mesh or "cyclist_you", pos = {x, 0.95 + (y or U.ground(x, z)), z}, yaw = yaw or 0,
+                        size = {0.7, 1.8, 1.7}, body = "dynamic", mass = 85, friction = 0, step = 0.3, tag = "bike"}
+  end
   local size = is_pasi and {2.9, 2.5, 7.2} or (is_bus and {2.6, 3.2, 12.2} or (is_boat and {2.4, 1.4, 6.2} or (kind and kind.size or {2.0, 1.4, 4.4})))
   local mass = is_pasi and 13500 or (is_bus and 11500 or (is_boat and 950 or (kind and kind.mass or 1200)))
   local step = (is_pasi or is_bus) and 0.55 or (is_boat and 0.2 or 0.35)
@@ -134,6 +139,8 @@ function M.drive(id, dt, input)
   -- Kill sideways slip (tyre grip), less with the handbrake on for drifts.
   side = side * (input.handbrake and 0.92 or (0.6 + 0.8 * (1 - grip)))
   engine.set_vel(id, fx * v + rx * side + ux * lift, fy * v + ry * side + uy * lift, fz * v + rz * side + uz * lift)
+  -- A bike stays upright (a box that narrow would topple at the first kerb).
+  if engine.tag(id) == "bike" then engine.orient(id, engine.yaw(id), 0, 0) end
   return true
 end
 

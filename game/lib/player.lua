@@ -41,6 +41,9 @@ function M.enter_nearest()
     local id, d = engine.nearest(x, y, z, 4.5, tag)
     if id and d < best then car, best = id, d end
   end
+  -- No car in reach: a bike, off its rider or off the ground.
+  local cyclists = package.loaded["systems.cyclists"]
+  if not car and cyclists then car = cyclists.take(x, y, z) end
   if not car then return end
   engine.despawn(G.player)
   G.player = nil
