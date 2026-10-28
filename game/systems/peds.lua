@@ -502,7 +502,9 @@ local function walk(id, p, dt)
     local l = math.sqrt(mx * mx + mz * mz) + 1e-3
     mx, mz, speed = mx / l, mz / l, p.speed
     -- Wait at the curb while a car is coming.
-    local hit = p.crossing and engine.raycast(x, 0.9, z, mx, 0, mz, 7, id)
+    -- (At the walker's own height: 0.9 m above sea level, on Turku's
+    -- hills, looked through the ground and they walked out in front of cars.)
+    local hit = p.crossing and engine.raycast(x, y, z, mx, 0, mz, 7, id)
     if hit and (engine.tag(hit) == "car" or engine.tag(hit) == "cop") then speed = 0 end
     -- Someone right ahead: keep right and pass, the Finnish way, instead of
     -- walking into them and both standing there. Only as far as the pavement
