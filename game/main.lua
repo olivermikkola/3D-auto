@@ -1,6 +1,13 @@
 -- Entry point. The engine calls nothing but the event bus:
 --   init, tick(dt), frame(dt), key(name, down), contact(a, b, speed)
 -- Everything below is ordinary game code; change it and it hot-reloads.
+-- In the browser memory that WebAssembly takes is never given back, so
+-- the most the load ever holds, garbage and all, is what the game keeps for
+-- good: there the collector keeps closer up while the city is built, and
+-- goes back to its usual pace once it stands (see the first tick); with
+-- lib/roadnet's collections, Turku's load peaks 93 MB lower for a second
+-- more (headless, WEB=1).
+if os.getenv("WEB") == "1" then collectgarbage("incremental", 150, 100) end
 local G = require "lib.state"
 local U = require "lib.util"
 require "lib.progress" -- loads saved cash and missions before anything reads them
@@ -44,6 +51,10 @@ require "systems.ambience"
 require "systems.parking"
 require "lib.menu"
 require "lib.shop"
+
+engine.on("tick", function()
+  if engine.ticks() == 2 and os.getenv("WEB") == "1" then collectgarbage("incremental", 200, 100) end
+end)
 
 engine.on("init", function()
   -- Keep the default repeatable; SEED makes population/AI failures reproducible.

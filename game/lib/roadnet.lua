@@ -496,6 +496,7 @@ local baked_chunks = {} -- chunk_key -> {entity_ids...}
 -- camera), and let go again when it's gone: {name, tag, chunks = {key ->
 -- what gen needs}, gen(what, add), live = {key -> entity or false}}.
 local streams = {}
+local WEB = os.getenv("WEB") == "1"
 
 local function chunked()
   local c = {}
@@ -580,6 +581,10 @@ local function update_streams(budget)
     local parts = {}
     w.s.gen(w.s.chunks[w.k], function(_, _, part) parts[#parts + 1] = part end)
     w.s.live[w.k] = bake(w.s.name .. w.k, parts, 0, w.s.tag) or false
+    -- (Building them all at once in the browser, where the most memory a
+    -- load holds is kept for good: the parts gone into meshes are garbage
+    -- that piles up faster than the collector goes, so let it go every ten.)
+    if WEB and budget == math.huge and i % 10 == 0 then collectgarbage("collect") end
   end
 end
 
@@ -3082,6 +3087,7 @@ build = function(map, kit)
     wall_chunks[k] = wall_chunks[k] or {}
     table.insert(wall_chunks[k], o)
   end
+  if WEB then collectgarbage("collect") end -- (the count made a part for every piece of trim)
   print(string.format("outline trim: %d copings, %d plinths", copings, plinths))
   print(string.format("balconies: %d", balcony_count))
   streams[#streams + 1] = {name = "outline", tag = "outline", chunks = wall_chunks, live = {},

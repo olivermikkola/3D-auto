@@ -122,16 +122,21 @@ pub fn log(line: &str) {
     }
 }
 
-/// The environment from the page's address: each `key=value` becomes KEY=value.
+/// The environment from the page's address: each `key=value` becomes KEY=value,
+/// after WEB=1.
 fn environment() -> Vec<String> {
     let mut buf = vec![0u8; 1024];
     let n = unsafe { web_query(buf.as_mut_ptr(), buf.len()) }.min(buf.len());
     let q = String::from_utf8_lossy(&buf[..n]).into_owned();
-    q.trim_start_matches('?')
-        .split('&')
-        .filter_map(|kv| kv.split_once('='))
-        .filter(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-        .map(|(k, v)| format!("{}={}", k.to_ascii_uppercase(), v.replace("%20", " ")))
+    // (WEB=1 always: the scripts know they're in a browser.)
+    std::iter::once("WEB=1".to_string())
+        .chain(
+            q.trim_start_matches('?')
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .filter(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .map(|(k, v)| format!("{}={}", k.to_ascii_uppercase(), v.replace("%20", " "))),
+        )
         .collect()
 }
 
