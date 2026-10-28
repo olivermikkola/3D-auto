@@ -65,14 +65,19 @@ local function script()
     local buses = 0
     for _, c in pairs(traffic.cars) do if c.is_bus then buses = buses + 1 end end
     print(string.format("BUSSTOPS_PROBE t=%d: %d buses about, %d stops made, %d got on, %d got off", t * 20, buses, B.stops_made, B.boarded, B.alighted))
+    -- Doors open 20 s apart at the same spot is a bus that didn't move on;
+    -- the same bus at two stops minutes apart is fine.
     for cid, c in pairs(traffic.cars) do
-      if c.doors then buses_at[cid] = (buses_at[cid] or 0) + 1 end
+      local x, _, z = engine.pos(cid)
+      local was = buses_at[cid]
+      if c.doors and was and was.t == t - 1 and U.dist2d(x, z, was.x, was.z) < 3 then was.stuck = true end
+      if c.doors then buses_at[cid] = {t = t, x = x, z = z, stuck = was and was.stuck} end
     end
   end
   check(B.stops_made >= 1, string.format("buses stop for them (%d stops)", B.stops_made))
   check(B.boarded >= 1, string.format("and they get on (%d)", B.boarded))
   local stuck = 0
-  for _, n in pairs(buses_at) do if n > 1 then stuck = stuck + 1 end end
+  for _, b in pairs(buses_at) do if b.stuck then stuck = stuck + 1 end end
   check(stuck == 0, "no bus stands at a stop for long")
   print("BUSSTOPS_PROBE: PASSED")
   engine.quit()

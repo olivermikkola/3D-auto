@@ -88,7 +88,10 @@ local function script()
       local p = peds.peds[id]
       local x, _, z = engine.pos(id)
       if p and p.until_t then still = still + 1 end
-      if p and U.dist2d(x, z, v.spots[p.k][1], v.spots[p.k][2]) > 12 then moved = moved + 1 end
+      -- Standing somewhere other than by the door. (Not anyone a crash in
+      -- the street sent running, on their way back: the market probe
+      -- checks they come back.)
+      if p and p.state == "browse" and p.until_t and U.dist2d(x, z, v.spots[p.k][1], v.spots[p.k][2]) > 12 then moved = moved + 1 end
     end
   end
   check(moved == 0, "they stay by the door")
