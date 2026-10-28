@@ -81,6 +81,9 @@ end
 -- player, so it's on them the moment it appears (and resets the escape),
 -- or on their tail while they're getting away? The player in a fast car
 -- has driven past wherever "behind" is; it should have come from ahead.
+-- (Out in the open there may be nowhere in range out of sight: then
+-- spawn_point asks again, `lenient`, and in sight will do.)
+local lenient = false
 local function unfair(x, y, z)
   local target = G.vehicle or G.player
   if not target then return false end
@@ -90,7 +93,7 @@ local function unfair(x, y, z)
   local vx, _, vz = engine.vel(target)
   local v = math.sqrt(vx * vx + vz * vz)
   if v > 8 and d < 140 and ((x - px) * vx + (z - pz) * vz) / (d * v) < -0.5 then return true end
-  if d > SIGHT + 15 then return false end
+  if lenient or d > SIGHT + 15 then return false end
   y = (y or U.ground(x, z)) + 1
   local dx, dy, dz = px - x, py + 0.4 - y, pz - z
   local hit = engine.raycast(x, y, z, dx, dy, dz, math.sqrt(dx * dx + dy * dy + dz * dz), nil)
@@ -102,7 +105,17 @@ end
 -- 70-160 m by road (up to 320 up a long dead end): a junction that's close as the crow flies can be a long
 -- drive round, and a cop sent the long way ends up too far off and is
 -- recycled, again and again.
+local spawn_point_at
 local function spawn_point()
+  lenient = false
+  local x, z, yaw, y, launch = spawn_point_at()
+  if x then return x, z, yaw, y, launch end
+  lenient = true
+  x, z, yaw, y, launch = spawn_point_at()
+  lenient = false
+  return x, z, yaw, y, launch
+end
+function spawn_point_at()
   local px, pz, py = wanted.center[1], wanted.center[2], wanted.center[3]
   -- Not down in a tunnel when they're up in the street, or the other way.
   local function level(j)
@@ -120,10 +133,7 @@ local function spawn_point()
       local cands = {}
       for c, d in pairs(dist) do
         local x, z = city.pos(c)
-        -- (Hidden, they search the circle round where they last saw them,
-        -- not the streets beyond it the player is getting away down.)
-        if d >= 70 and d <= far and U.dist2d(x, z, px, pz) >= 50 and level(c)
-           and (wanted.seen or U.dist2d(x, z, px, pz) <= wanted.radius()) then cands[#cands + 1] = c end
+        if d >= 70 and d <= far and U.dist2d(x, z, px, pz) >= 50 and level(c) then cands[#cands + 1] = c end
       end
       table.sort(cands) -- (pairs' order isn't fixed: the same seed, the same pick)
       while #cands > 0 and not j do
