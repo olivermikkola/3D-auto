@@ -332,8 +332,19 @@ local function sees_player(id)
   local dx, dy, dz = px - x, py + 0.4 - (y + 1), pz - z
   local d = math.sqrt(dx * dx + dy * dy + dz * dz)
   if d > SIGHT then return false end
-  local hit = engine.raycast(x, y + 1, z, dx, dy, dz, d, id)
-  return hit == nil or hit == target
+  -- People in the way don't hide you: a bystander next to the player kept
+  -- a car of cops from ever seeing them (Raisio seed 8).
+  local ox, oy, oz, left, skip = x, y + 1, z, d, id
+  for _ = 1, 4 do
+    local hit, t = engine.raycast(ox, oy, oz, dx, dy, dz, left, skip)
+    if hit == nil or hit == target then return true end
+    local tag = engine.tag(hit)
+    if not (tag == "ped" or tag == "ped_down" or tag == "officer" or tag == "cyclist") then return false end
+    t = t + 0.05
+    ox, oy, oz, left, skip = ox + dx / d * t, oy + dy / d * t, oz + dz / d * t, left - t, hit
+    if left <= 0 then return true end
+  end
+  return false
 end
 
 -- ---- driving -------------------------------------------------------------
