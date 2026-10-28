@@ -398,6 +398,11 @@ def is_stand(t, poly):
     return min(sw, sd) < 35 and max(sw, sd) > 2.5 * min(sw, sd)
 
 
+# Tagged building but not one: a ship moored for good (the restaurant boats
+# on the Aurajoki, Suomen Joutsen) is a ship (see `ships`), not a box on the water.
+NOT_BUILDINGS = ("no", "roof", "construction", "ruins", "ship")
+
+
 def building_kind(t, A):
     b = t.get("building", "yes")
     if t.get("amenity") == "police": return "police"
@@ -584,7 +589,7 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None):
     out = []
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
@@ -1134,7 +1139,7 @@ def main():
     corners = Grid(25)
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if len(poly) < 3: continue
@@ -1171,7 +1176,7 @@ def main():
     footprints, dropped, trimmed = [], 0, 0
     for el in els:
         t = el.get("tags", {})
-        if "building" not in t or t.get("building") in ("no", "roof", "construction", "ruins"): continue
+        if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
         for ring in rings(el):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if not all(inside(*p, pad=5) for p in poly): continue
@@ -1313,12 +1318,20 @@ def main():
 
     railways, platforms = railways_of(els, P, inside)
 
-    # ---- towers, gantry cranes, piers ----
-    towers, cranes, piers = [], [], []
+    # ---- towers, gantry cranes, piers, ships ----
+    towers, cranes, piers, ships = [], [], [], []
     for el in els:
         t = el.get("tags", {})
         mm = t.get("man_made")
-        if mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower", "lighting"):  # not floodlights
+        if t.get("building") == "ship":
+            for ring in rings(el):
+                poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+                if len(poly) < 3: continue
+                ang, (cx, cz), sl, sw = min_rect(poly)
+                if sl < sw: ang, sl, sw = ang + math.pi / 2, sw, sl
+                # (yaw: the bow or the stern toward (sin, cos), as the game turns things)
+                if inside(cx, cz): ships.append((cx, cz, sl, sw, math.atan2(math.cos(ang), math.sin(ang)), t.get("name") or ""))
+        elif mm in ("tower", "mast") and t.get("tower:type") not in ("bell_tower", "lighting"):  # not floodlights
             g = el.get("geometry") or ([{"lat": el["lat"], "lon": el["lon"]}] if "lat" in el else [])
             if not g: continue
             pts = [P(p["lat"], p["lon"]) for p in g]
@@ -1590,6 +1603,8 @@ def main():
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
     L.append("  cranes = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(l)}, {f(w)}, {a:.3f}, {n}}}" for x, z, l, w, a, n in cranes) + "},")
+    L.append("  -- ships moored for good: {x, z, length, beam, yaw, name}")
+    L.append("  ships = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(l)}, {f(w)}, {a:.3f}, {q(n)}}}" for x, z, l, w, a, n in ships) + "},")
     L.append("  -- piers: {width, points...}")
     L.append("  piers = {")
     for wd, pts in piers:

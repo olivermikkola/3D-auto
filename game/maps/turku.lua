@@ -49,6 +49,7 @@ return {
   platforms = osm.platforms,
   cranes = osm.cranes,
   piers = osm.piers,
+  ships = osm.ships, -- moored for good (systems/aurajoki.lua)
   pois = osm.pois, -- for missions (lib/pois)
   fog = {180, 800},
   trees = 8000,
