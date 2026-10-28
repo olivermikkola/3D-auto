@@ -1290,7 +1290,15 @@ def main():
             if pw >= 8 and pd >= 4 and area(poly) > 0.7 * pw * pd:
                 pools.append((cx, cz, pw, pd, -ang))
 
-    # ---- footbridges: foot and cycle ways that cross a road on a bridge ----
+    railways, platforms = railways_of(els, P, inside)
+
+    # ---- footbridges: foot and cycle ways on a bridge ----
+    # Over a road or a railway, high enough to pass under; over anything
+    # else (the Aurajoki's Teatterisilta and Kirjastosilta, a stream, a
+    # ravine) `low`, a gentle arch between its banks.
+    rails = Grid(60)
+    for rw in railways:
+        for a, b in zip(rw[2], rw[2][1:]): rails.add((rw, a, b), a, b)
     footbridges = []
     for el in els:
         t = el.get("tags", {})
@@ -1298,10 +1306,11 @@ def main():
         pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.5)
         if len(pts) < 2 or not all(inside(*p) for p in pts): continue
         over = any(seg_cross(a, b, c, d) for a, b in zip(pts, pts[1:])
-                   for _, c, d in G.near(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])))
-        if over: footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts))
-
-    railways, platforms = railways_of(els, P, inside)
+                   for grid in (G, rails)
+                   for _, c, d in grid.near(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])))
+        if over or sum(math.dist(a, b) for a, b in zip(pts, pts[1:])) >= 8:
+            footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts,
+                                not over))
 
     # ---- towers, gantry cranes, piers ----
     towers, cranes, piers = [], [], []
@@ -1569,10 +1578,10 @@ def main():
     L.append("  pitches = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pw)}, {f(pd)}, {a:.3f}}}" for x, z, pw, pd, a in pitches) + "},")
     L.append("  -- outdoor swimming pools: {x, z, length, width, yaw}")
     L.append("  pools = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pw)}, {f(pd)}, {a:.3f}}}" for x, z, pw, pd, a in pools) + "},")
-    L.append("  -- foot and cycle bridges over roads: {width, points...}")
+    L.append("  -- foot and cycle bridges: {width, points..., low = over no road or railway}")
     L.append("  footbridges = {")
-    for wd, pts in footbridges:
-        L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+    for wd, pts, low in footbridges:
+        L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f))
     L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h), f))
