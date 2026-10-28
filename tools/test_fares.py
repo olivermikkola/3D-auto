@@ -18,7 +18,8 @@ class FaresTests(unittest.TestCase):
     def test_fares_on_every_kind_of_map(self):
         for name in ("turku", "raisio", "starter"):
             with self.subTest(map=name):
-                env = dict(os.environ, MAP=name, SEED="1337", FARES_TEST="1")
+                # (FARES_TRACE: where the cab is every 2 s, shown if it fails.)
+                env = dict(os.environ, MAP=name, SEED="1337", FARES_TEST="1", FARES_TRACE="1")
                 with tempfile.TemporaryDirectory() as d:
                     env["XDG_DATA_HOME"] = d
                     res = subprocess.run([str(BINARY), "game", "--headless", "90000"], cwd=ROOT, env=env,
