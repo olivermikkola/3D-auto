@@ -108,16 +108,44 @@ local function at_junction(j)
 end
 
 -- Bend i of the ped's road, moved out to the pavement on its hand side.
+-- At the road's ends that point would be out on the other roads of the
+-- junction, so there it's drawn back along the road to the corner of the
+-- pavement, where it's clear of every carriageway (cached per end and side).
+local function offset_at(e, i, k, dir, hand, back)
+  local pts = e.pts
+  local a, b = pts[math.min(i, k)], pts[math.max(i, k)]
+  local fx, fz = b[1] - a[1], b[2] - a[2]
+  local l = math.sqrt(fx * fx + fz * fz) + 1e-6
+  local tx, tz = (k > i and 1 or -1) * fx / l, (k > i and 1 or -1) * fz / l -- from i into the road
+  if dir < 0 then fx, fz = -fx, -fz end
+  local o = (e.width / 2 + roadnet.SIDEWALK / 2) * hand
+  return pts[i][1] + tx * back + fz / l * o, pts[i][2] + tz * back - fx / l * o
+end
+
+local corners = {}
 function net.point(p, i)
   local e = edges()[p.e]
   local pts = e.pts
-  local j = (pts[i - p.dir] and i - p.dir) or i + p.dir -- a neighbor to take the direction from
-  local a, b = pts[math.min(i, j)], pts[math.max(i, j)]
-  local fx, fz = b[1] - a[1], b[2] - a[2]
-  if p.dir < 0 then fx, fz = -fx, -fz end
-  local l = math.sqrt(fx * fx + fz * fz) + 1e-6
-  local o = (e.width / 2 + roadnet.SIDEWALK / 2) * p.hand
-  return pts[i][1] + fz / l * o, pts[i][2] - fx / l * o
+  if i ~= 1 and i ~= #pts then
+    local j = (pts[i - p.dir] and i - p.dir) or i + p.dir -- a neighbor to take the direction from
+    local x, z = offset_at(e, i, j, p.dir, p.hand, 0)
+    return x, z
+  end
+  if corners.net ~= roadnet.net() then corners = {net = roadnet.net()} end
+  local key = p.e * 4 + (i == 1 and 0 or 2) + (p.hand * p.dir > 0 and 1 or 0)
+  local c = corners[key]
+  if not c then
+    local k = i == 1 and 2 or #pts - 1
+    local reach = 0.45 * U.dist2d(pts[i][1], pts[i][2], pts[k][1], pts[k][2])
+    local back, x, z = 0
+    repeat
+      x, z = offset_at(e, i, k, p.dir, p.hand, back)
+      back = back + 0.5
+    until back > reach or not roadnet.on_carriageway(x, z, 0.4)
+    c = {x, z}
+    corners[key] = c
+  end
+  return c[1], c[2]
 end
 
 function net.next_leg(p)
@@ -133,18 +161,36 @@ function net.next_leg(p)
     local j = p.dir > 0 and e.b or e.a
     local opts = {}
     for _, ei in ipairs(at_junction(j)) do if ei ~= p.e then opts[#opts + 1] = ei end end
-    local ne = opts[math.random(math.max(1, #opts))] or p.e
-    local hand = p.hand
-    -- Only cross over at junctions if both sides of the new road have walkable pavements
-    local ed = edges()[ne]
-    local both_sides_walkable = roadnet.pavement(ne, 1) and roadnet.pavement(ne, -1)
-    if both_sides_walkable and math.random() < 0.25 then
-      p.hand = -p.hand
+    if #opts == 0 then opts[1] = p.e end
+    -- Each way on, on each side of it, and whether getting there means
+    -- stepping out onto a carriageway. Mostly round the corner on the
+    -- pavement; now and then over a road, and then waiting for the cars.
+    local fx, fz = p.tx, p.tz
+    local dry, wet = {}, {}
+    for _, ne in ipairs(opts) do
+      local ed = edges()[ne]
+      for _, hand in ipairs{1, -1} do
+        local q = {e = ne, hand = hand}
+        if ed.a == j then q.dir, q.wp = 1, 1 else q.dir, q.wp = -1, #ed.pts end
+        if roadnet.pavement(ne, q.hand * q.dir) then
+          local x, z = net.point(q, q.wp)
+          local over = false
+          for s = 0.1, 0.9, 0.1 do
+            if roadnet.on_carriageway(fx + (x - fx) * s, fz + (z - fz) * s, 0) then over = true; break end
+          end
+          table.insert(over and wet or dry, q)
+        end
+      end
     end
-    p.e = ne
-    if ed.a == j then p.dir, p.wp = 1, 1 else p.dir, p.wp = -1, #ed.pts end
-    clear_side(p)
-    p.crossing = p.hand ~= hand
+    local pool = (#dry > 0 and (#wet == 0 or math.random() < 0.9)) and dry or wet
+    local q = pool[math.random(math.max(1, #pool))]
+    if q then
+      p.e, p.dir, p.wp, p.hand = q.e, q.dir, q.wp, q.hand
+      p.crossing = pool == wet
+    else -- no pavement on any way on: back the way we came
+      net.turn(p)
+      return
+    end
   end
   set_target(p, net.point(p, p.wp))
 end
