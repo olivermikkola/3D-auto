@@ -6,15 +6,24 @@
 local osm = require "maps.turku_osm"
 
 -- Filter out generic procedural boxes at landmark sites replaced by custom high-fidelity prefabs
+-- Ikituuri, Ylioppilaskylä's round tower (systems/landmarks.lua)
+local function in_ikituuri(x, z) return x > 850 and x < 905 and z > -1026 and z < -984 end
+-- The Orthodox church on Kauppatori (systems/landmarks.lua)
+local function in_church(x, z) return x > -236 and x < -204 and z > -103 and z < -72 end
 local filtered_footprints = {}
 for _, f in ipairs(osm.footprints or {}) do
   local x, z = f[1], f[2]
   local in_tuomio = (x > 418 and x < 513 and z > -133 and z < -76) -- the cathedral (systems/suurtori.lua)
   local in_suurtori_plaza = (x > 245 and x < 325 and z > 70 and z < 125)
   local in_linna = (x > -2340 and x < -2185 and z > 1745 and z < 1825) -- Turun linna (systems/harbor.lua)
-  if not in_tuomio and not in_suurtori_plaza and not in_linna then
+  if not in_tuomio and not in_suurtori_plaza and not in_linna and not in_ikituuri(x, z) and not in_church(x, z) then
     filtered_footprints[#filtered_footprints + 1] = f
   end
+end
+-- (and the outlines of the ones made by hand)
+local filtered_outlines = {}
+for _, o in ipairs(osm.outlines or {}) do
+  if not in_ikituuri(o[4][1], o[4][2]) and not in_church(o[4][1], o[4][2]) then filtered_outlines[#filtered_outlines + 1] = o end
 end
 
 return {
@@ -33,7 +42,7 @@ return {
   pools = osm.pools,
   footbridges = osm.footbridges,
   railways = osm.railways,
-  outlines = osm.outlines,
+  outlines = filtered_outlines,
   photo_trees = osm.photo_trees, -- street and yard trees seen in the aerial photo
   zebras = osm.zebras, -- painted crossings, x, z, ...
   signals = osm.signals, -- traffic lights, x, z, ...
