@@ -71,6 +71,20 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   the first run only, and losing the cops takes time out of sight scaled by stars.
 - The story catalogue and scorer (`lib/story.lua`, `story/radio.lua`).
 
+## Done 27-28 October 2026
+
+- Waves 0 and 1: these docs, postcard renders before and after (`tools/postcards.py`), the
+  phone's low preset, mall and works facades, gulls and bells, parody adverts, the CI flakes.
+- Wave 2, buildings: cornices and floor lines, shop signs from OSM `shop=*`, balconies. Not yet:
+  LOD2 roofs beyond the old town, Ylioppilaskylä (both wait for the playtest).
+- Wave 3, streets: stop lines and edge lines, worn and patched asphalt, setts on the old lanes.
+- Wave 4, life: cyclists, people at the shelters boarding the buses, market day on Kauppatori,
+  terraces along the river, crowds outside the bars at night (every night: the game has no days
+  of the week).
+- Wave 6 begun before the playtest: businesses to buy (`systems/businesses.lua`) and a story
+  through the missions (`story/arc.lua`), both first drafts for the playtest to tune.
+- The playtest itself: `docs/PLAYTEST.md`.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
