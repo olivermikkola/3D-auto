@@ -390,6 +390,12 @@ local function browse(id, p, dt, x, z, vy, actual_speed2)
     return
   end
   if p.until_t then -- standing at a stall, looking at it
+    -- Shoved off it (by a car nudging through, a crowd): back to it.
+    local s = p.spots[p.k]
+    if (x - s[1]) ^ 2 + (z - s[2]) ^ 2 > 1.5 * 1.5 then
+      p.until_t, p.tx, p.tz, p.stuck = nil, s[1], s[2], 0
+      return
+    end
     engine.set_vel(id, 0, vy, 0)
     engine.set_yaw(id, yaw + U.angle_diff(yaw, p.spots[p.k][3]) * math.min(1, dt * 4))
     if engine.time() > p.until_t then next_spot(p, x, z) end
