@@ -156,7 +156,7 @@ engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g) 
 engine.key(name)  engine.mouse() -> dx,dy  engine.grab_mouse(bool)  engine.screen() -> w,h
 engine.cursor() -> x,y      -- mouse position in pixels, for clicking on menus
 engine.pad() -> {name, lx, ly, rx, ry, lt, rt} | nil   -- sticks -1..1 (up/right +), triggers 0..1
-engine.pause(bool)  engine.paused()   engine.fullscreen([bool]) -> bool
+engine.pause(bool)  engine.paused()   engine.fullscreen([bool]) -> bool   engine.headless()
 engine.rect(x,y,w,h, r,g,b[,a])  engine.text(str, x,y[, size[, r,g,b,a]])  engine.text_width(str[, size])
 engine.quad(x1,y1, x2,y2, x3,y3, x4,y4, r,g,b[,a])  engine.clip(x,y,w,h) / engine.clip()
 

@@ -853,6 +853,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
     f!("_pause", |e, _lua, on: bool| Ok(e.set_paused(on)));
     f!("paused", |e, _lua, (): ()| Ok(e.paused));
+    f!("headless", |e, _lua, (): ()| Ok(e.headless));
     f!("fullscreen", |e, _lua, on: Option<bool>| {
         if let Some(on) = on {
             e.fullscreen = on;

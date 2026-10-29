@@ -170,6 +170,12 @@ local function drive(map)
     coroutine.yield()
     local x, _, z = engine.pos(car)
     if U.dist2d(x, z, gx, gz) < 20 then break end
+    -- Where the robot is every 15 s (CI's Macs and Windows took a wrong turn).
+    local el = engine.time() - t0
+    if math.floor(el / 15) ~= math.floor((el - 1 / 60) / 15) then
+      print(string.format("GPS_PROBE: %.0f s at %.0f, %.0f, %.1f m/s, %.0f m left by the GPS (%d redraws)",
+        el, x, z, vehicle.speed(car), gps.left() or -1, redraws))
+    end
     if engine.time() - t0 > limit then
       check(false, string.format("got there in %.0f s (%.0f m left by the GPS)", limit, gps.left() or -1))
     end

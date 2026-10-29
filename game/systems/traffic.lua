@@ -208,17 +208,21 @@ local function update(id, c, dt)
       if c.lost then c.speed = 0 end
       tx, tz = lane_target(c)
     end
-    -- Pulling over: the bend can be far off, so aim PULL_AHEAD m on from
-    -- here, on the moved-over lane, or the car would hardly move over.
-    if (c.pull or 0) > 0 then
-      local a = c.path[c.wp - 1]
+    -- Keep to the lane: aim PULL_AHEAD m on from here, on the lane (moved
+    -- over when pulling over), as the bend can be far off. Aimed at the
+    -- bend, a car out of a left turn kept to the oncoming side for a hundred
+    -- metres and met the traffic head-on. (The lane is measured off the
+    -- road's middle: off a line to the lane at b, it was added twice, and a
+    -- car on a wide one-way street drove into the houses.)
+    do
+      local a, b = c.path[c.wp - 1], c.path[c.wp]
       local ax, az = a[1], a[2]
-      local yaw = math.atan(tx - ax, tz - az)
+      local yaw = math.atan(b[1] - ax, b[2] - az)
       local fx, fz = U.forward(yaw)
       local along = (x - ax) * fx + (z - az) * fz + PULL_AHEAD
-      if along < U.dist2d(ax, az, tx, tz) then
+      if along < U.dist2d(ax, az, b[1], b[2]) - LANE then
         local rx, rz = U.right(yaw)
-        local lane = (c.lane or LANE) + c.pull * PULL
+        local lane = (c.lane or LANE) + (c.pull or 0) * PULL
         tx, tz = ax + fx * along + rx * lane, az + fz * along + rz * lane
       end
     end
