@@ -435,6 +435,13 @@ local function drive_cop(c, dt)
     local vx, _, vz = engine.vel(G.vehicle or G.player)
     tx, tz = px + vx * 0.4, pz + vz * 0.4
     want = math.min(30, math.max(0, dist - 4) * 1.5)
+    -- After someone on foot, slow for whatever's in the way: at full tilt a
+    -- cop drove into a parked car beside them and threw it onto them.
+    if G.player then
+      local fx, fz = U.forward(yaw)
+      local hit, d = engine.raycast(x + fx * 2.5, y, z + fz * 2.5, fx, 0, fz, 16, id)
+      if hit and hit ~= G.player and d < 8 then want = math.min(want, 4) end
+    end
   elseif not c.sees and last < 30 and engine.time() >= (c.roads_until or 0) then
     -- Lost sight just short of them (behind a parked car, round a corner):
     -- creep up to where they were last seen, not off round the block.
