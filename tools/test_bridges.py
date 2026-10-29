@@ -44,6 +44,8 @@ class BridgeTests(unittest.TestCase):
                 self.assertTrue(steps, out)
                 high = [(b, s) for b, s in steps if s > STEP_MAX]
                 self.assertEqual(high, [], "deck ends off their streets")
+                if name == "turku":
+                    self.assertIn("RAIL_UNDERPASS_OK", out)
 
     def test_auransilta_meets_aurakatu(self):
         out, _, _ = self.audit("turku")

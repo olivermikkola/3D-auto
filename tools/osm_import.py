@@ -541,11 +541,16 @@ def overpass(q, timeout, tries=4):
 
 
 def railways_of(els, P, inside):
-    """Railway track on the ground (not on bridges or in tunnels), and platforms."""
-    railways, platforms = [], []
+    """Railway track on the ground (not on bridges or in tunnels), platforms,
+    and the bridges the tracks cross on (over a road, a path, the river)."""
+    railways, platforms, bridges = [], [], []
     for el in els:
         t = el.get("tags", {})
         rw = t.get("railway")
+        if rw in ("rail", "light_rail", "narrow_gauge") and t.get("bridge") not in (None, "no"):
+            pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.3)
+            if len(pts) >= 2 and all(inside(*p) for p in pts): bridges.append(pts)
+            continue
         if rw in ("rail", "light_rail", "narrow_gauge", "tram"):
             if t.get("tunnel") not in (None, "no") or t.get("bridge") not in (None, "no"): continue
             pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.3)
@@ -564,7 +569,7 @@ def railways_of(els, P, inside):
                 if pl < pw: ang, pl, pw = ang + math.pi / 2, pw, pl
                 if pl >= 20 and 2 <= pw <= 20 and area(poly) > 0.7 * pl * pw:
                     platforms.append((cx, cz, pl, pw, -ang))
-    return railways, platforms
+    return railways, platforms, bridges
 
 
 # Real brands on buildings go by the game's parody names (as in the missions).
@@ -620,7 +625,7 @@ def outline_lines(outlines, f):
     return L
 
 
-def railway_lines(railways, platforms, f):
+def railway_lines(railways, platforms, f, bridges=()):
     L = ["  -- railway track on the ground: {main line?, electrified?, points...}", "  railways = {"]
     for main, wired, pts in railways:
         L.append(f"    {{{'true' if main else 'false'}, {'true' if wired else 'false'}, "
@@ -628,6 +633,8 @@ def railway_lines(railways, platforms, f):
     L.append("  },")
     L.append("  -- railway platforms: {x, z, length, width, yaw}")
     L.append("  platforms = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pl)}, {f(pw)}, {a:.3f}}}" for x, z, pl, pw, a in platforms) + "},")
+    L.append("  -- railway bridges: {points...}")
+    L.append("  rail_bridges = {" + ", ".join("{" + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "}" for pts in bridges) + "},")
     return L
 
 
@@ -817,19 +824,19 @@ def splice_railways(dest, els, P, f, aerial=None, model_h=None):
     m = re.search(r"\n  bounds = \{(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\},", text)
     X0, Z0, X1, Z1 = map(float, m.groups())
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
-    railways, platforms = railways_of(els, P, inside)
+    railways, platforms, bridges = railways_of(els, P, inside)
     outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h)
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
-        if line.startswith(("  -- railway track on the ground", "  -- railway platforms", "  -- footprints drawn as they are")): continue
+        if line.startswith(("  -- railway track on the ground", "  -- railway platforms", "  -- railway bridges", "  -- footprints drawn as they are")): continue
         if line in ("  railways = {", "  outlines = {"): skip = True; continue
         if skip:
             if line == "  },": skip = False
             continue
-        if line.startswith("  platforms = {"): continue
+        if line.startswith(("  platforms = {", "  rail_bridges = {")): continue
         if line.startswith("  -- towers and masts"):
-            out.extend(railway_lines(railways, platforms, f))
+            out.extend(railway_lines(railways, platforms, f, bridges))
             out.extend(outline_lines(outlines, f))
         out.append(line)
     dest.write_text("\n".join(out))
@@ -1305,7 +1312,7 @@ def main():
             if pw >= 8 and pd >= 4 and area(poly) > 0.7 * pw * pd:
                 pools.append((cx, cz, pw, pd, -ang))
 
-    railways, platforms = railways_of(els, P, inside)
+    railways, platforms, rail_bridges = railways_of(els, P, inside)
 
     # ---- footbridges: foot and cycle ways on a bridge ----
     # Over a road or a railway, high enough to pass under; over anything
@@ -1606,7 +1613,7 @@ def main():
     for wd, pts, low in footbridges:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
-    L.extend(railway_lines(railways, platforms, f))
+    L.extend(railway_lines(railways, platforms, f, rail_bridges))
     L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")

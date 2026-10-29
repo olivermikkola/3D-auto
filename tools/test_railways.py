@@ -33,14 +33,16 @@ class RailwayTests(unittest.TestCase):
             way({"railway": "rail", "tunnel": "yes"}, *line),
             way({"railway": "abandoned"}, *line),
         ]
-        rails, platforms = osm_import.railways_of(els, P, inside)
+        rails, platforms, bridges = osm_import.railways_of(els, P, inside)
         self.assertEqual([(main, wired) for main, wired, _ in rails], [(True, True), (False, False)])
         self.assertEqual(platforms, [])
+        self.assertEqual(len(bridges), 1)
 
     def test_platform_is_a_long_narrow_box(self):
         ring = ((22.270, 60.450), (22.2715, 60.450), (22.2715, 60.45005), (22.270, 60.45005), (22.270, 60.450))
-        _, platforms = osm_import.railways_of([way({"railway": "platform"}, *ring)], P, inside)
+        _, platforms, bridges = osm_import.railways_of([way({"railway": "platform"}, *ring)], P, inside)
         self.assertEqual(len(platforms), 1)
+        self.assertEqual(bridges, [])
         _, _, length, width, _ = platforms[0]
         self.assertAlmostEqual(length, 0.0015 * P.kx, delta=1)
         self.assertAlmostEqual(width, 0.00005 * 110574, delta=0.5)
@@ -56,6 +58,7 @@ class RailwayTests(unittest.TestCase):
                 osm_import.splice_railways(dest, els, P, f)
             text = dest.read_text()
             self.assertEqual(text.count("  railways = {"), 1)
+            self.assertEqual(text.count("  rail_bridges = {"), 1)
             self.assertIn("  roads = {},", text)
             self.assertLess(text.index("railways"), text.index("towers = {}"))
 
