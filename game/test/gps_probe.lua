@@ -14,6 +14,7 @@ local input = require "lib.input"
 local robot = require "test.robot"
 local traffic = require "systems.traffic"
 local peds = require "systems.peds"
+local wanted = require "lib.wanted"
 
 local PAIRS = 40
 
@@ -163,6 +164,11 @@ local function drive(map)
   local dots = gps.dots()
   check(dots and #dots / 2 > first.length / 8, string.format("drawn as %d dots", dots and #dots / 2 or 0))
   print(string.format("GPS_PROBE %s: driving %.0f m from %.0f, %.0f to %.0f, %.0f", map, first.length, fx, fz, gx, gz))
+  -- No stars on the way: the robot clips a pedestrian or a patrol car now
+  -- and then, and the police stopped it and took it out of the car (the
+  -- probe then drove a car with nobody in it, or one that was gone).
+  local heat_up, crime = wanted.heat_up, wanted.crime
+  wanted.heat_up, wanted.crime = function() end, function() end
   driver = robot.driver(keep_right(first.pts), 14, 6)
   local t0, still, redraws, last = engine.time(), 0, 0, nil
   local limit = first.length / 5 + 60
@@ -193,6 +199,7 @@ local function drive(map)
     if still > 2 then driver.backing, still = 1.5, 0 end
     if driver.backing > 0 then driver.backing = driver.backing - 1 / 60 end
   end
+  wanted.heat_up, wanted.crime = heat_up, crime
   local took = engine.time() - t0
   check(true, string.format("the car got there by the GPS in %.0f s (%d redraws)", took, redraws))
   check(gps.left() and gps.left() < 40, string.format("and the GPS says it's there (%.0f m left)", gps.left() or -1))
