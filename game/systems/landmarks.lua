@@ -113,10 +113,13 @@ function L.build(map)
   local T = L.IKITUURI
   local y = U.ground(T.x, T.z)
   L.ikituuri_id = engine.spawn{mesh = "ikituuri", pos = {T.x, y, T.z}, tag = "building"}
-  -- What you drive into: an octagon of two boxes round the ring.
-  for _, yaw in ipairs{0, math.pi / 4} do
-    engine.spawn{mesh = "cube", pos = {T.x, y + T.h / 2, T.z}, yaw = yaw, size = {2 * T.r * 0.97, T.h, 2 * T.r * 0.97},
-                 visible = false, body = "static", tag = "building"}
+  -- What you drive into: an octagon round the ring, of four bars across
+  -- it. (Two squares, one turned 45 degrees, made a star whose points
+  -- stood 16 m out, 4 m into Pispalantie.)
+  local a = T.r * 0.97
+  for i = 0, 3 do
+    engine.spawn{mesh = "cube", pos = {T.x, y + T.h / 2, T.z}, yaw = i * math.pi / 4,
+                 size = {2 * a, T.h, 2 * a * math.tan(math.pi / 8)}, visible = false, body = "static", tag = "building"}
   end
 
   local C = L.CHURCH

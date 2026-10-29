@@ -261,15 +261,16 @@ engine.on("minimized", M.show)
 -- Left alone, the game pauses itself: no key, button, stick or tap for
 -- IDLE_PAUSE seconds of play opens this menu, and paused it hardly uses the
 -- machine (one left running for a Moonlight session kept Turku going for
--- nine hours on three quarters of a core). Not in a mission's cutscene or
--- a headless run: only frames count, and they stop while paused.
+-- nine hours on three quarters of a core). Not in a headless run, where a
+-- probe drives with nobody at the controls; only frames count, and they stop
+-- while paused.
 M.IDLE_PAUSE = tonumber(os.getenv("IDLE_PAUSE") or "") or 180
 local idle = 0
 local function touched() idle = 0 end
 engine.on("key", touched)
 engine.on("touch", touched)
 engine.on("frame", function(dt)
-  if M.open or engine.paused() then idle = 0 return end
+  if M.open or engine.paused() or engine.headless() then idle = 0 return end
   local p = engine.pad()
   if p then
     for _, k in ipairs{"lx", "ly", "rx", "ry", "lt", "rt"} do
