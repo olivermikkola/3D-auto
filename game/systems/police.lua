@@ -568,20 +568,24 @@ local function drive_cop(c, dt)
     end
     -- Wedged again and again (a U-turn on a narrow street, a corner cut
     -- into a building): back up further, a proper three-point turn, and
-    -- think again about the way. (On the grid maps too: a cop that cut a
-    -- corner overtaking hit the same building for 40 s, Harbor seed 5.)
-    c.jams = (c.jams or 0) + 1
-    if c.jams >= 2 then c.reverse = 2.2 end
-    -- Swung wide round a corner into a wall: back to the middle of the
-    -- junction, where there's room, then on along the road.
-    if c.jams == 2 and c.route then
-      local jx, jz = city.pos(city.nearest(x, z, y))
-      if U.dist2d(x, z, jx, jz) < 25 then
-        table.insert(c.route, c.ri, {jx, jz})
-        c.goal = c.route[c.ri]
+    -- think again about the way. (On the grid maps too, following the
+    -- roads: a cop that cut a corner overtaking hit the same building for
+    -- 40 s, Harbor seed 5. Not after them across a grid block: the detour
+    -- above sees to that, and backing up further ate into it.)
+    if city.network() or not direct then
+      c.jams = (c.jams or 0) + 1
+      if c.jams >= 2 then c.reverse = 2.2 end
+      -- Swung wide round a corner into a wall: back to the middle of the
+      -- junction, where there's room, then on along the road.
+      if c.jams == 2 and c.route then
+        local jx, jz = city.pos(city.nearest(x, z, y))
+        if U.dist2d(x, z, jx, jz) < 25 then
+          table.insert(c.route, c.ri, {jx, jz})
+          c.goal = c.route[c.ri]
+        end
       end
+      if c.jams >= 4 then c.goal, c.jams = nil, 0 end
     end
-    if c.jams >= 4 then c.goal, c.jams = nil, 0 end
   end
   if c.reverse > 0 then
     c.reverse = c.reverse - dt
