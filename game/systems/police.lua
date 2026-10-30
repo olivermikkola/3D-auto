@@ -862,7 +862,8 @@ engine.on("tick", function(dt)
     local wrecked = not engine.exists(id) or vehicle.upside_down(id)
     c.wrecked_for = wrecked and (c.wrecked_for or 0) + dt or 0
     c.launch = c.launch and c.launch > 0 and c.launch - dt or nil
-    if not x or c.wrecked_for > 3 or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
+    -- (Not while its crew is out of it: see below.)
+    if not x or (c.wrecked_for > 3 and not c.deployed) or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
       remove(id)
       if x then engine.despawn(id) end
       -- Left behind (or wrecked): a breather before the next one turns up,
@@ -936,6 +937,13 @@ engine.on("tick", function(dt)
       -- they get out and walk over to arrest you.
       elseif ((c.wedged or 0) >= 1.5 and d < 30 or (c.near_for or 0) > 4) and slow_player then
         c.arrest, c.wedged, c.near_for = true, 0, 0
+        deploy(c)
+      -- Rolled over near you (into a tree or a lamp post at speed): they
+      -- climb out and come for you on foot. Left to be recycled, the next
+      -- car was a minute off, and rolled over in the same place (Harbor
+      -- seed 2 on CI, every time).
+      elseif (c.wrecked_for or 0) > 1 and engine.exists(id) and d < 40 and slow_player then
+        c.arrest = true
         deploy(c)
       end
       -- How long it has been close to you without getting to you.
