@@ -32,15 +32,23 @@
   <script src="gl.js"></script>
   <script>
     // Lines the game prints, also on the page: there is no console on a phone.
-    // The box goes away once the game has run for a few seconds without
-    // trouble; ?log=1 keeps it.
+    // The box goes away a few seconds after the last line (longer after an
+    // error), so loading a map from the menu doesn't leave it up; ?log=1
+    // keeps it.
     const box = document.getElementById("log");
     const keep = new URLSearchParams(location.search).has("log");
-    let lines = [];
+    let lines = [], started = false, hide = 0;
     function show(text) {
       lines.push(text);
       if (lines.length > 30) lines = lines.slice(-30);
       box.textContent = lines.join("\n");
+      if (started) later();
+    }
+    function later() {
+      if (keep) return;
+      clearTimeout(hide);
+      const bad = /error|panic/i.test(box.textContent);
+      hide = setTimeout(() => { box.textContent = ""; lines = []; }, bad ? 20000 : 6000);
     }
     window.addEventListener("error", e => show("error: " + e.message));
 
@@ -120,7 +128,7 @@
       on_init() {
         box.textContent = "";
         lines = [];
-        if (!keep) setTimeout(() => { if (!/error|panic/i.test(box.textContent)) box.textContent = ""; }, 8000);
+        started = true;
       },
     });
     load("auto.wasm");
