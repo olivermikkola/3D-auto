@@ -478,6 +478,14 @@ local function keep_off()
       end
     end
   end
+  -- And a car that drives right up arrests the player (inside 7 m, slow),
+  -- as it may at any level: it's sent off (Raisio seed 3 on CI, busted
+  -- while waiting for the shots). The police replace it.
+  for id, c in pairs(police.cops) do
+    local x, _, z
+    if engine.exists(id) and not c.deployed then x, _, z = engine.pos(id) end
+    if px and x and (x - px) ^ 2 + (z - pz) ^ 2 < 10 ^ 2 then engine.despawn(id) end
+  end
   return px, pz
 end
 -- What's going on with the officers, every 5 s: CI has failed in these

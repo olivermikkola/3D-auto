@@ -498,8 +498,25 @@ local function drive_cop(c, dt)
     elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
       local from = at
       if at == goal then
-        local opts = city.links(at) -- there: search a street nearby
-        at = opts[math.random(math.max(1, #opts))] or at
+        -- There: search a street nearby, every other time the one that
+        -- passes nearest them. (At random, a cop on Harbor seed 5 went up
+        -- and down the streets either side of a lot for 40 s, never along
+        -- the one it faced.)
+        local opts = city.links(at)
+        c.searches = (c.searches or 0) + 1
+        local pick = opts[math.random(math.max(1, #opts))]
+        if c.searches % 2 == 1 then
+          local ax, az = city.pos(at)
+          local best = math.huge
+          for _, o in ipairs(opts) do
+            local bx, bz = city.pos(o)
+            local dx, dz = bx - ax, bz - az
+            local t = U.clamp(((gx - ax) * dx + (gz - az) * dz) / math.max(dx * dx + dz * dz, 1e-6), 0, 1)
+            local d = U.dist2d(gx, gz, ax + dx * t, az + dz * t)
+            if d < best then best, pick = d, o end
+          end
+        end
+        at = pick or at
       else
         at = city.step_toward(at, goal)
       end
@@ -549,10 +566,13 @@ local function drive_cop(c, dt)
       c.direct_jams = (c.direct_jams or 0) + 1
       if c.direct_jams >= 2 then c.roads_until, c.direct_jams, c.goal, c.dash_until = engine.time() + 6, 0, nil, nil end
     end
-    -- Wedged again and again on a road map (a U-turn on a narrow street):
-    -- back up further, a proper three-point turn, and think again about
-    -- the way.
-    if city.network() then
+    -- Wedged again and again (a U-turn on a narrow street, a corner cut
+    -- into a building): back up further, a proper three-point turn, and
+    -- think again about the way. (On the grid maps too, following the
+    -- roads: a cop that cut a corner overtaking hit the same building for
+    -- 40 s, Harbor seed 5. Not after them across a grid block: the detour
+    -- above sees to that, and backing up further ate into it.)
+    if city.network() or not direct then
       c.jams = (c.jams or 0) + 1
       if c.jams >= 2 then c.reverse = 2.2 end
       -- Swung wide round a corner into a wall: back to the middle of the
@@ -862,7 +882,8 @@ engine.on("tick", function(dt)
     local wrecked = not engine.exists(id) or vehicle.upside_down(id)
     c.wrecked_for = wrecked and (c.wrecked_for or 0) + dt or 0
     c.launch = c.launch and c.launch > 0 and c.launch - dt or nil
-    if not x or c.wrecked_for > 3 or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
+    -- (Not while its crew is out of it: see below.)
+    if not x or (c.wrecked_for > 3 and not c.deployed) or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
       remove(id)
       if x then engine.despawn(id) end
       -- Left behind (or wrecked): a breather before the next one turns up,
@@ -936,6 +957,13 @@ engine.on("tick", function(dt)
       -- they get out and walk over to arrest you.
       elseif ((c.wedged or 0) >= 1.5 and d < 30 or (c.near_for or 0) > 4) and slow_player then
         c.arrest, c.wedged, c.near_for = true, 0, 0
+        deploy(c)
+      -- Rolled over near you (into a tree or a lamp post at speed): they
+      -- climb out and come for you on foot. Left to be recycled, the next
+      -- car was a minute off, and rolled over in the same place (Harbor
+      -- seed 2 on CI, every time).
+      elseif (c.wrecked_for or 0) > 1 and engine.exists(id) and d < 40 and slow_player then
+        c.arrest = true
         deploy(c)
       end
       -- How long it has been close to you without getting to you.
