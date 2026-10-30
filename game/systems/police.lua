@@ -498,8 +498,25 @@ local function drive_cop(c, dt)
     elseif not c.goal or U.dist2d(x, z, c.goal[1], c.goal[2]) < 9 then
       local from = at
       if at == goal then
-        local opts = city.links(at) -- there: search a street nearby
-        at = opts[math.random(math.max(1, #opts))] or at
+        -- There: search a street nearby, every other time the one that
+        -- passes nearest them. (At random, a cop on Harbor seed 5 went up
+        -- and down the streets either side of a lot for 40 s, never along
+        -- the one it faced.)
+        local opts = city.links(at)
+        c.searches = (c.searches or 0) + 1
+        local pick = opts[math.random(math.max(1, #opts))]
+        if c.searches % 2 == 1 then
+          local ax, az = city.pos(at)
+          local best = math.huge
+          for _, o in ipairs(opts) do
+            local bx, bz = city.pos(o)
+            local dx, dz = bx - ax, bz - az
+            local t = U.clamp(((gx - ax) * dx + (gz - az) * dz) / math.max(dx * dx + dz * dz, 1e-6), 0, 1)
+            local d = U.dist2d(gx, gz, ax + dx * t, az + dz * t)
+            if d < best then best, pick = d, o end
+          end
+        end
+        at = pick or at
       else
         at = city.step_toward(at, goal)
       end
