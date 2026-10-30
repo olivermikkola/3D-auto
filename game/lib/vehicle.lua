@@ -46,6 +46,11 @@ M.tags = {car = true, cop = true, pasi = true, bus = true, boat = true, bike = t
 
 -- y is the road's height there when it isn't the ground's (on a bridge,
 -- in a tunnel).
+-- How high above the road each vehicle's middle stands (by id), for
+-- putting it back down somewhere else at the right height.
+local lifts = setmetatable({}, {__mode = "k"})
+function M.lift(id) return lifts[id] or 0.75 end
+
 function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local n = color_index or math.random(8)
   -- Another kind of car ("sports", "van", "cab": lib/prefabs) in that colour.
@@ -68,6 +73,7 @@ function M.spawn(x, z, yaw, color_index, mesh, tag, y)
   local id = engine.spawn{mesh = id_mesh, pos = {x, lift + (y or U.ground(x, z)), z},
                           yaw = yaw or 0, size = size, body = "dynamic", mass = mass, friction = 0,
                           step = step, tag = tag or default_tag}
+  lifts[id] = lift
   return id
 end
 

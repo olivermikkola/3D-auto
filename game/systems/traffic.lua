@@ -35,6 +35,7 @@ local function lane_target(c)
 end
 
 local FAR, NEAR = 330, 260 -- recycle beyond FAR; respawn within NEAR
+local HELD = 60 -- s queued without moving: well over a light's cycle (systems/signals)
 -- At a dead end (the shore, the park) turning back is the only way on.
 -- A one-way street that just ends (cut off at the map's edge) has no way
 -- on at all: the car is lost, and gets moved to another street.
@@ -57,6 +58,17 @@ local function pick_next(c)
 end
 
 local near_roads -- the roads in reach of where the player was: {map, x, z, roads}
+
+-- Nothing in the lane at (x, z): a car put down inside another was shot
+-- several metres up out of it. (Cars parked by the kerb only right on the
+-- spot: they're beside the lane, and most streets have some.)
+local function room(c, x, z)
+  local y = U.ground(x, z)
+  for _, tag in ipairs{"car", "bus", "cop", "pasi", "player"} do
+    if engine.nearest(x, y, z, 9, tag, c.id) then return false end
+  end
+  return not engine.nearest(x, y, z, 2.5, "parked")
+end
 
 -- Place car c on a random street segment between `min_dist` and NEAR from
 -- the player (anywhere in town if there's no player).
@@ -110,7 +122,7 @@ local function place(c, min_dist)
     local rx, rz = U.right(yaw)
     local x, z = ax + (bx - ax) * t + rx * c.lane, az + (bz - az) * t + rz * c.lane
     local d = px and U.dist2d(x, z, px, pz)
-    if not px or (d >= min_dist and d <= NEAR) then
+    if (not px or (d >= min_dist and d <= NEAR)) and room(c, x, z) then
       c.speed, c.stuck = 0, 0
       return x, z, yaw, city.height_on(c.from, c.to, x, z)
     end
@@ -286,6 +298,7 @@ local function update(id, c, dt)
     -- buses drove into and up onto them.
     local nose, low = c.is_bus and 6.3 or 2.3, c.is_bus and 1.0 or 0
     local hit, d = engine.raycast(x + fx * nose, y - low, z + fz * nose, fx, 0, fz, 12, id)
+    local behind -- in the queue behind a car waiting our way
     if hit then
       local tag = engine.tag(hit)
       -- Queue behind cars going our way; ignore cross traffic unless it's in our face.
@@ -294,6 +307,7 @@ local function update(id, c, dt)
       if tag == "player" or tag == "ped" or same_way or (vehicle_ahead and d < 3) then
         want = d < 5 and 0 or want * (d - 5) / 7
       end
+      behind = same_way and d < 8 and T.cars[hit] and T.cars[hit].waiting
     end
     c.speed = c.speed or 0
     c.speed = c.speed + U.clamp(want - c.speed, -25 * dt, 6 * dt)
@@ -309,8 +323,13 @@ local function update(id, c, dt)
     end
 
     -- Wedged somewhere for too long, or left far behind: quietly respawn it out of sight.
-    -- (Not while waiting at a red light, nor in the queue behind one.)
-    local queued = c.waiting or c.doors ~= nil or (hit and d < 8 and T.cars[hit] and T.cars[hit].waiting) or false
+    -- (Not while waiting at a red light, nor in the queue behind one: one
+    -- going our way. Counted from a car across our way or nose to nose
+    -- with us, a junction's worth of cars waited on each other for good.
+    -- Nor for longer than a light takes, all the same.)
+    local queued = c.waiting or c.doors ~= nil or behind or false
+    c.held = queued and math.abs(vehicle.speed(id)) < 1 and (c.held or 0) + dt or 0
+    if c.held > HELD then queued = false end
     c.waiting = queued -- (so the queue passes it back, car to car)
     c.stuck = (math.abs(vehicle.speed(id)) < 1 or not vehicle.on_wheels(id)) and not queued and (c.stuck or 0) + dt or 0
     local px, _, pz = U.player_pos()
@@ -318,7 +337,9 @@ local function update(id, c, dt)
       local nx, nz, nyaw2, ny = place(c, 90)
       if nx then
         -- On the road it was put on: a bridge's deck, not the river under it.
-        engine.set_pos(id, nx, 0.8 + (ny or U.ground(nx, nz)), nz)
+        -- At its own height: a bus put down at a car's (0.8 m) stood half
+        -- in the road and was thrown up out of it at 9 m/s.
+        engine.set_pos(id, nx, vehicle.lift(id) + (ny or U.ground(nx, nz)), nz)
         engine.orient(id, nyaw2)
         engine.set_vel(id, 0, 0, 0)
         engine.set_angvel(id, 0, 0, 0)
