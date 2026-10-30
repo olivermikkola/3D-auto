@@ -146,7 +146,10 @@ local function script()
   end
   vigilante.SMART, vigilante.SMART_MAX = smart, smart_max
 
+  -- Off the chase's clock: the suspect called in can be across the
+  -- river, a long way round by the bridges, and got away before then.
   s.cruise = 5
+  s.deadline = engine.time() + 200
   local heat_up = wanted.heat_up
   wanted.heat_up = function() end -- (the robot clips things now and then)
   driver = robot.gps_driver(15, 6)
@@ -155,7 +158,7 @@ local function script()
     local x, _, z = engine.pos(s.id)
     local px, _, pz = U.player_pos()
     return U.dist2d(x, z, px, pz) < 30
-  end, 80, "the robot catches up with it by the GPS")
+  end, 180, "the robot catches up with it by the GPS")
   print(string.format("VIGILANTE_PROBE %s: caught up in %.0f s", map, engine.time() - t0))
   driver = nil
   wanted.heat_up = heat_up
