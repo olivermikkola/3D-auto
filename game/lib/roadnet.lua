@@ -4101,32 +4101,78 @@ function R.across_water(ax, az, bx, bz, min)
   return false
 end
 
+-- Out in front of a quay's wall (QUAY_REACH m of it): "out"; on the quay:
+-- "on"; else nil. The water's strips, 4 m rows, stop up to 2 m short of a
+-- slanting bank or reach onto it: a car that went over the wall into the
+-- gap was in the river but not on the water (stuck there 3 m under the
+-- quay, on CI), and one on the quay by the edge was on it (and put back).
+-- Quay pieces by CELL square.
+local QUAY_REACH = 8
+local quay_cells, quay_cells_net
+local function before_quay(x, z)
+  if quay_cells_net ~= NET then
+    quay_cells, quay_cells_net = {}, NET
+    for _, q in ipairs(NET.map.quays or {}) do
+      local pts = quay_points(q)
+      for i = 2, #pts do
+        local a, b = pts[i - 1], pts[i]
+        local piece = {a[1], a[2], b[1], b[2], (a[5] + b[5]) / 2, (a[6] + b[6]) / 2, math.min(a[4], b[4])}
+        for ci = math.floor((math.min(a[1], b[1]) - QUAY_REACH) / CELL), math.floor((math.max(a[1], b[1]) + QUAY_REACH) / CELL) do
+          for cj = math.floor((math.min(a[2], b[2]) - QUAY_REACH) / CELL), math.floor((math.max(a[2], b[2]) + QUAY_REACH) / CELL) do
+            local k = cell_key(ci, cj)
+            quay_cells[k] = quay_cells[k] or {}
+            table.insert(quay_cells[k], piece)
+          end
+        end
+      end
+    end
+  end
+  -- (On a quay round a corner from the one it's out from is on it.)
+  local out = nil
+  for _, p in ipairs(quay_cells[cell_key(math.floor(x / CELL), math.floor(z / CELL))] or {}) do
+    local dx, dz = p[3] - p[1], p[4] - p[2]
+    local l2 = math.max(dx * dx + dz * dz, 1e-9)
+    local t = ((x - p[1]) * dx + (z - p[2]) * dz) / l2
+    local s = (x - p[1]) * p[5] + (z - p[2]) * p[6] -- toward the land
+    if t >= -0.3 and t <= 1.3 and s >= -QUAY_OUT and s <= QUAY_WALL - QUAY_OUT + p[7] then return "on" end
+    -- (A little past the piece's ends: round the bend between two.)
+    if t >= -0.3 and t <= 1.3 and s < -QUAY_OUT and s > -QUAY_REACH then out = "out" end
+  end
+  return out
+end
+
 function R.wet(x, z)
   local rows = water_rows()
   if not rows then return false end
-  for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
-    if x >= st[1] and x <= st[3] then
-      for _, p in ipairs(NET.map.piers or {}) do -- out on a pier is dry
-        for i = 3, #p do
-          if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
-        end
-      end
-      for _, b in ipairs(NET.map.footbridges or {}) do -- out on a footbridge is dry
-        for i = 3, #b do
-          if dist_seg(x, z, b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) < (b[1] or 3) / 2 + 0.5 then return false end
-        end
-      end
-      for _, b in ipairs(NET.map.wooden_footbridges or {}) do -- wooden footbridge is dry
-        local pts = b.points or {}
-        for i = 2, #pts do
-          if dist_seg(x, z, pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) < (b.width or 3) / 2 + 0.5 then return false end
-        end
-      end
-      local e, _, _, _, d = R.nearest_edge(x, z)
-      return not (e and d < NET.edges[e].width / 2 + 1)
+  local quay = before_quay(x, z)
+  if quay == "on" then return false end
+  local wet = quay == "out"
+  if not wet then
+    for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
+      if x >= st[1] and x <= st[3] then wet = true; break end
     end
   end
-  return false
+  if not wet then return false end
+  -- Out on a pier is dry, but not one at the foot of a quay's wall: a car
+  -- that went over the wall onto it was stuck 3 m down.
+  for _, p in ipairs(quay == "out" and {} or NET.map.piers or {}) do
+    for i = 3, #p do
+      if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
+    end
+  end
+  for _, b in ipairs(NET.map.footbridges or {}) do -- out on a footbridge is dry
+    for i = 3, #b do
+      if dist_seg(x, z, b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) < (b[1] or 3) / 2 + 0.5 then return false end
+    end
+  end
+  for _, b in ipairs(NET.map.wooden_footbridges or {}) do -- wooden footbridge is dry
+    local pts = b.points or {}
+    for i = 2, #pts do
+      if dist_seg(x, z, pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) < (b.width or 3) / 2 + 0.5 then return false end
+    end
+  end
+  local e, _, _, _, d = R.nearest_edge(x, z)
+  return not (e and d < NET.edges[e].width / 2 + 1)
 end
 
 -- Is the pavement on side `side` of edge e (+1: right of its first bend
