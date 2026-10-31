@@ -28,7 +28,12 @@ engine.on("killed", function(id, by)
   local t = engine.tag(id)
   if t == "car" or t == "cop" then
     n.killed = n.killed + 1
-    print(string.format("TRAFFIC_CALM: %s killed by %s", t, by and engine.exists(by) and engine.tag(by) or "?"))
+    -- Where, to find it again (CI's traffic goes otherwise than a laptop's).
+    local x, _, z = engine.pos(id)
+    local bx, bz
+    if by and engine.exists(by) then bx, _, bz = engine.pos(by) end
+    print(string.format("TRAFFIC_CALM: %s killed by %s at (%.0f, %.0f)%s", t, by and engine.exists(by) and engine.tag(by) or "?",
+                        x or 0, z or 0, bx and string.format(", it at (%.0f, %.0f)", bx, bz) or ""))
   end
 end)
 engine.on("damaged", function(id, amount, by)
