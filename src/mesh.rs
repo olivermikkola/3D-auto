@@ -295,6 +295,12 @@ impl Mesh {
 /// ends and no underside: nobody sees them. Two top and four skirt vertices
 /// a point, where a box per piece and a cylinder per bend took ~120.
 pub fn ribbon(pts: &[Vec3], width: f32, depth: f32, col: Vec3) -> Mesh {
+    ribbon_sloped(pts, width, &|_| depth, 0.0, col)
+}
+
+/// A ribbon whose skirts go down `drop(i)` at point i and out `slope`
+/// metres for every metre down: an embankment's sides (0: straight down).
+pub fn ribbon_sloped(pts: &[Vec3], width: f32, drop: &dyn Fn(usize) -> f32, slope: f32, col: Vec3) -> Mesh {
     let mut m = Mesh::default();
     let n = pts.len();
     if n < 2 {
@@ -315,9 +321,12 @@ pub fn ribbon(pts: &[Vec3], width: f32, depth: f32, col: Vec3) -> Mesh {
         let side = right * (half * stretch);
         let top = right.cross(next - prev).norm();
         let p = pts[i];
+        let depth = drop(i);
         let down = v3(0.0, depth, 0.0);
+        let out = right * (slope * depth * stretch);
+        let (rn, ln) = ((right + up * slope).norm(), (up * slope - right).norm());
         for (q, nrm) in
-            [(p - side, top), (p + side, top), (p + side, right), (p + side - down, right), (p - side, -right), (p - side - down, -right)]
+            [(p - side, top), (p + side, top), (p + side, rn), (p + side + out - down, rn), (p - side, ln), (p - side - out - down, ln)]
         {
             m.verts.push(Vertex::new(q, nrm, col, 0.0));
         }
@@ -685,6 +694,21 @@ mod tests {
                 assert!(inside(c.x - n.x * 0.1, c.z - n.z * 0.1), "wall at {c:?} has the L behind it");
             }
         }
+    }
+
+    #[test]
+    fn a_sloped_ribbons_skirts_go_out_as_they_go_down() {
+        // Along +x at height 5, 3 wide, sides 2 m down and out 1.5 m a metre.
+        let pts = [v3(0.0, 5.0, 0.0), v3(10.0, 5.0, 0.0)];
+        let m = ribbon_sloped(&pts, 3.0, &|_| 2.0, 1.5, Vec3::ONE);
+        let low: Vec<Vec3> = m.verts.iter().map(|v| v.pos()).filter(|p| p.y < 3.5).collect();
+        assert_eq!(low.len(), 4);
+        for p in low {
+            assert!((p.y - 3.0).abs() < 1e-4 && (p.z.abs() - (1.5 + 3.0)).abs() < 1e-4, "{p:?}");
+        }
+        // Without a slope it's the plain ribbon.
+        let (a, b) = (ribbon(&pts, 3.0, 0.3, Vec3::ONE), ribbon_sloped(&pts, 3.0, &|_| 0.3, 0.0, Vec3::ONE));
+        assert!(a.verts.iter().zip(&b.verts).all(|(p, q)| (p.pos() - q.pos()).len() < 1e-6));
     }
 
     #[test]

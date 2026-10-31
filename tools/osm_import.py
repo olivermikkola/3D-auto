@@ -572,6 +572,51 @@ def railways_of(els, P, inside):
     return railways, platforms, bridges
 
 
+RAIL_REACH = 40  # m each way: a railway's profile is the ground along it smoothed this far
+
+
+def rail_heights(railways, ground):
+    """Each track's heights about every 10 m, end to end. The ground model
+    (bare earth: it has the embankments and cuttings) along the track,
+    without its spikes and smoothed over RAIL_REACH each way (a railway
+    climbs gently), then bent to meet the height its ends share with the
+    tracks they join (a switch, a track that goes on as another way)."""
+    def key(p): return (round(p[0], 1), round(p[1], 1))
+    profiles, ends = [], {}
+    for _, _, pts in railways:
+        ss, xs = [0.0], [pts[0]]
+        for a, b in zip(pts, pts[1:]):
+            L_ = math.hypot(b[0] - a[0], b[1] - a[1])
+            n = max(1, int(L_ // 5))
+            for k in range(1, n + 1):
+                xs.append((a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n))
+                ss.append(ss[-1] + L_ / n)
+        raw = [ground(*p) for p in xs]
+        med = [sorted(raw[max(0, k - 2):k + 3])[len(raw[max(0, k - 2):k + 3]) // 2] for k in range(len(raw))]
+        sm = []
+        for k in range(len(med)):
+            lo, hi = k, k
+            while lo > 0 and ss[k] - ss[lo - 1] <= RAIL_REACH: lo -= 1
+            while hi < len(med) - 1 and ss[hi + 1] - ss[k] <= RAIL_REACH: hi += 1
+            sm.append(sum(med[lo:hi + 1]) / (hi - lo + 1))
+        profiles.append((ss, sm))
+        for p, h in ((pts[0], sm[0]), (pts[-1], sm[-1])): ends.setdefault(key(p), []).append(h)
+    out = []
+    for (ss, sm), (_, _, pts) in zip(profiles, railways):
+        total = ss[-1] or 1.0
+        ha, hb = (sum(ends[key(p)]) / len(ends[key(p)]) for p in (pts[0], pts[-1]))
+        hs = [sm[k] + (ha - sm[0]) * (1 - ss[k] / total) + (hb - sm[-1]) * ss[k] / total for k in range(len(sm))]
+        n = max(1, round(total / 10))
+        res, k = [], 0
+        for m in range(n + 1):
+            s_ = total * m / n
+            while k < len(ss) - 2 and ss[k + 1] < s_: k += 1
+            f_ = (s_ - ss[k]) / ((ss[k + 1] - ss[k]) or 1)
+            res.append(hs[k] + (hs[k + 1] - hs[k]) * min(1.0, max(0.0, f_)) if len(hs) > 1 else hs[0])
+        out.append(res)
+    return out
+
+
 # Real brands on buildings go by the game's parody names (as in the missions).
 PARODY = {"Hesburger": "Häsburger", "Sokos Wiklund": "Vicklund"}
 
@@ -625,11 +670,14 @@ def outline_lines(outlines, f):
     return L
 
 
-def railway_lines(railways, platforms, f, bridges=()):
-    L = ["  -- railway track on the ground: {main line?, electrified?, points...}", "  railways = {"]
-    for main, wired, pts in railways:
+def railway_lines(railways, platforms, f, bridges=(), heights=None):
+    L = ["  -- railway track on the ground: {main line?, electrified?, points..., heights = {every ~10 m, end to end}}",
+         "  railways = {"]
+    for k, (main, wired, pts) in enumerate(railways):
+        hs = heights[k] if heights else None
         L.append(f"    {{{'true' if main else 'false'}, {'true' if wired else 'false'}, "
-                 + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + "},")
+                 + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
+                 + (", heights = {" + ", ".join(f"{h:.2f}".rstrip("0").rstrip(".") for h in hs) + "}" if hs else "") + "},")
     L.append("  },")
     L.append("  -- railway platforms: {x, z, length, width, yaw}")
     L.append("  platforms = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(pl)}, {f(pw)}, {a:.3f}}}" for x, z, pl, pw, a in platforms) + "},")
@@ -817,7 +865,7 @@ def splice_pois(dest, els, P, f, q):
     print(f"{dest}: {len(pois)} points of interest", file=sys.stderr)
 
 
-def splice_railways(dest, els, P, f, aerial=None, model_h=None):
+def splice_railways(dest, els, P, f, aerial=None, model_h=None, ground=None):
     """Put railways and platforms into an already generated map, inside its
     bounds, leaving the rest of it as it was."""
     text = dest.read_text()
@@ -825,6 +873,7 @@ def splice_railways(dest, els, P, f, aerial=None, model_h=None):
     X0, Z0, X1, Z1 = map(float, m.groups())
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
     railways, platforms, bridges = railways_of(els, P, inside)
+    heights = rail_heights(railways, ground) if ground else None
     outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h)
     lines = text.split("\n")
     out, skip = [], False
@@ -836,7 +885,7 @@ def splice_railways(dest, els, P, f, aerial=None, model_h=None):
             continue
         if line.startswith(("  platforms = {", "  rail_bridges = {")): continue
         if line.startswith("  -- towers and masts"):
-            out.extend(railway_lines(railways, platforms, f, bridges))
+            out.extend(railway_lines(railways, platforms, f, bridges, heights))
             out.extend(outline_lines(outlines, f))
         out.append(line)
     dest.write_text("\n".join(out))
@@ -1002,7 +1051,12 @@ def main():
         else:
             print(f"citymodel: not cached for {args.area}; run tools/citymodel.py {args.area} --fetch", file=sys.stderr)
     if args.only_railways:
-        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."), aerial, model_h)
+        ground = None
+        if elevation is not None or cfg.get("dem"):
+            import dem
+            Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
+            ground = lambda x, z: Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
+        splice_railways(dest, els, P, lambda v: f"{v:.1f}".rstrip("0").rstrip("."), aerial, model_h, ground)
         return
 
     # ---- roads ----
@@ -1390,11 +1444,13 @@ def main():
     # ---- terrain: real heights, with the roads graded into them ----
     terrain = None
     photo_trees = []
+    rail_hs = None
     if elevation is not None or cfg.get("dem"):
         import dem
         Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
         def ground(x, z):
             return Z(*dem.tm35(origin[0] - z / 110574, origin[1] + x / P.kx))
+        rail_hs = rail_heights(railways, ground)
         # Cover classes, for colors and water.
         cls_grid = {c: Grid(50) for c in DRAW_ORDER}
         for c in DRAW_ORDER:
@@ -1613,7 +1669,7 @@ def main():
     for wd, pts, low in footbridges:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
-    L.extend(railway_lines(railways, platforms, f, rail_bridges))
+    L.extend(railway_lines(railways, platforms, f, rail_bridges, rail_hs))
     L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")

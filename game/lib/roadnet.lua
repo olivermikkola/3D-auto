@@ -1464,7 +1464,24 @@ end
 -- profiles in pieces of PIECE m or less, {ax, az, ay, bx, bz, by, half width,
 -- edge, asphalt half width, side 1 a kerb up?, side 2?}, level across out
 -- past their pavements. Bridge decks are solid already.
-local function road_surface()
+-- A railway's height s metres along it, from the importer's profile (the
+-- laser-scanned ground along the track, smoothed: a railway climbs gently),
+-- and its length; nil for a track without one.
+local RAIL_HALF = 6 -- metres either side of a track the ground is its own: the bed and its shoulders
+local function rail_profile(r)
+  local hs = r.heights
+  if not hs or #hs < 2 or #r < 4 then return nil end
+  local total = 0
+  for k = 4, #r do total = total + math.sqrt((r[k][1] - r[k - 1][1]) ^ 2 + (r[k][2] - r[k - 1][2]) ^ 2) end
+  local step = math.max(total, 1e-3) / (#hs - 1)
+  return function(s)
+    local u = math.max(0, s / step)
+    local k = math.min(math.floor(u), #hs - 2)
+    return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
+  end, total
+end
+
+local function road_surface(map)
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
     if e.prof and not e.deck and not e.over then
@@ -1482,6 +1499,32 @@ local function road_surface()
         local seg = {pc[1], pc[2], h(s), pc[3], pc[4], h(s + len), e.width / 2 + math.max(r1, r2), ei, e.width / 2,
                      up1 and 1 or 0, up2 and 1 or 0}
         table.move(seg, 1, 11, #out + 1, out)
+        s = s + len
+      end
+    end
+  end
+  -- The railways: on a track the ground is its profile, not the 10 m grid's
+  -- creases (it rode over every one), down to it in a cutting; the bed is
+  -- drawn on it, with its embankment's sides (see the railways below). Not
+  -- across a road: a level crossing is the road's.
+  local base = #(NET and NET.edges or {})
+  for ri, r in ipairs(map and map.railways or {}) do
+    local h = rail_profile(r)
+    if h then
+      local s = 0
+      for k = 4, #r do
+        local a, b = r[k - 1], r[k]
+        local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+        local n = math.max(1, math.ceil(len / 6))
+        for m = 1, n do
+          local f0, f1 = (m - 1) / n, m / n
+          local ax, az = a[1] + (b[1] - a[1]) * f0, a[2] + (b[2] - a[2]) * f0
+          local bx, bz = a[1] + (b[1] - a[1]) * f1, a[2] + (b[2] - a[2]) * f1
+          if not (R.on_carriageway(ax, az, 1) or R.on_carriageway(bx, bz, 1)) then
+            local seg = {ax, az, h(s + len * f0), bx, bz, h(s + len * f1), RAIL_HALF, base + ri, 0, 0, 0}
+            table.move(seg, 1, 11, #out + 1, out)
+          end
+        end
         s = s + len
       end
     end
@@ -1510,7 +1553,7 @@ function R.build(map, kit)
   for _, c in ipairs(t.aerial or {}) do palette[#palette + 1] = c end
   classify(map)
   engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
-                 roads = road_surface(), kerb = KERB}
+                 roads = road_surface(map), kerb = KERB}
   GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
   local spawn = engine.spawn
   engine.spawn = function(e)
@@ -2489,7 +2532,22 @@ build = function(map, kit)
       end
       for _, run in ipairs(runs) do
         local parts = {}
-        strip(parts, run, 3.2, 0.25, BALLAST)
+        if r.heights and GROUND then
+          -- The bed on the track's own ground (its profile, laid into the
+          -- terrain), its sides going down to the grid beside it at 2:3:
+          -- an embankment where the track runs above the ground.
+          local line, drops, x0, z0 = {}, {}, run[1][1], run[1][2]
+          for _, p in ipairs(run) do
+            local y = GROUND(p[1], p[2]) + 0.25
+            local out = RAIL_HALF + 2.5
+            local low = math.min(GROUND(p[1] + p[3] * out, p[2] + p[4] * out), GROUND(p[1] - p[3] * out, p[2] - p[4] * out))
+            line[#line + 1], line[#line + 2], line[#line + 3] = p[1] - x0, y, p[2] - z0
+            drops[#drops + 1] = math.max(0.3, math.min(12, y - low + 0.3))
+          end
+          parts[#parts + 1] = {ribbon = line, width = 3.2, drops = drops, slope = 1.5, pos = {x0, 0, z0}, color = BALLAST, abs = true}
+        else
+          strip(parts, run, 3.2, 0.25, BALLAST)
+        end
         -- The rails as flat strips on the bed: only their tops show, and a
         -- yard has a lot of them (a box each was 50 MB in Turku). On the
         -- bed's heights, taken on the track's middle line.
