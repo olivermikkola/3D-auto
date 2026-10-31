@@ -918,6 +918,57 @@ local function deck_height(e)
     return best or GROUND(p[1], p[2])
   end
   local ha, hb = end_height(e.a, e.pts[1]), end_height(e.b, e.pts[#e.pts])
+  -- Level for a few metres either side of a junction where another deck
+  -- crosses this one (a link between twin carriageways): that deck's slab
+  -- lies level across it, and a deck still climbing under it met its edge
+  -- as a step (Hämeensilta's east end: 0.47 m, and cars stopped dead).
+  -- As {s, r}: level from s - r to s + r along the deck (on past that
+  -- deck's slab by half a piece of this one's: a piece is straight end to
+  -- end, and one still tilting where the slab began left a 5 cm lip,
+  -- enough to stop a car creeping up to it).
+  local flats = {}
+  do
+    local mine, at = {}, {}
+    for _, c in ipairs(e.edges or {}) do
+      mine[c] = true
+      at[c.a], at[c.b] = c.pts[1], c.pts[#c.pts]
+    end
+    for i, p in ipairs(e.pts) do
+      local id
+      for j, q in pairs(at) do if q[1] == p[1] and q[2] == p[2] then id = j end end
+      if id then
+        local q0, q1 = e.pts[math.max(1, i - 1)], e.pts[math.min(#e.pts, i + 1)]
+        local fx, fz = q1[1] - q0[1], q1[2] - q0[2]
+        local l = math.max(1e-6, math.sqrt(fx * fx + fz * fz))
+        local r = 0
+        for _, o in ipairs(meeting()[id] or {}) do
+          if not mine[o] and o.deck and not o.over then
+            local q = o.pts
+            local o0, o1 = q[1], q[2]
+            if o.b == id then o0, o1 = q[#q], q[#q - 1] end
+            local ox, oz = o1[1] - o0[1], o1[2] - o0[2]
+            local ol = math.max(1e-6, math.sqrt(ox * ox + oz * oz))
+            -- (Across it: over 45 degrees off the deck's way, either way.)
+            if math.abs(fx * ox + fz * oz) / (l * ol) < math.cos(math.rad(45)) then r = math.max(r, o.width / 2 + SIDEWALK + 3) end
+          end
+        end
+        if r > 0 then flats[#flats + 1] = {cum[i], math.min(r, total / 4)} end
+      end
+    end
+  end
+  -- How far along s is with the level stretches taken out, scaled back up
+  -- to the deck's length (so it still runs from 0 to total).
+  local level = 0
+  for _, f in ipairs(flats) do level = level + math.min(f[1] + f[2], total) - math.max(f[1] - f[2], 0) end
+  local function along(s)
+    if level <= 0 or level >= total then return s end
+    local gone = 0
+    for _, f in ipairs(flats) do
+      local f0, f1 = math.max(f[1] - f[2], 0), math.min(f[1] + f[2], total)
+      gone = gone + U.clamp(s - f0, 0, f1 - f0)
+    end
+    return (s - gone) * total / (total - level)
+  end
   local own = e.over and e.prof
   -- Over water the deck clears it by CLEARANCE in its middle half, rising
   -- in a gentle arch from its ends (the terrain's 10 m grid rounds the quays
@@ -992,7 +1043,7 @@ local function deck_height(e)
       local k = math.min(math.floor(u), #hs - 2)
       return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
     end
-    local t = bs / total
+    local t = along(bs) / total
     return ha + (hb - ha) * t + math.max(lift * 4 * t * (1 - t), land * ridge(t))
   end
 end
