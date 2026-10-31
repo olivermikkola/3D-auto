@@ -213,6 +213,7 @@ if os.getenv("WATER_TEST") then require "test.water_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
 if os.getenv("RACER_TEST") then require "test.racer_probe" end
+if os.getenv("TUNNEL_TEST") then require "test.tunnel_probe" end
 if os.getenv("HELI_TEST") then require "test.heli_probe" end
 if os.getenv("CARKINDS_TEST") then require "test.carkinds_probe" end
 if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
