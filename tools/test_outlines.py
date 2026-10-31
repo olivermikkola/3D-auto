@@ -30,10 +30,26 @@ class OutlineTests(unittest.TestCase):
     def test_an_l_is_an_outline(self):
         out = osm_import.outlines_of([building({}, *L)], P, inside)
         self.assertEqual(len(out), 1)
-        h, kind, wall, pts, roof, year = out[0]
-        self.assertEqual((kind, wall, roof, year), ("flats", None, None, None))
+        h, kind, wall, pts, roof, year, span = out[0]
+        self.assertEqual((kind, wall, roof, year, span), ("flats", None, None, None, False))
         self.assertEqual(len(pts), 6)
         self.assertAlmostEqual(osm_import.area(pts), 40 * 12 + 12 * 28, delta=5)
+
+    def test_a_building_a_level_up_over_a_road_is_on_a_deck(self):
+        # (Like Tyks' Majakkasairaala over Helsinginkatu: layer=1 and a road under it.)
+        under = lambda poly: True
+        self.assertTrue(osm_import.outlines_of([building({"layer": "1"}, *L)], P, inside, over_road=under)[0][6])
+        self.assertFalse(osm_import.outlines_of([building({}, *L)], P, inside, over_road=under)[0][6])
+        self.assertFalse(osm_import.outlines_of([building({"layer": "1"}, *L)], P, inside, over_road=lambda p: False)[0][6])
+        self.assertFalse(osm_import.raised({"layer": "1", "location": "underground"}))
+        self.assertFalse(osm_import.raised({"layer": "x"}))
+
+    def test_road_under_measures_the_centreline_inside(self):
+        square = [(0, 0), (20, 0), (20, 20), (0, 20)]
+        grid = osm_import.Grid(50)
+        edge = {"pts": [(-10, 10), (30, 10)], "width": 7}
+        grid.add((edge, (-10, 10), (30, 10)), (-10, 10), (30, 10))
+        self.assertAlmostEqual(osm_import.road_under(square, grid), 20, delta=1)
 
     def test_the_photo_colours_the_roof_over_a_tag(self):
         photo = lambda pts: (0.4, 0.3, 0.2)
