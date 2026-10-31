@@ -1465,7 +1465,24 @@ end
 -- profiles in pieces of PIECE m or less, {ax, az, ay, bx, bz, by, half width,
 -- edge, asphalt half width, side 1 a kerb up?, side 2?}, level across out
 -- past their pavements. Bridge decks are solid already.
-local function road_surface()
+-- A railway's height s metres along it, from the importer's profile (the
+-- laser-scanned ground along the track, smoothed: a railway climbs gently),
+-- and its length; nil for a track without one.
+local RAIL_HALF = 6 -- metres either side of a track the ground is its own: the bed and its shoulders
+local function rail_profile(r)
+  local hs = r.heights
+  if not hs or #hs < 2 or #r < 4 then return nil end
+  local total = 0
+  for k = 4, #r do total = total + math.sqrt((r[k][1] - r[k - 1][1]) ^ 2 + (r[k][2] - r[k - 1][2]) ^ 2) end
+  local step = math.max(total, 1e-3) / (#hs - 1)
+  return function(s)
+    local u = math.max(0, s / step)
+    local k = math.min(math.floor(u), #hs - 2)
+    return hs[k + 1] + (hs[k + 2] - hs[k + 1]) * math.min(u - k, 1)
+  end, total
+end
+
+local function road_surface(map)
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
     if e.prof and not e.deck and not e.over then
@@ -1483,6 +1500,32 @@ local function road_surface()
         local seg = {pc[1], pc[2], h(s), pc[3], pc[4], h(s + len), e.width / 2 + math.max(r1, r2), ei, e.width / 2,
                      up1 and 1 or 0, up2 and 1 or 0}
         table.move(seg, 1, 11, #out + 1, out)
+        s = s + len
+      end
+    end
+  end
+  -- The railways: on a track the ground is its profile, not the 10 m grid's
+  -- creases (it rode over every one), down to it in a cutting; the bed is
+  -- drawn on it, with its embankment's sides (see the railways below). Not
+  -- across a road: a level crossing is the road's.
+  local base = #(NET and NET.edges or {})
+  for ri, r in ipairs(map and map.railways or {}) do
+    local h = rail_profile(r)
+    if h then
+      local s = 0
+      for k = 4, #r do
+        local a, b = r[k - 1], r[k]
+        local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+        local n = math.max(1, math.ceil(len / 6))
+        for m = 1, n do
+          local f0, f1 = (m - 1) / n, m / n
+          local ax, az = a[1] + (b[1] - a[1]) * f0, a[2] + (b[2] - a[2]) * f0
+          local bx, bz = a[1] + (b[1] - a[1]) * f1, a[2] + (b[2] - a[2]) * f1
+          if not (R.on_carriageway(ax, az, 1) or R.on_carriageway(bx, bz, 1)) then
+            local seg = {ax, az, h(s + len * f0), bx, bz, h(s + len * f1), RAIL_HALF, base + ri, 0, 0, 0}
+            table.move(seg, 1, 11, #out + 1, out)
+          end
+        end
         s = s + len
       end
     end
@@ -1511,7 +1554,7 @@ function R.build(map, kit)
   for _, c in ipairs(t.aerial or {}) do palette[#palette + 1] = c end
   classify(map)
   engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
-                 roads = road_surface(), kerb = KERB}
+                 roads = road_surface(map), kerb = KERB}
   GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
   local spawn = engine.spawn
   engine.spawn = function(e)
@@ -1530,7 +1573,8 @@ end
 function R.ground(x, z) return GROUND and GROUND(x, z) or 0 end
 
 -- The buildings drawn as their map outlines (they collide through boxes
--- inside them): {pts = {{x, z}...}, base, h, kind}.
+-- inside them): {pts = {{x, z}...}, base, h, kind, deck}; deck is the
+-- underside's height for one up on a deck over a road, else nil.
 function R.footprints() return FOOTPRINTS end
 
 build = function(map, kit)
@@ -2490,7 +2534,22 @@ build = function(map, kit)
       end
       for _, run in ipairs(runs) do
         local parts = {}
-        strip(parts, run, 3.2, 0.25, BALLAST)
+        if r.heights and GROUND then
+          -- The bed on the track's own ground (its profile, laid into the
+          -- terrain), its sides going down to the grid beside it at 2:3:
+          -- an embankment where the track runs above the ground.
+          local line, drops, x0, z0 = {}, {}, run[1][1], run[1][2]
+          for _, p in ipairs(run) do
+            local y = GROUND(p[1], p[2]) + 0.25
+            local out = RAIL_HALF + 2.5
+            local low = math.min(GROUND(p[1] + p[3] * out, p[2] + p[4] * out), GROUND(p[1] - p[3] * out, p[2] - p[4] * out))
+            line[#line + 1], line[#line + 2], line[#line + 3] = p[1] - x0, y, p[2] - z0
+            drops[#drops + 1] = math.max(0.3, math.min(12, y - low + 0.3))
+          end
+          parts[#parts + 1] = {ribbon = line, width = 3.2, drops = drops, slope = 1.5, pos = {x0, 0, z0}, color = BALLAST, abs = true}
+        else
+          strip(parts, run, 3.2, 0.25, BALLAST)
+        end
         -- The rails as flat strips on the bed: only their tops show, and a
         -- yard has a lot of them (a box each was 50 MB in Turku). On the
         -- bed's heights, taken on the track's middle line.
@@ -3067,8 +3126,9 @@ build = function(map, kit)
       x0, z0, x1, z1 = math.min(x0, p[1]), math.min(z0, p[2]), math.max(x1, p[1]), math.max(z1, p[2])
       clear = clear and not R.on_carriageway(p[1], p[2], 0.5)
     end
-    if clear then
-      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+    if clear or o.span then
+      OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1,
+                 span = o.span}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -3107,8 +3167,83 @@ build = function(map, kit)
   -- with the same height, kind and turn, and so do a block's stairwells
   -- mapped one by one: one building, so one colour and one style (not a
   -- stripe of each). `i` below counts buildings.
+  -- Buildings on a deck over a road, a tunnel or the railway (the importer's
+  -- `span`: mapped a level up, a road under them), as Tyks' Majakkasairaala
+  -- is over Helsinginkatu's tunnel and the line to Helsinki. The boxes over
+  -- the road stand on the deck, high enough to clear it; the rest stand on
+  -- the ground and are the deck's podium. deck_over(x, z): the underside
+  -- the building needs there, or nil if nothing runs under it.
+  local SPAN_TUNNEL = ROOF_CLEAR + 0.3 + ROOF_SLAB[2] -- over a covered road: on its roof
+  local rails_near = {}
+  for _, r in ipairs(map.railways or {}) do
+    for k = 4, #r do rails_near[#rails_near + 1] = {r[k - 1], r[k]} end
+  end
+  local function deck_over(x, z, rails)
+    local need
+    local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
+    for i = ci - 1, ci + 1 do
+      for j = cj - 1, cj + 1 do
+        for _, it in ipairs(NET.grid[cell_key(i, j)] or {}) do
+          local e = NET.edges[it[1]]
+          local a, b = e.pts[it[2] - 1], e.pts[it[2]]
+          local dd, cx, cz = dist_seg(x, z, a[1], a[2], b[1], b[2])
+          if dd < e.width / 2 + 1 then
+            local y = (e.height or GROUND)(cx, cz) + (e.tunnel and SPAN_TUNNEL or ROAD_ROOM + 0.4)
+            need = math.max(need or y, y)
+          end
+        end
+      end
+    end
+    for _, sg in ipairs(rails or {}) do
+      local a, b = sg[1], sg[2]
+      if dist_seg(x, z, a[1], a[2], b[1], b[2]) < 3 then
+        local y = GROUND(x, z) + RAIL_ROOM + 0.4
+        need = math.max(need or y, y)
+      end
+    end
+    return need
+  end
+  -- Each span box: whether it's over a road, and its building's deck (the
+  -- highest any of its boxes needs: one level floor).
+  local SPAN = {}
+  if GROUND then
+    local group, last_f = nil, nil
+    for fi, f in ipairs(map.footprints or {}) do
+      if f.span then
+        local x, z, w, d, yaw = f[1], f[2], f[3], f[4], f[5]
+        if not (group and last_f[6] == f[6] and last_f[7] == f[7] and math.abs(last_f[5] - yaw) < 0.02
+                and (last_f[1] - x) ^ 2 + (last_f[2] - z) ^ 2 < (math.max(last_f[3], last_f[4], w, d) + 2) ^ 2) then
+          group = {}
+        end
+        last_f = f
+        local fx, fz = math.cos(yaw), -math.sin(yaw)
+        local r = math.sqrt(w * w + d * d) / 2 + 4
+        local rails = {}
+        for _, sg in ipairs(rails_near) do
+          local a, b = sg[1], sg[2]
+          if math.max(a[1], b[1]) > x - r and math.min(a[1], b[1]) < x + r and math.max(a[2], b[2]) > z - r and math.min(a[2], b[2]) < z + r then
+            rails[#rails + 1] = sg
+          end
+        end
+        local need
+        local nu, nv = math.max(2, math.ceil(w / 3)), math.max(2, math.ceil(d / 3))
+        for a = 0, nu do
+          for b = 0, nv do
+            local u, v = (a / nu - 0.5) * (w - 1), (b / nv - 0.5) * (d - 1)
+            local y = deck_over(x + fx * u - fz * v, z + fz * u + fx * v, rails)
+            if y then need = math.max(need or y, y) end
+          end
+        end
+        SPAN[fi] = {over = need ~= nil, group = group}
+        if need then group.deck = math.max(group.deck or need, need) end
+      else
+        group = nil
+      end
+    end
+  end
+  local spanned = 0
   local bi, last = 0, nil
-  for _, f in ipairs(map.footprints or {}) do
+  for fi, f in ipairs(map.footprints or {}) do
     local x, z, w, d, yaw, h, kind = f[1], f[2], f[3], f[4], f[5], f[6], f[7]
     if not (last and last[6] == h and last[7] == kind and math.abs(last[5] - yaw) < 0.02
             and (last[1] - x) ^ 2 + (last[2] - z) ^ 2 < (math.max(last[3], last[4], w, d) + 2) ^ 2) then
@@ -3134,7 +3269,40 @@ build = function(map, kit)
     local rp = (kind == "shop" or kind == "works") and roof_parked(x, z)
     local look = ok and look_of(x, z)
     local outline = ok and not look and not rp and kind ~= "round" and kind ~= "church" and outline_of(x, z, h)
-    if outline then
+    local sp = SPAN[fi]
+    if sp and sp.group.deck and ok then
+      local top = (BASE or 0) + h
+      local deck = math.min(sp.group.deck, top - 3)
+      local o = sp.group.o or outline
+      if not o then -- a building the map gives as one box: drawn as its outline
+        local c, x0, z0, x1, z1 = {}, math.huge, math.huge, -math.huge, -math.huge
+        for _, k in ipairs{{1, 1}, {1, -1}, {-1, -1}, {-1, 1}} do
+          local px, pz = x + fx * k[1] * w / 2 - fz * k[2] * d / 2, z + fz * k[1] * w / 2 + fx * k[2] * d / 2
+          c[#c + 1] = {px, pz}
+          x0, z0, x1, z1 = math.min(x0, px), math.min(z0, pz), math.max(x1, px), math.max(z1, pz)
+        end
+        o = {h = h, kind = (kind == "works" or kind == "shop" or kind == "flats") and kind or "civic", roof = f[9] or nil,
+             year = f[10] or nil, pts = c, x0 = x0, z0 = z0, x1 = x1, z1 = z1}
+        OUT[#(map.outlines or {}) + fi] = o
+      end
+      sp.group.o = o
+      o.placed, o.i, o.span = true, o.i or i, true
+      o.top, o.deck = math.max(o.top or top, top), deck
+      if sp.over then -- up on the deck: the road passes under
+        kit.static{pos = {x, (deck + top) / 2, z}, yaw = yaw, size = {w, top - deck, d}, visible = false, tag = "building", abs = true}
+      else -- on the ground: the podium the deck rests on
+        kit.static{pos = {x, ((BASE or 0) + top) / 2, z}, yaw = yaw, size = {w, top - (BASE or 0), d}, visible = false,
+                   tag = "building", abs = true}
+        o.podium = o.podium or {}
+        local c = {}
+        for _, k in ipairs{{1, 1}, {1, -1}, {-1, -1}, {-1, 1}} do
+          c[#c + 1] = {x + fx * k[1] * w / 2 - fz * k[2] * d / 2, z + fz * k[1] * w / 2 + fx * k[2] * d / 2}
+        end
+        o.podium[#o.podium + 1] = {pts = c, base = BASE or 0}
+      end
+      for _, c in ipairs(circles) do add_circle(H, c[1], c[2], c[3], true) end
+      count, spanned = count + 1, spanned + 1
+    elseif outline then
       kit.static{pos = {x, h / 2, z}, yaw = yaw, size = {w, h, d}, visible = false, tag = "building"}
       outline.placed, outline.i = true, outline.i or i
       outline.base = math.min(outline.base or math.huge, BASE or 0)
@@ -3286,6 +3454,37 @@ build = function(map, kit)
     end
   end
   BASE = nil
+  -- A building on a deck: its walls from the deck up, a floor under it,
+  -- and pillars down to the ground where nothing runs under it and no
+  -- podium stands.
+  local pillars = 0
+  for _, o in pairs(OUT) do
+    if o.placed and o.deck then
+      o.base, o.h, o.floor = o.deck, o.top - o.deck, true
+      local n = #o.pts
+      for k = 1, n do
+        local a, b = o.pts[k], o.pts[k % n + 1]
+        local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+        for m = 0, math.floor(len / 12) do
+          local t = (m + 0.5) / (math.floor(len / 12) + 1)
+          local px, pz = a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+          -- (A metre in from the wall.)
+          local cx, cz = (o.x0 + o.x1) / 2 - px, (o.z0 + o.z1) / 2 - pz
+          local cl = math.max(math.sqrt(cx * cx + cz * cz), 1e-3)
+          px, pz = px + cx / cl, pz + cz / cl
+          local g = GROUND(px, pz)
+          local on_podium = false
+          for _, pd in ipairs(o.podium or {}) do on_podium = on_podium or inside_poly(pd.pts, px, pz) end
+          if not on_podium and g < o.deck - 1.5 and not deck_over(px, pz, rails_near) and not R.on_carriageway(px, pz, 1.5) then
+            kit.static{mesh = "cube", pos = {px, (g + o.deck) / 2, pz}, size = {1, o.deck - g + 0.3, 1}, color = {0.62, 0.62, 0.6},
+                       tag = "wall", abs = true}
+            pillars = pillars + 1
+          end
+        end
+      end
+    end
+  end
+  if spanned > 0 then print(string.format("on decks over roads: %d boxes, %d pillars", spanned, pillars)) end
   -- The outlines whose boxes stood: walls in the building's colour, a
   -- band of windows on every wall each floor (some lit at night), a dark
   -- flat roof. Baked a chunk at a time; they collide through their boxes.
@@ -3358,7 +3557,12 @@ build = function(map, kit)
       end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
-      add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade})
+      add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade, floor = o.floor})
+      for _, pd in ipairs(o.podium or {}) do -- the part on the ground, up to the deck
+        local pf = {}
+        for _, p in ipairs(pd.pts) do pf[#pf + 1] = p[1] - cx; pf[#pf + 1] = p[2] - cz end
+        add(cx, cz, {outline = pf, height = base - pd.base, pos = {cx, pd.base, cz}, color = color, abs = true, facade = facade})
+      end
       add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
       local floors = (o.kind == "works" or facade) and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
@@ -3405,7 +3609,7 @@ build = function(map, kit)
   local wall_chunks = {}
   for _, oi in ipairs(placed) do
     local o = OUT[oi]
-    FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind}
+    FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind, deck = o.deck}
     building_walls(o, nothing)
     local k = math.floor((o.x0 + o.x1) / 2 / CHUNK) .. "," .. math.floor((o.z0 + o.z1) / 2 / CHUNK)
     wall_chunks[k] = wall_chunks[k] or {}

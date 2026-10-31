@@ -583,12 +583,14 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         for p in parts.sequence_values::<Table>() {
             let p = p?;
             // A footprint pushed up: outline = {x, z, x, z, ...} (part-local),
-            // walls from 0 to `height` and a flat roof.
+            // walls from 0 to `height` and a flat roof (and a floor with
+            // floor = true: a building on a deck is seen from below).
             if let Some(outline) = p.get::<Option<Vec<f32>>>("outline")? {
                 let pts: Vec<(f32, f32)> = outline.as_chunks::<2>().0.iter().map(|&[x, z]| (x, z)).collect();
                 let c = color(&p.get("color")?)?;
                 let h = p.get::<Option<f32>>("height")?.unwrap_or(1.0);
-                let src = mesh::prism(&pts, 0.0, h, Vec3::ONE);
+                let floor = p.get::<Option<bool>>("floor")?.unwrap_or(false);
+                let src = mesh::prism(&pts, 0.0, h, Vec3::ONE, floor);
                 let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
                 let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
                 let from = out.verts.len();
@@ -599,14 +601,20 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 continue;
             }
             // A strip along a line: ribbon = {x, y, z, ...} (part-local), `width`
-            // wide, with a skirt `depth` deep (default 0.3) down each side;
-            // `ground` as for other parts.
+            // wide, with a skirt `depth` deep (default 0.3) down each side, or
+            // `drops` = {depth at each point} going out `slope` m a metre down
+            // (an embankment); `ground` as for other parts.
             if let Some(line) = p.get::<Option<Vec<f32>>>("ribbon")? {
                 let pts: Vec<Vec3> = line.as_chunks::<3>().0.iter().map(|&[x, y, z]| v3(x, y, z)).collect();
                 let c = color(&p.get("color")?)?;
                 let width: f32 = p.get("width")?;
                 let depth = p.get::<Option<f32>>("depth")?.unwrap_or(0.3);
-                let src = mesh::ribbon(&pts, width, depth, Vec3::ONE);
+                let drops = p.get::<Option<Vec<f32>>>("drops")?;
+                let slope = p.get::<Option<f32>>("slope")?.unwrap_or(0.0);
+                let src = match &drops {
+                    Some(d) => mesh::ribbon_sloped(&pts, width, &|i| d.get(i).copied().unwrap_or(depth), slope, Vec3::ONE),
+                    None => mesh::ribbon(&pts, width, depth, Vec3::ONE),
+                };
                 let from = out.verts.len();
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (0.0, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), 0.0);
                 if let Some(id) = ground_id(&p)? {
