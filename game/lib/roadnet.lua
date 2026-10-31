@@ -1481,6 +1481,22 @@ local function rail_profile(r)
   end, total
 end
 
+-- A river quay's points from the map ({level, x, z, top, width, ...}, the
+-- land on the right): {x, z, top, width, rx, rz}, (rx, rz) the way to the
+-- land; and the water's level beside it.
+local QUAY_WALL, QUAY_OUT = 1.6, 1.1 -- the wall's coping: how wide, how far out over the water from its edge
+local function quay_points(q)
+  local pts = {}
+  for k = 2, #q - 3, 4 do pts[#pts + 1] = {q[k], q[k + 1], q[k + 2], q[k + 3]} end
+  for i, p in ipairs(pts) do
+    local a, b = pts[math.max(1, i - 1)], pts[math.min(#pts, i + 1)]
+    local dx, dz = b[1] - a[1], b[2] - a[2]
+    local l = math.max(1e-6, math.sqrt(dx * dx + dz * dz))
+    p[5], p[6] = dz / l, -dx / l
+  end
+  return pts, q[1]
+end
+
 local function road_surface(map)
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
@@ -1527,6 +1543,20 @@ local function road_surface(map)
         end
         s = s + len
       end
+    end
+  end
+  -- The quays: level from the wall's edge out to the pavement behind,
+  -- not the grid's slope down into the river.
+  base = base + #(map and map.railways or {})
+  for qi, q in ipairs(map and map.quays or {}) do
+    local pts = quay_points(q)
+    for i = 2, #pts do
+      local a, b = pts[i - 1], pts[i]
+      local w = math.min(a[4], b[4])
+      local c = (QUAY_WALL - 2 * QUAY_OUT + w) / 2 -- the middle of wall and quay, from the edge
+      local seg = {a[1] + a[5] * c, a[2] + a[6] * c, a[3], b[1] + b[5] * c, b[2] + b[6] * c, b[3], (QUAY_WALL + w) / 2,
+                   base + qi, 0, 0, 0}
+      table.move(seg, 1, 11, #out + 1, out)
     end
   end
   return out
@@ -2586,6 +2616,38 @@ build = function(map, kit)
       kit.static{mesh = "cube", pos = {x, g + 0.3, z}, yaw = pf[5], size = {pf[3], 0.6, pf[4]}, color = {0.6, 0.6, 0.58},
                  tag = "sidewalk", abs = true}
     end
+  end
+
+  -- The river's stone quays (Turku: the Aurajoki from its mouth up to
+  -- Tuomiokirkkosilta): a granite wall from under the water up to the bank,
+  -- and level paving behind it out to the street's pavement, over the 10 m
+  -- grid, which sloped from the street down into the water (a car ran down
+  -- it and couldn't get back out). The ground there is the quay's own
+  -- (road_surface). In pieces of 16 points, for the chunks.
+  if map.quays and GROUND then
+    local ch, GRANITE, PAVING = chunked(), {0.6, 0.58, 0.55}, {0.6, 0.58, 0.54}
+    local n = 0
+    for _, q in ipairs(map.quays) do
+      local pts, level = quay_points(q)
+      for i0 = 1, #pts - 1, 16 do
+        local wall, wdrops, quay, widths, qdrops = {}, {}, {}, {}, {}
+        local x0, z0 = pts[i0][1], pts[i0][2]
+        for i = i0, math.min(#pts, i0 + 16) do
+          local p = pts[i]
+          local c = QUAY_WALL / 2 - QUAY_OUT
+          table.move({p[1] + p[5] * c - x0, p[3] + 0.03, p[2] + p[6] * c - z0}, 1, 3, #wall + 1, wall)
+          wdrops[#wdrops + 1] = p[3] + 0.03 - (level - 1.6)
+          c = QUAY_WALL - QUAY_OUT + p[4] / 2
+          table.move({p[1] + p[5] * c - x0, p[3], p[2] + p[6] * c - z0}, 1, 3, #quay + 1, quay)
+          widths[#widths + 1], qdrops[#qdrops + 1] = p[4], math.max(0.5, p[3] - level)
+        end
+        ch.add(x0, z0, {ribbon = wall, width = QUAY_WALL, drops = wdrops, pos = {x0, 0, z0}, color = GRANITE, abs = true})
+        ch.add(x0, z0, {ribbon = quay, widths = widths, drops = qdrops, pos = {x0, 0, z0}, color = PAVING, abs = true})
+      end
+      n = n + #pts
+    end
+    ch.bake("quay", "cover")
+    print(string.format("quays: %.1f km of stone wall along the river", n * 4 / 1000))
   end
 
   -- Outdoor swimming pools: blue water a little below a concrete rim.

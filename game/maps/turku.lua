@@ -43,6 +43,7 @@ return {
   footbridges = osm.footbridges,
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,
+  quays = osm.quays, -- the Aurajoki's stone quays
   outlines = filtered_outlines,
   photo_trees = osm.photo_trees, -- street and yard trees seen in the aerial photo
   zebras = osm.zebras, -- painted crossings, x, z, ...

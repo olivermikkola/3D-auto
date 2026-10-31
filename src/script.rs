@@ -601,19 +601,26 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 continue;
             }
             // A strip along a line: ribbon = {x, y, z, ...} (part-local), `width`
-            // wide, with a skirt `depth` deep (default 0.3) down each side, or
+            // wide (or `widths` = {width at each point}), with a skirt `depth` deep (default 0.3) down each side, or
             // `drops` = {depth at each point} going out `slope` m a metre down
             // (an embankment); `ground` as for other parts.
             if let Some(line) = p.get::<Option<Vec<f32>>>("ribbon")? {
                 let pts: Vec<Vec3> = line.as_chunks::<3>().0.iter().map(|&[x, y, z]| v3(x, y, z)).collect();
                 let c = color(&p.get("color")?)?;
-                let width: f32 = p.get("width")?;
+                let width = p.get::<Option<f32>>("width")?.unwrap_or(1.0);
                 let depth = p.get::<Option<f32>>("depth")?.unwrap_or(0.3);
                 let drops = p.get::<Option<Vec<f32>>>("drops")?;
+                let widths = p.get::<Option<Vec<f32>>>("widths")?;
                 let slope = p.get::<Option<f32>>("slope")?.unwrap_or(0.0);
-                let src = match &drops {
-                    Some(d) => mesh::ribbon_sloped(&pts, width, &|i| d.get(i).copied().unwrap_or(depth), slope, Vec3::ONE),
-                    None => mesh::ribbon(&pts, width, depth, Vec3::ONE),
+                let src = match (&drops, &widths) {
+                    (None, None) => mesh::ribbon(&pts, width, depth, Vec3::ONE),
+                    _ => mesh::ribbon_sloped(
+                        &pts,
+                        &|i| widths.as_ref().and_then(|w| w.get(i).copied()).unwrap_or(width),
+                        &|i| drops.as_ref().and_then(|d| d.get(i).copied()).unwrap_or(depth),
+                        slope,
+                        Vec3::ONE,
+                    ),
                 };
                 let from = out.verts.len();
                 out.append_tilted(&src, vec3(&p.get("pos")?, Vec3::ZERO)?, (0.0, 0.0, 0.0), Vec3::ONE, v3(c[0], c[1], c[2]), 0.0);

@@ -55,6 +55,9 @@ AREAS = {
         "aerial": "turku",
         # Building heights and ages from the city model (tools/citymodel.py).
         "citymodel": "turku",
+        # The Aurajoki's stone quays, from its mouth up to Tuomiokirkkosilta
+        # (past it the banks are grass down to the water), in game metres.
+        "quays": {"x": (-2400, 340), "z": (-130, 2300)},
         "coverage_kind": "regional_first_slice",
         "terrain_source": {
             "dataset": "MML Elevation model 2 m",
@@ -706,6 +709,105 @@ def outline_lines(outlines, f):
         L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L
+
+
+QUAY_STEP = 4.0   # m between a quay's points
+QUAY_MIN = 0.8    # m a bank stands over the water to get a wall
+QUAY_WIDE = 10.0  # m of level quay behind the wall at most: the terrain grid's cell
+QUAY_GAP = 2.5    # m kept clear past a road's edge (its pavement)
+
+
+def quays(rings_xz, ground, wet, roads=None, inside=lambda x, z: True):
+    """The river's walled banks, where the bank stands QUAY_MIN or more over
+    the water: runs of (x, z, top, width) every QUAY_STEP along the water's
+    edge, the land on the right going along (right of (dx, dz) being
+    (dz, -dx)); `top` the bank's height a few metres in, or by a street its
+    pavement's, `width` the level quay there is behind the wall before the
+    street. Each run with the water's level beside it (its lowest).
+    `wet(x, z)`: on the water; `roads.near(x0, z0, x1, z1)`: graded
+    streets' pieces, (edge, a, b, height at a, height at b).""" 
+    out = []
+    for ring in rings_xz:
+        if len(ring) < 3: continue
+        pts = []
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            L_ = math.hypot(b[0] - a[0], b[1] - a[1])
+            n = max(1, math.ceil(L_ / QUAY_STEP))
+            pts += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n)]
+        if len(pts) < 3: continue
+        def right(i):
+            (ax, az), (bx, bz) = pts[i - 1], pts[(i + 1) % len(pts)]
+            L_ = math.hypot(bx - ax, bz - az) or 1.0
+            return (bz - az) / L_, -(bx - ax) / L_
+        # Land on the right: the right side of most points is off the water.
+        dry = sum(1 for i, p in enumerate(pts) if not wet(p[0] + right(i)[0] * 3, p[1] + right(i)[1] * 3))
+        if dry < len(pts) / 2: pts.reverse()
+        cur, levels = [], []
+        def close():
+            if len(cur) >= 3:
+                # The top smoothed along the bank (a quay's coping is level-ish).
+                tops = [c[2] for c in cur]
+                sm = [sorted(tops[max(0, k - 2):k + 3])[len(tops[max(0, k - 2):k + 3]) // 2] for k in range(len(tops))]
+                out.append((min(levels), [(x, z, round(t, 2), w) for (x, z, _, w), t in zip(cur, sm)]))
+            cur.clear(); levels.clear()
+        for i, (x, z) in enumerate(pts):
+            rx, rz = right(i)
+            land = [(x + rx * d, z + rz * d) for d in (3, 5, 7)]
+            if not inside(x, z) or any(wet(*q) for q in land):
+                close(); continue
+            top = sorted(ground(*q) for q in land)[1]
+            level = max(0.0, min(ground(x - rx * d, z - rz * d) for d in (4, 8)))
+            if top - level < QUAY_MIN:
+                close(); continue
+            w, by = QUAY_WIDE, None
+            if roads is not None:
+                for ed, a, b, ya, yb in roads.near(x - 30, z - 30, x + 30, z + 30):
+                    room = seg_dist((x, z), a, b) - ed["width"] / 2 - QUAY_GAP
+                    if room < w:
+                        dx, dz = b[0] - a[0], b[1] - a[1]
+                        t_ = max(0.0, min(1.0, ((x - a[0]) * dx + (z - a[1]) * dz) / ((dx * dx + dz * dz) or 1e-9)))
+                        w, by = room, ya + (yb - ya) * t_
+            if by is not None: top = by + 0.12  # level with the pavement (a kerb up from the street)
+            cur.append((round(x, 1), round(z, 1), top, round(max(0.0, w), 1)))
+            levels.append(level)
+        close()
+    return out
+
+
+def sink_under_quays(hgt, tw, td, x0, z0, step, runs):
+    """The terrain grid's triangles off a quay's wall stay under the water:
+    a triangle from a point on the bank to one in the river rose out of the
+    water in front of the wall (1 in 4 of the quays' points, 2 m out). Its
+    points on the bank (under the quay's paving) come down just enough,
+    not below the river's bed (level - 1.5). Returns how many came down."""
+    def tri(x, z):
+        u, v = (x - x0) / step, (z - z0) / step
+        i, j = int(u), int(v)
+        if not (0 <= i < tw - 1 and 0 <= j < td - 1): return None
+        fx, fz = u - i, v - j
+        if fx + fz <= 1:
+            return [((i, j), 1 - fx - fz), ((i + 1, j), fx), ((i, j + 1), fz)]
+        return [((i + 1, j + 1), fx + fz - 1), ((i, j + 1), 1 - fx), ((i + 1, j), 1 - fz)]
+    sunk = set()
+    for level, pts in runs:
+        for k, (x, z, _, _) in enumerate(pts):
+            (ax, az), (bx, bz) = pts[max(0, k - 1)][:2], pts[min(len(pts) - 1, k + 1)][:2]
+            L_ = math.hypot(bx - ax, bz - az) or 1.0
+            rx, rz = (bz - az) / L_, -(bx - ax) / L_
+            for _ in range(3):
+                for d in (1.2, 2, 3, 4, 5, 6, 7, 8, 9):
+                    t = tri(x - rx * d, z - rz * d)
+                    if not t: continue
+                    h = sum(hgt[j * tw + i] * f for (i, j), f in t)
+                    over = h - (level - 0.05)
+                    if over <= 0: continue
+                    high = [((i, j), f) for (i, j), f in t if hgt[j * tw + i] > level]
+                    share = sum(f for _, f in high)
+                    if share < 1e-3: continue
+                    for (i, j), _ in high:
+                        hgt[j * tw + i] = max(level - 1.5, hgt[j * tw + i] - over / share)
+                        sunk.add((i, j))
+    return len(sunk)
 
 
 def railway_lines(railways, platforms, f, bridges=(), heights=None):
@@ -1491,6 +1593,7 @@ def main():
     terrain = None
     photo_trees = []
     rail_hs = None
+    quay_runs = []
     if elevation is not None or cfg.get("dem"):
         import dem
         Z = elevation or dem.Elevation(cfg["dem"], ROOT / "tools" / "osm_cache" / "dem")
@@ -1592,6 +1695,16 @@ def main():
             if not ed_["deck"]:
                 for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
                     prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
+        # The river's quays: its walled banks (not the sea's shore, nor ponds).
+        river = []
+        for el in els:
+            t = el.get("tags", {})
+            if t.get("water") == "river" or t.get("waterway") == "riverbank":
+                river += [[P(p["lat"], p["lon"]) for p in ring[:-1]] for ring in rings(el)]
+        qb = cfg.get("quays")
+        quay_runs = quays(river, ground, lambda x, z: cover_at(x, z) == water_k, prof_grid,
+                          lambda x, z: inside(x, z, 10) and qb["x"][0] <= x <= qb["x"][1] and qb["z"][0] <= z <= qb["z"][1]) if qb else []
+        print(f"quays: {len(quay_runs)} walled banks, {sum(len(r[1]) for r in quay_runs) * QUAY_STEP / 1000:.1f} km", file=sys.stderr)
         # Water lies flat at its own level (the sea at 0, a reservoir higher):
         # each strip at the ground model's height there, the bed below it.
         levels = []
@@ -1623,6 +1736,9 @@ def main():
                     h = min(h, ground(x, z) - 1.5)
                 hgt.append(max(-327, min(327, h)))
                 cls.append(k)
+        if quay_runs:
+            print(f"quays: {sink_under_quays(hgt, tw, td, X0, Z0, STEP, quay_runs)} ground points sunk under the water off their walls",
+                  file=sys.stderr)
         # The ground takes its colour from the aerial photo: a palette after
         # the classes, each point the nearest colour.
         ground_palette = []
@@ -1717,6 +1833,13 @@ def main():
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f, rail_bridges, rail_hs))
+    if quay_runs:
+        L.append("  -- the river's walled banks: {level, x, z, top, width, ...}, the land on the right")
+        L.append("  -- going along; `top` the quay's height, `width` the level quay behind the wall")
+        L.append("  quays = {")
+        for level, pts in quay_runs:
+            L.append(f"    {{{f(level)}, " + ", ".join(f"{f(x)}, {f(z)}, {f(t)}, {f(w)}" for x, z, t, w in pts) + "},")
+        L.append("  },")
     L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
                                       lambda poly: road_under(poly, road_grid) >= SPAN_MIN), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
