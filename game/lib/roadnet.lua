@@ -13,6 +13,7 @@ local BEND_CLEAR = 30       -- meters either side of a sharp bend kept free of s
 -- the road's edge (tools/osm_import.py ROOF_REACH); the slab is between these
 -- thick, and leaves at least this much headroom over the road, or it isn't built.
 local ROOF_REACH, ROOF_SLAB, ROOF_CLEAR = 16, {0.8, 2.5}, 5
+local GALLERY_SLAB, GALLERY_RISE, ROCK = 1.5, 7, {0.47, 0.45, 0.43} -- a tunnel through a hill's nose: its slab, the rock
 local WIDTH = {highway = 18, main = 13, street = 10}
 local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
@@ -3852,7 +3853,7 @@ build = function(map, kit)
   -- over the cutting, tilted to the ground either side of it, wherever
   -- that leaves the road room underneath. A portal wall stands over each
   -- end, lights run along the slab's underside.
-  local lights, nroof = {}, 0
+  local lights, nroof, ngallery = {}, 0, 0
   -- On any road's asphalt near height y, tunnels' included.
   local function in_lane(x, z, clear, y)
     local ci, cj = math.floor(x / CELL), math.floor(z / CELL)
@@ -3901,9 +3902,31 @@ build = function(map, kit)
         local room = function() return low() - 0.3 - y - ROOF_CLEAR end -- for the slab
         if room() < ROOF_SLAB[1] then l, rt = math.max(l, rt), math.max(l, rt) end
         -- (Not on a steep side slope: there a slab tilted to it stands out of
-        -- the hill like a tent, and the cutting is left open instead.)
+        -- the hill like a tent. There the road goes through the hill's nose,
+        -- as Unioninkatu does at the corner of the old Wärtsilä works: a
+        -- level slab over the road, the hill built back on it as rock up to
+        -- the high side, a wall down the low side.)
         if room() >= ROOF_SLAB[1] and math.abs(l - rt) < 0.4 * 2 * reach then
           pieces[m] = {l, rt, y, math.min(ROOF_SLAB[2], room())}
+        elseif math.abs(l - rt) >= 0.4 * 2 * reach and math.max(l, rt) >= y + ROOF_CLEAR + GALLERY_SLAB + 0.5 then
+          pieces[m] = {l, rt, y, GALLERY_SLAB, gallery = true}
+          ngallery = ngallery + 1
+        end
+      end
+      -- A gallery's rock is one height along it (the lowest of its high
+      -- sides, the hill beyond goes on up), or its pieces step like teeth.
+      local m = 1
+      while m <= n - 1 do
+        if pieces[m] and pieces[m].gallery then
+          local k, hi = m, math.huge
+          while k <= n - 1 and pieces[k] and pieces[k].gallery do
+            hi = math.min(hi, math.max(pieces[k][1], pieces[k][2]))
+            k = k + 1
+          end
+          for q = m, k - 1 do pieces[q].hill = hi end
+          m = k
+        else
+          m = m + 1
         end
       end
       if os.getenv("ROOF_DEBUG") then
@@ -3913,7 +3936,51 @@ build = function(map, kit)
       end
       for m = 1, n - 1 do
         local pc = pieces[m]
-        if pc then
+        if pc and pc.gallery then
+          local s0, s1 = total * (m - 1) / (n - 1), total * m / (n - 1)
+          local x0, z0, yaw = at(s0)
+          local x1, z1 = at(s1)
+          local mx, mz, len = (x0 + x1) / 2, (z0 + z1) / 2, math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
+          yaw = math.atan(x1 - x0, z1 - z0)
+          local rx, rz = math.cos(yaw), -math.sin(yaw)
+          local up = pc[2] > pc[1] and 1 or -1 -- the hill's side: right (1) or left (-1)
+          local hi, y, half = pc.hill, pc[3], (road.width or 10) / 2
+          local ceil = y + ROOF_CLEAR
+          local top = ceil + GALLERY_SLAB
+          -- Across the road from the low side's wall to the hill's reach.
+          local lo_u, hi_u = -up * (half + 1.5), up * reach
+          local cu, wide = (lo_u + hi_u) / 2, math.abs(hi_u - lo_u)
+          local cx, cz = mx + rx * cu, mz + rz * cu
+          kit.static{mesh = "cube", pos = {cx, ceil + GALLERY_SLAB / 2, cz}, yaw = yaw, size = {wide, GALLERY_SLAB, len + 0.6},
+                     color = ROCK, tag = "roof", abs = true}
+          -- The hill's rock on it: nothing at the low side, rising across the
+          -- road towards the hill (a wedge, at most GALLERY_RISE high: the
+          -- hill's own ground goes on up behind it).
+          local rise = math.min(hi + 0.5 - top, GALLERY_RISE)
+          if rise > 0.3 then
+            kit.static{mesh = "wedge", pos = {cx, top + rise / 2, cz}, yaw = yaw + up * math.pi / 2,
+                       size = {len + 0.6, rise, wide}, color = ROCK, tag = "roof", abs = true}
+          end
+          -- Walls either side of the road, down past it.
+          for _, side in ipairs{-1, 1} do
+            local off = side * (half + 1.1)
+            local sx, sz = mx + rx * off, mz + rz * off
+            if not in_lane(sx, sz, 0.6, y) then
+              kit.static{mesh = "cube", pos = {sx, (y - 1 + ceil) / 2, sz}, yaw = yaw, size = {0.8, ceil - y + 1, len + 0.6},
+                         color = ROCK, tag = "wall", abs = true}
+            end
+          end
+          lights[#lights + 1] = {mesh = "cube", pos = {mx, ceil - 0.06, mz}, yaw = yaw, size = {0.4, 0.1, 3},
+                                 color = {1, 0.95, 0.8}, emissive = 1, abs = true}
+          -- A concrete portal over an open end.
+          for _, e in ipairs{{not pieces[m - 1], x0, z0}, {not pieces[m + 1], x1, z1}} do
+            if e[1] then
+              local px, pz = e[2] + rx * cu, e[3] + rz * cu
+              kit.static{mesh = "cube", pos = {px, ceil - 0.25 + (GALLERY_SLAB + 0.5) / 2, pz}, yaw = yaw,
+                         size = {wide + 0.4, GALLERY_SLAB + 0.5, 0.8}, color = {0.62, 0.62, 0.6}, tag = "wall", abs = true}
+            end
+          end
+        elseif pc then
           nroof = nroof + 1
           local s0, s1 = total * (m - 1) / (n - 1), total * m / (n - 1)
           local x0, z0 = at(s0)
@@ -3971,7 +4038,7 @@ build = function(map, kit)
     end
   end
   if #lights > 0 then bake("tunnel_lights", lights, 0, "roof") end
-  L.roofs = nroof
+  L.roofs, L.galleries = nroof, ngallery
 
   return L
 end
