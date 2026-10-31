@@ -205,7 +205,19 @@ function net.rejoin(p, x, z)
   p.wp = p.dir > 0 and i or i - 1
   p.hand = (side > 0) == (p.dir > 0) and -1 or 1
   clear_side(p)
-  set_target(p, net.point(p, p.wp))
+  -- Straight over to the nearest spot of that pavement, then on along it
+  -- (not straight to the bend ahead, maybe 100 m off, down the road).
+  local ax, az = net.point(p, p.wp - p.dir)
+  local bx, bz = net.point(p, p.wp)
+  local dx, dz = bx - ax, bz - az
+  local t = math.max(0, math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz + 1e-6)))
+  p.tx, p.tz = x, z
+  if t < 1 then
+    p.wp = p.wp - p.dir -- (next_leg then carries on to the bend ahead)
+    set_target(p, ax + dx * t, az + dz * t)
+  else
+    set_target(p, bx, bz)
+  end
 end
 
 function net.turn(p)
@@ -266,6 +278,10 @@ function Ped.add(p, x, z)
                           body = "dynamic", mass = 70, friction = 0, step = 0.45, lock_rotation = true, tag = "ped"}
   H.set(id, 30)
   p.id, p.speed, p.state, p.stuck = id, WALK * (0.8 + math.random() * 0.4), "walk", 0
+  -- The leg starts where they stand (on it), so from the first step there's
+  -- a line to keep to: without one, passing to the right had no limit, and
+  -- a newcomer behind slower walkers stepped right out onto the road.
+  p.tx, p.tz = x, z
   set_target(p, net.point(p, p.wp))
   Ped.peds[id] = p
   return id
@@ -295,6 +311,7 @@ local function spawn_ped(near_x, near_z, min_d, max_d)
       H.set(id, 30)
       local p = {id = id, i = i, j = j, k = n, dir = 1, speed = WALK * (0.8 + math.random() * 0.4), state = "walk", stuck = 0}
       if math.random() < 0.5 then p.dir, p.k = -1, k end
+      p.tx, p.tz = x, z -- (the leg starts here: see Ped.add)
       set_target(p, corner(i, j, p.k))
       Ped.peds[id] = p
       return id
@@ -489,8 +506,8 @@ local function walk(id, p, dt)
         p.i, p.j = block_of(x, z)
         p.k = nearest_corner(p, x, z)
         set_target(p, corner(p.i, p.j, p.k))
+        p.sx = nil -- ran off the line: no leg to keep to until the next target
       end
-      p.sx = nil -- ran off the line: no leg to keep to until the next target
       return
     end
     mx, mz, speed = p.fx, p.fz, RUN
@@ -519,7 +536,7 @@ local function walk(id, p, dt)
       along = (x - p.sx) * lx + (z - p.sz) * lz
     end
     if speed > 0 and someone_ahead(id, x, z, mx, mz) then
-      if d < PASS then
+      if p.sx and d < PASS then -- (no line, just back from running away: wait)
         local c, s = math.cos(0.6), math.sin(0.6)
         mx, mz = mx * c - mz * s, mx * s + mz * c
       else

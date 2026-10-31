@@ -31,8 +31,10 @@ local co = coroutine.create(function()
   print(string.format("PED_ROAD: %d looks, on a carriageway %d crossing, %d running from something, %d otherwise (%.1f%%)",
     n.all, n.crossing, n.flee, n.stray, 100 * n.stray / math.max(1, n.all)))
   if n.all < 2000 then error("PED_ROAD: too few pedestrians to tell", 0) end
-  -- It was 8% when the way round a junction went through its middle.
-  if n.stray > 0.04 * n.all then error("PED_ROAD: too many out on the road", 0) end
+  -- It was 8% when the way round a junction went through its middle, and
+  -- 2-4% while newcomers passed to the right with no line to keep to and
+  -- runners went back to the pavement straight down the road (now 0.2-0.5%).
+  if n.stray > 0.015 * n.all then error("PED_ROAD: too many out on the road", 0) end
   print("PED_ROAD_OK")
   engine.quit()
 end)
