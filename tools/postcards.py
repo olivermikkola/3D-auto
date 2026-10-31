@@ -45,6 +45,8 @@ SPOTS = {
                      about="Up the Aurajoki towards Kirjastosilta"),
     "aurajoki_night": dict(eye=(-250, 7, 466), look=(114, 0, 226), fov=65, hour=22,
                            about="The same river at night"),
+    "wartsila_tunnel": dict(eye=(-1735, 1.7, 1790), look=(-1705, 6, 1860), fov=70, hour=14, street=True,
+                            about="Unioninkatu's tunnel at the corner of the old Wärtsilä works"),
     "kauppatori": dict(eye=(-250, 1.7, -80), look=(-100, 1.7, 30), fov=70, hour=12, street=True,
                        about="A street along Kauppatori"),
     "kakolanmaki": dict(eye=(-1150, 45, 690), look=(-1470, 15, 940), fov=60, hour=14,
