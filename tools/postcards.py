@@ -63,6 +63,8 @@ SPOTS = {
                                 about="The line to Helsinki past Ylioppilaskylä"),
     "tyks": dict(eye=(1180, 60, 40), look=(1360, 10, -130), fov=60, hour=14,
                  about="Tyks: T-sairaala and Majakkasairaala over Helsinginkatu"),
+    "aurajoki_quay": dict(eye=(-500, 4.8, 559), look=(-444, 3.1, 537), fov=70, hour=13,
+                          about="Along the stone quay below Myllysilta"),
 }
 SIZE = (960, 540)
 

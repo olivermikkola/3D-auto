@@ -1482,6 +1482,22 @@ local function rail_profile(r)
   end, total
 end
 
+-- A river quay's points from the map ({level, x, z, top, width, ...}, the
+-- land on the right): {x, z, top, width, rx, rz}, (rx, rz) the way to the
+-- land; and the water's level beside it.
+local QUAY_WALL, QUAY_OUT = 1.6, 1.1 -- the wall's coping: how wide, how far out over the water from its edge
+local function quay_points(q)
+  local pts = {}
+  for k = 2, #q - 3, 4 do pts[#pts + 1] = {q[k], q[k + 1], q[k + 2], q[k + 3]} end
+  for i, p in ipairs(pts) do
+    local a, b = pts[math.max(1, i - 1)], pts[math.min(#pts, i + 1)]
+    local dx, dz = b[1] - a[1], b[2] - a[2]
+    local l = math.max(1e-6, math.sqrt(dx * dx + dz * dz))
+    p[5], p[6] = dz / l, -dx / l
+  end
+  return pts, q[1]
+end
+
 local function road_surface(map)
   local out = {}
   for ei, e in ipairs(NET and NET.edges or {}) do
@@ -1528,6 +1544,20 @@ local function road_surface(map)
         end
         s = s + len
       end
+    end
+  end
+  -- The quays: level from the wall's edge out to the pavement behind,
+  -- not the grid's slope down into the river.
+  base = base + #(map and map.railways or {})
+  for qi, q in ipairs(map and map.quays or {}) do
+    local pts = quay_points(q)
+    for i = 2, #pts do
+      local a, b = pts[i - 1], pts[i]
+      local w = math.min(a[4], b[4])
+      local c = (QUAY_WALL - 2 * QUAY_OUT + w) / 2 -- the middle of wall and quay, from the edge
+      local seg = {a[1] + a[5] * c, a[2] + a[6] * c, a[3], b[1] + b[5] * c, b[2] + b[6] * c, b[3], (QUAY_WALL + w) / 2,
+                   base + qi, 0, 0, 0}
+      table.move(seg, 1, 11, #out + 1, out)
     end
   end
   return out
@@ -2587,6 +2617,38 @@ build = function(map, kit)
       kit.static{mesh = "cube", pos = {x, g + 0.3, z}, yaw = pf[5], size = {pf[3], 0.6, pf[4]}, color = {0.6, 0.6, 0.58},
                  tag = "sidewalk", abs = true}
     end
+  end
+
+  -- The river's stone quays (Turku: the Aurajoki from its mouth up to
+  -- Tuomiokirkkosilta): a granite wall from under the water up to the bank,
+  -- and level paving behind it out to the street's pavement, over the 10 m
+  -- grid, which sloped from the street down into the water (a car ran down
+  -- it and couldn't get back out). The ground there is the quay's own
+  -- (road_surface). In pieces of 16 points, for the chunks.
+  if map.quays and GROUND then
+    local ch, GRANITE, PAVING = chunked(), {0.6, 0.58, 0.55}, {0.6, 0.58, 0.54}
+    local n = 0
+    for _, q in ipairs(map.quays) do
+      local pts, level = quay_points(q)
+      for i0 = 1, #pts - 1, 16 do
+        local wall, wdrops, quay, widths, qdrops = {}, {}, {}, {}, {}
+        local x0, z0 = pts[i0][1], pts[i0][2]
+        for i = i0, math.min(#pts, i0 + 16) do
+          local p = pts[i]
+          local c = QUAY_WALL / 2 - QUAY_OUT
+          table.move({p[1] + p[5] * c - x0, p[3] + 0.03, p[2] + p[6] * c - z0}, 1, 3, #wall + 1, wall)
+          wdrops[#wdrops + 1] = p[3] + 0.03 - (level - 1.6)
+          c = QUAY_WALL - QUAY_OUT + p[4] / 2
+          table.move({p[1] + p[5] * c - x0, p[3], p[2] + p[6] * c - z0}, 1, 3, #quay + 1, quay)
+          widths[#widths + 1], qdrops[#qdrops + 1] = p[4], math.max(0.5, p[3] - level)
+        end
+        ch.add(x0, z0, {ribbon = wall, width = QUAY_WALL, drops = wdrops, pos = {x0, 0, z0}, color = GRANITE, abs = true})
+        ch.add(x0, z0, {ribbon = quay, widths = widths, drops = qdrops, pos = {x0, 0, z0}, color = PAVING, abs = true})
+      end
+      n = n + #pts
+    end
+    ch.bake("quay", "cover")
+    print(string.format("quays: %.1f km of stone wall along the river", n * 4 / 1000))
   end
 
   -- Outdoor swimming pools: blue water a little below a concrete rim.
@@ -4106,32 +4168,78 @@ function R.across_water(ax, az, bx, bz, min)
   return false
 end
 
+-- Out in front of a quay's wall (QUAY_REACH m of it): "out"; on the quay:
+-- "on"; else nil. The water's strips, 4 m rows, stop up to 2 m short of a
+-- slanting bank or reach onto it: a car that went over the wall into the
+-- gap was in the river but not on the water (stuck there 3 m under the
+-- quay, on CI), and one on the quay by the edge was on it (and put back).
+-- Quay pieces by CELL square.
+local QUAY_REACH = 8
+local quay_cells, quay_cells_net
+local function before_quay(x, z)
+  if quay_cells_net ~= NET then
+    quay_cells, quay_cells_net = {}, NET
+    for _, q in ipairs(NET.map.quays or {}) do
+      local pts = quay_points(q)
+      for i = 2, #pts do
+        local a, b = pts[i - 1], pts[i]
+        local piece = {a[1], a[2], b[1], b[2], (a[5] + b[5]) / 2, (a[6] + b[6]) / 2, math.min(a[4], b[4])}
+        for ci = math.floor((math.min(a[1], b[1]) - QUAY_REACH) / CELL), math.floor((math.max(a[1], b[1]) + QUAY_REACH) / CELL) do
+          for cj = math.floor((math.min(a[2], b[2]) - QUAY_REACH) / CELL), math.floor((math.max(a[2], b[2]) + QUAY_REACH) / CELL) do
+            local k = cell_key(ci, cj)
+            quay_cells[k] = quay_cells[k] or {}
+            table.insert(quay_cells[k], piece)
+          end
+        end
+      end
+    end
+  end
+  -- (On a quay round a corner from the one it's out from is on it.)
+  local out = nil
+  for _, p in ipairs(quay_cells[cell_key(math.floor(x / CELL), math.floor(z / CELL))] or {}) do
+    local dx, dz = p[3] - p[1], p[4] - p[2]
+    local l2 = math.max(dx * dx + dz * dz, 1e-9)
+    local t = ((x - p[1]) * dx + (z - p[2]) * dz) / l2
+    local s = (x - p[1]) * p[5] + (z - p[2]) * p[6] -- toward the land
+    if t >= -0.3 and t <= 1.3 and s >= -QUAY_OUT and s <= QUAY_WALL - QUAY_OUT + p[7] then return "on" end
+    -- (A little past the piece's ends: round the bend between two.)
+    if t >= -0.3 and t <= 1.3 and s < -QUAY_OUT and s > -QUAY_REACH then out = "out" end
+  end
+  return out
+end
+
 function R.wet(x, z)
   local rows = water_rows()
   if not rows then return false end
-  for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
-    if x >= st[1] and x <= st[3] then
-      for _, p in ipairs(NET.map.piers or {}) do -- out on a pier is dry
-        for i = 3, #p do
-          if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
-        end
-      end
-      for _, b in ipairs(NET.map.footbridges or {}) do -- out on a footbridge is dry
-        for i = 3, #b do
-          if dist_seg(x, z, b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) < (b[1] or 3) / 2 + 0.5 then return false end
-        end
-      end
-      for _, b in ipairs(NET.map.wooden_footbridges or {}) do -- wooden footbridge is dry
-        local pts = b.points or {}
-        for i = 2, #pts do
-          if dist_seg(x, z, pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) < (b.width or 3) / 2 + 0.5 then return false end
-        end
-      end
-      local e, _, _, _, d = R.nearest_edge(x, z)
-      return not (e and d < NET.edges[e].width / 2 + 1)
+  local quay = before_quay(x, z)
+  if quay == "on" then return false end
+  local wet = quay == "out"
+  if not wet then
+    for _, st in ipairs(rows[math.floor(z / ROW)] or {}) do
+      if x >= st[1] and x <= st[3] then wet = true; break end
     end
   end
-  return false
+  if not wet then return false end
+  -- Out on a pier is dry, but not one at the foot of a quay's wall: a car
+  -- that went over the wall onto it was stuck 3 m down.
+  for _, p in ipairs(quay == "out" and {} or NET.map.piers or {}) do
+    for i = 3, #p do
+      if dist_seg(x, z, p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]) < p[1] / 2 + 0.5 then return false end
+    end
+  end
+  for _, b in ipairs(NET.map.footbridges or {}) do -- out on a footbridge is dry
+    for i = 3, #b do
+      if dist_seg(x, z, b[i - 1][1], b[i - 1][2], b[i][1], b[i][2]) < (b[1] or 3) / 2 + 0.5 then return false end
+    end
+  end
+  for _, b in ipairs(NET.map.wooden_footbridges or {}) do -- wooden footbridge is dry
+    local pts = b.points or {}
+    for i = 2, #pts do
+      if dist_seg(x, z, pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]) < (b.width or 3) / 2 + 0.5 then return false end
+    end
+  end
+  local e, _, _, _, d = R.nearest_edge(x, z)
+  return not (e and d < NET.edges[e].width / 2 + 1)
 end
 
 -- Is the pavement on side `side` of edge e (+1: right of its first bend

@@ -38,7 +38,10 @@ local function spots()
       -- (Roads at its level: a viaduct overhead is no way in.)
       local g = engine.terrain_height(gx, gz)
       local _, _, rx, rz, d = roadnet.nearest_edge(gx, gz, nil, g)
-      if d and d >= 20 and d <= 60 and g and g > 0.5 then
+      -- (Nor at the water's edge: a point on a quay's wall stands at its top.)
+      local edge = false
+      for _, o in ipairs{{0, 0}, {3, 0}, {-3, 0}, {0, 3}, {0, -3}} do edge = edge or roadnet.water_at(gx + o[1], gz + o[2]) end
+      if d and d >= 20 and d <= 60 and g and g > 0.5 and not edge then
         local hit = engine.raycast(gx, g + 60, gz, 0, -1, 0, 70)
         if hit and engine.tag(hit) == "terrain" then out[#out + 1] = {gx, gz, rx, rz} end
       end
