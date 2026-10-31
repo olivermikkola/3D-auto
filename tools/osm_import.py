@@ -403,6 +403,44 @@ def is_stand(t, poly):
 NOT_BUILDINGS = ("no", "roof", "construction", "ruins", "ship")
 
 
+SPAN_MIN = 6.0  # m of a road's centreline under a building on a deck
+
+
+def inside_poly(poly, x, z):
+    c = False
+    for a, b in zip(poly, poly[1:] + poly[:1]):
+        if (a[1] > z) != (b[1] > z) and x < a[0] + (z - a[1]) * (b[0] - a[0]) / (b[1] - a[1]):
+            c = not c
+    return c
+
+
+def road_under(poly, road_grid):
+    """Metres of road centreline inside a footprint (sampled every metre)."""
+    xs, zs = [p[0] for p in poly], [p[1] for p in poly]
+    seen, n = set(), 0
+    for ed, a, b in road_grid.near(min(xs), min(zs), max(xs), max(zs)):
+        if (id(ed), a, b) in seen: continue
+        seen.add((id(ed), a, b))
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        k = max(1, int(L))
+        for i in range(k):
+            f = (i + 0.5) / k
+            if inside_poly(poly, a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f): n += L / k
+    return n
+
+
+def raised(t):
+    """A building mapped a level up (layer=1 or more): built on a deck over
+    a road or a railway, as Tyks' Majakkasairaala is over Helsinginkatu and
+    the line to Helsinki. Where it reaches a road it isn't trimmed or left
+    out; the game lifts that part over the road."""
+    try:
+        layer = int(t.get("layer", "0"))
+    except ValueError:
+        return False
+    return layer >= 1 and t.get("location") not in ("underground", "rooftop", "roof")
+
+
 def building_kind(t, A):
     b = t.get("building", "yes")
     if t.get("amenity") == "police": return "police"
@@ -629,7 +667,7 @@ def wall_colour(t):
     return named_colour(t.get("building:colour", "")) or MATERIALS.get(t.get("building:material", "").strip().lower())
 
 
-def outlines_of(els, P, inside, roof_of=None, model_h=None):
+def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
     (height, kind, wall colour or None, points, roof colour or None, year
@@ -655,16 +693,16 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None):
                 h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)
                 if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
                     h = pitch[0]  # to the eaves, as its boxes have it
-                out.append((h, kind, wall, pts, roof, year))
+                out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly))))
     return out
 
 
 def outline_lines(outlines, f):
     L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour, year = built}",
          "  outlines = {"]
-    for h, kind, wall, pts, roof, year in outlines:
+    for h, kind, wall, pts, roof, year, span in outlines:
         w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
-        r = (", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else "") + (f", year = {year}" if year else "")
+        r = (", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else "") + (f", year = {year}" if year else "") + (", span = true" if span else "")
         L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L
@@ -874,7 +912,10 @@ def splice_railways(dest, els, P, f, aerial=None, model_h=None, ground=None):
     def inside(x, z, pad=0): return X0 + pad <= x <= X1 - pad and Z0 + pad <= z <= Z1 - pad
     railways, platforms, bridges = railways_of(els, P, inside)
     heights = rail_heights(railways, ground) if ground else None
-    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h)
+    # (Which outlines are over a road comes from the full import: keep those.)
+    spanned = set(re.findall(r"\n    \{[-\d.]+, \"\w+\", [^,{]*(?:\{[^}]*\})?,? ?\{(-?[\d.]+, -?[\d.]+)\}[^\n]*span = true", text))
+    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
+                           lambda poly: f"{f(poly[0][0])}, {f(poly[0][1])}" in spanned)
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
@@ -1269,6 +1310,10 @@ def main():
             elif kind == "church":
                 ang, (cx, cz), bw, bd = min_rect(poly)
                 parts = [(cx, cz, bw, bd, ang) if bw >= bd else (cx, cz, bd, bw, ang + math.pi / 2)]
+            # Mapped a level up and a road runs under it: it's on a deck
+            # over the road (all its boxes kept, none trimmed; the game
+            # lifts the ones over the road).
+            spanning = raised(t) and road_under(poly, road_grid) >= SPAN_MIN
             for (x, z, bw, bd, ang) in parts:
                 # Keep clear of the (game-width) roads and their pavements:
                 # a box that reaches into one gives up a few meters on that
@@ -1285,7 +1330,8 @@ def main():
                                 px, pz = x + c * bw * fu - s_ * bd * fv, z + s_ * bw * fu + c * bd * fv
                                 if seg_dist((px, pz), a, b) < clear: return False
                     return True
-                if not clear_of_roads(x, z, bw, bd):
+                span = spanning
+                if not span and not clear_of_roads(x, z, bw, bd):
                     best = None
                     for cut in (1.5, 3, 4.5, 6, 8):
                         for su, sv in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
@@ -1306,7 +1352,7 @@ def main():
                 # The photo's colour first: a roof:colour tag names a colour
                 # ("red", "green"), the photo has the weathered tile and copper.
                 roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
-                footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year, roof_h))
+                footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year, roof_h, span))
                 name = None  # the label goes on one box
 
     # ---- ground cover ----
@@ -1649,15 +1695,16 @@ def main():
     L.append("  },")
     L.extend(paved_lines(paved, f))
     L.append("  -- {x, z, w, d, yaw, height, kind, name or false, roof color or false, year built or false,")
-    L.append("  -- pitched roof's height or nil}: yaw turns the box's w side off the x axis; height is to the eaves")
+    L.append("  -- pitched roof's height or nil, span = true over a road}: yaw turns the box's w side off the x axis;")
+    L.append("  -- height is to the eaves")
     L.append("  footprints = {")
-    for x, z, bw, bd, ang, h, kind, name, roof, year, roof_h in footprints:
+    for x, z, bw, bd, ang, h, kind, name, roof, year, roof_h, span in footprints:
         # The engine's yaw turns +z toward +x: a box whose w runs at angle
         # `ang` (from +x toward +z) has yaw = -ang.
         extra = [q(name) if name else "false", "{" + ", ".join(f(v) for v in roof) + "}" if roof else "false",
                  str(year) if year else "false", f(roof_h) if roof_h else "false"]
         while extra and extra[-1] == "false": extra.pop()
-        tail = "".join(", " + v for v in extra)
+        tail = "".join(", " + v for v in extra) + (", span = true" if span else "")
         L.append(f"    {{{f(x)}, {f(z)}, {f(bw)}, {f(bd)}, {-ang:.3f}, {f(h)}, {q(kind)}{tail}}},")
     L.append("  },")
     L.append("  -- football pitches: {x, z, length, width, yaw}")
@@ -1670,7 +1717,8 @@ def main():
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
     L.extend(railway_lines(railways, platforms, f, rail_bridges, rail_hs))
-    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h), f))
+    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
+                                      lambda poly: road_under(poly, road_grid) >= SPAN_MIN), f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
@@ -1722,7 +1770,8 @@ def main():
     dest.write_text("\n".join(L) + "\n")
     njs = len(used)
     print(f"{dest.relative_to(ROOT) if dest.is_relative_to(ROOT) else dest}: {njs} junctions, {len(edges)} roads ({sum(1 for e in edges if e['bridge'])} bridges), "
-          f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads), "
+          f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads, "
+          f"{sum(1 for fp in footprints if fp[-1])} over a road on a deck), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
           + f", {len(pitches)} pitches, {len(railways)} railway tracks, {len(platforms)} platforms, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
           f" {len(piers)} piers, {len(areas)} areas; {dest.stat().st_size // 1024} KB")

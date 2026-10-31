@@ -59,6 +59,8 @@ SPOTS = {
                      about="Kupittaa: the campus and the park beyond"),
     "rail_ylioppilaskyla": dict(eye=(680, 12, -1420), look=(560, 8, -1290), fov=60, hour=14,
                                 about="The line to Helsinki past Ylioppilaskylä"),
+    "tyks": dict(eye=(1180, 60, 40), look=(1360, 10, -130), fov=60, hour=14,
+                 about="Tyks: T-sairaala and Majakkasairaala over Helsinginkatu"),
 }
 SIZE = (960, 540)
 
