@@ -334,8 +334,9 @@ pub fn ribbon(pts: &[Vec3], width: f32, depth: f32, col: Vec3) -> Mesh {
 
 /// A footprint pushed up into a solid: walls round `outline` (x, z points,
 /// either way round, not closed) from `bottom` to `top`, and a flat roof cut
-/// into triangles by ear clipping. No floor. Faces point out, flat shaded.
-pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3) -> Mesh {
+/// into triangles by ear clipping. No floor unless `floor` (for a building
+/// up on a deck, seen from the road under it). Faces point out, flat shaded.
+pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bool) -> Mesh {
     let mut m = Mesh::default();
     let mut pts: Vec<(f32, f32)> = Vec::with_capacity(outline.len());
     for &p in outline {
@@ -369,6 +370,9 @@ pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3) -> Mesh {
     }
     for [a, b, c] in ear_clip(&pts) {
         m.tri(at(pts[a], top), at(pts[b], top), at(pts[c], top), col);
+        if floor {
+            m.tri(at(pts[c], bottom), at(pts[b], bottom), at(pts[a], bottom), col);
+        }
     }
     m
 }
@@ -638,7 +642,7 @@ mod tests {
         // normal's rounding put its ends in different planes once): 40 bays.
         let mut long = Mesh::default();
         long.append_tilted(
-            &prism(&[(0.0, 0.0), (120.0, 1.3), (120.0, 11.3), (0.0, 10.0)], 0.0, 12.0, Vec3::ONE),
+            &prism(&[(0.0, 0.0), (120.0, 1.3), (120.0, 11.3), (0.0, 10.0)], 0.0, 12.0, Vec3::ONE, false),
             v3(-300.0, 0.0, 250.0),
             (0.0, 0.0, 0.0),
             Vec3::ONE,
@@ -662,7 +666,7 @@ mod tests {
     fn prism_of_an_l_has_walls_out_and_a_roof_up() {
         // An L, given counter-clockwise (positive area): it gets turned round.
         let l = [(0.0, 0.0), (10.0, 0.0), (10.0, 4.0), (4.0, 4.0), (4.0, 10.0), (0.0, 10.0)];
-        let m = prism(&l, 0.0, 6.0, Vec3::ONE);
+        let m = prism(&l, 0.0, 6.0, Vec3::ONE, false);
         let roof: Vec<_> = m.indices.chunks(3).filter(|t| m.verts[t[0] as usize].normal().y > 0.9).collect();
         assert_eq!(roof.len(), 4, "an L's roof is 4 triangles");
         let area: f32 = roof
@@ -690,8 +694,13 @@ mod tests {
     #[test]
     fn prism_skips_repeated_and_closing_points() {
         let sq = [(0.0, 0.0), (0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)];
-        assert_eq!(prism(&sq, 0.0, 3.0, Vec3::ONE).tri_count(), 4 * 2 + 2);
-        assert_eq!(prism(&[(0.0, 0.0), (1.0, 0.0)], 0.0, 1.0, Vec3::ONE).tri_count(), 0);
+        assert_eq!(prism(&sq, 0.0, 3.0, Vec3::ONE, false).tri_count(), 4 * 2 + 2);
+        assert_eq!(prism(&[(0.0, 0.0), (1.0, 0.0)], 0.0, 1.0, Vec3::ONE, false).tri_count(), 0);
+        // With a floor: the roof's two triangles again underneath.
+        let f = prism(&sq, 0.0, 3.0, Vec3::ONE, true);
+        assert_eq!(f.tri_count(), 4 * 2 + 2 + 2);
+        let down = f.indices.chunks(3).filter(|t| f.verts[t[0] as usize].normal().y < -0.9).count();
+        assert_eq!(down, 2, "the floor faces down");
     }
 
     /// Every face normal of a closed convex primitive must point away from its center.

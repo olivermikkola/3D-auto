@@ -57,6 +57,8 @@ SPOTS = {
                                about="Puolalanmäki from above: the museum and Puolalanpuisto"),
     "kupittaa": dict(eye=(1200, 40, 420), look=(1080, 0, 680), fov=60, hour=14,
                      about="Kupittaa: the campus and the park beyond"),
+    "tyks": dict(eye=(1180, 60, 40), look=(1360, 10, -130), fov=60, hour=14,
+                 about="Tyks: T-sairaala and Majakkasairaala over Helsinginkatu"),
 }
 SIZE = (960, 540)
 
