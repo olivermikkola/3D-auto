@@ -1811,8 +1811,17 @@ def main():
             for n_, (x, z) in enumerate(cand):
                 full = sum(around[n_ * len(ring):(n_ + 1) * len(ring)].tolist()) / len(ring)
                 d = round(6 + 7 * full + rnd.uniform(-1, 1))  # crown 5-14 m across
-                at = off_paved(x + rnd.uniform(-2, 2), z + rnd.uniform(-2, 2))
-                if at is None or not clear(*at): continue
+                # A crown over a road or a path (a street's lindens lean over
+                # it) has its trunk beside it: the nearest clear spot round.
+                jx, jz = x + rnd.uniform(-2, 2), z + rnd.uniform(-2, 2)
+                at = None
+                for rr, k in [(0, 0)] + [(rr, k) for rr in (2, 4) for k in range(8)]:
+                    a_ = k * math.pi / 4
+                    p_ = off_paved(jx + rr * math.cos(a_), jz + rr * math.sin(a_))
+                    if p_ and clear(*p_):
+                        at = p_
+                        break
+                if at is None: continue
                 tree = (at[0], at[1], d)
                 (photo_trees if by_a_street(x, z) else park_trees).append(tree)
             print(f"aerial: {len(photo_trees)} trees from the photo by the streets, {len(park_trees)} in parks and yards",

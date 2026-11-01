@@ -516,7 +516,8 @@ pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
     let spin = rnd() * std::f32::consts::TAU;
     let shade = |f: f32| leaf * f;
     let vert = |m: &mut Mesh, p: Vec3, f: f32| {
-        let n = v3((p.x - mid.x) / r, (p.y - mid.y) / ry, (p.z - mid.z) / r).norm();
+        // (bent up, as light comes through leaves: no black underside)
+        let n = (v3((p.x - mid.x) / r, (p.y - mid.y) / ry, (p.z - mid.z) / r).norm() + v3(0.0, 0.7, 0.0)).norm();
         push(m, p, n, shade(f))
     };
     let bottom = vert(m, mid + v3(0.0, -ry * 0.85, 0.0), 0.75);
