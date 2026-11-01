@@ -180,6 +180,7 @@ end)
 local peds = require "systems.peds"
 local fixtures = require "test.fixtures"
 local runovers = fixtures.runovers()
+local runover_dir -- {dx, dz} of the run-over fixture's road
 local function walking_peds()
   local n = 0
   for id in pairs(peds.peds) do
@@ -246,6 +247,7 @@ after(5.0, function()
   local line = fixtures.runover_spot(car)
   check(line ~= nil, "run-over has a verified clear road approach and flight corridor")
   local x, z, dx, dz = table.unpack(line)
+  runover_dir = {dx, dz}
   local id = nearest_ped("walk", false)
   local p = peds.peds[id]
   engine.set_pos(id, x, 1.2 + U.ground(x, z), z)
@@ -256,7 +258,15 @@ after(5.0, function()
   engine.set_angvel(car, 0, 0, 0)
   engine.set_vel(car, dx * 16, 0, dz * 16)
 end)
-until_(function() return runovers.count >= 1 end, 3, "running someone over knocks them down", function()
+-- Held on its line until it hits: dropped in at 16 m/s it can land on a
+-- kerb, turn ~12 degrees and pass the (fleeing) pedestrian by 3 m.
+until_(function()
+  if runovers.count >= 1 then return true end
+  local _, vy = engine.vel(car)
+  engine.set_vel(car, runover_dir[1] * 16, vy, runover_dir[2] * 16)
+  engine.orient(car, math.atan(runover_dir[1], runover_dir[2]))
+  engine.set_angvel(car, 0, 0, 0)
+end, 3, "running someone over knocks them down", function()
   check(require("lib.wanted").stars() >= 1, "hitting a pedestrian is a crime (" .. require("lib.wanted").stars() .. " star)")
 end)
 until_(function()
