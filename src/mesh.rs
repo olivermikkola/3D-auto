@@ -100,6 +100,8 @@ pub const FACADE_SCALED: u8 = 0x80;
 /// asphalt, and setts (paving stones) on the paths that have them.
 pub const GROUND_ASPHALT: u8 = 64;
 pub const GROUND_SETTS: u8 = 65;
+/// The terrain: coloured from the map's ground map where it has one (render.rs).
+pub const GROUND_TERRAIN: u8 = 66;
 /// The width of a facade's window bays, by facade id (render.rs's `bay`).
 pub fn facade_bay(id: u8) -> f32 {
     match id & !FACADE_SCALED {

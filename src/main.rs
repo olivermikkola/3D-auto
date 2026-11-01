@@ -551,6 +551,11 @@ impl EventHandler for App {
         self.profile.draw += now() - t;
         let uploaded = gfx.take_uploaded();
         self.eng.borrow_mut().release_uploaded(&uploaded);
+        if gfx.take_ground()
+            && let Some(g) = self.eng.borrow_mut().ground_map.as_mut()
+        {
+            g.idx = Vec::new();
+        }
         self.eng.borrow_mut().unblend(saved);
         self.frame += 1;
         let mut shot_done = false;

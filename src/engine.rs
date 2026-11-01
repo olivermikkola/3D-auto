@@ -18,6 +18,20 @@ const GPU_ONLY_VERTS: usize = 4096;
 /// The baked trees' chunk, metres square.
 const FOREST_CHUNK: f32 = 200.0;
 
+/// The ground's colour every `step` metres from (x0, z0): a palette and a
+/// byte a point into it (`Engine::load_ground_map`), for the terrain's
+/// shader. `idx` is emptied once the renderer has it (`rev` says which).
+pub struct GroundMap {
+    pub x0: f32,
+    pub z0: f32,
+    pub step: f32,
+    pub w: usize,
+    pub h: usize,
+    pub palette: Vec<[u8; 3]>,
+    pub idx: Vec<u8>,
+    pub rev: u32,
+}
+
 /// One of a map's trees (`Engine::load_forest`).
 pub struct Tree {
     pub x: f32,
@@ -145,6 +159,8 @@ pub struct Engine {
     forest_meshes: Vec<String>,
     /// The map's trees, loaded from its file (`load_forest`).
     pub forest: Option<Forest>,
+    /// The ground's colours at a finer step than the terrain's points.
+    pub ground_map: Option<GroundMap>,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -248,6 +264,7 @@ impl Engine {
             forest_chunks: Vec::new(),
             forest_meshes: Vec::new(),
             forest: None,
+            ground_map: None,
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -446,6 +463,7 @@ impl Engine {
                         m.tri_blend(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), [col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]);
                     }
                 }
+                m.mark_ground(0, mesh::GROUND_TERRAIN);
                 let mesh = self.add_mesh(&format!("terrain_{ci}_{cj}"), m);
                 let mut chunk = Entity::new(Vec3::ZERO);
                 chunk.mesh = Some(mesh);
@@ -455,6 +473,50 @@ impl Engine {
             }
         }
         self.terrain = Some(t);
+    }
+
+    /// Load a ground map: "GRND", w and h (u16), x0, z0 and step (f32),
+    /// the palette's size n (u8) and n rgb triples, then the points row by
+    /// row toward +z as runs: (length - 1, palette index), a byte each; an
+    /// index of 255 is that many points as in the row above.
+    pub fn load_ground_map(&mut self, file: &str, b: &[u8]) -> Result<(), String> {
+        let bad = |what: &str| format!("{file}: {what}");
+        if b.len() < 19 || &b[0..4] != b"GRND" {
+            return Err(bad("not a ground map"));
+        }
+        let u16_at = |i: usize| u16::from_le_bytes([b[i], b[i + 1]]) as usize;
+        let f32_at = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+        let (w, h) = (u16_at(4), u16_at(6));
+        let (x0, z0, step) = (f32_at(8), f32_at(12), f32_at(16));
+        let n = *b.get(20).ok_or_else(|| bad("cut short"))? as usize;
+        let pal_end = 21 + 3 * n;
+        if b.len() < pal_end || step <= 0.0 || w == 0 || h == 0 {
+            return Err(bad("cut short"));
+        }
+        let palette: Vec<[u8; 3]> = b[21..pal_end].chunks(3).map(|c| [c[0], c[1], c[2]]).collect();
+        let mut idx: Vec<u8> = Vec::with_capacity(w * h);
+        for run in b[pal_end..].chunks(2) {
+            let [len, k] = run else { return Err(bad("a run cut in half")) };
+            let n = *len as usize + 1;
+            if *k == 255 {
+                // As the row above.
+                let at = idx.len();
+                if at < w || at + n > w * h {
+                    return Err(bad("a copy from above the first row"));
+                }
+                for i in at..at + n {
+                    idx.push(idx[i - w]);
+                }
+            } else {
+                idx.extend(std::iter::repeat_n(*k, n));
+            }
+        }
+        if idx.len() != w * h {
+            return Err(bad(&format!("{} points, not {w} x {h}", idx.len())));
+        }
+        let rev = self.ground_map.as_ref().map_or(0, |g| g.rev) + 1;
+        self.ground_map = Some(GroundMap { x0, z0, step, w, h, palette, idx, rev });
+        Ok(())
     }
 
     /// Load a map's trees: 10 bytes each, x and z (f32, little-endian),
@@ -688,6 +750,30 @@ mod tests {
         assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("lamp"), None), None);
         e.despawn(car);
         assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("car"), None), Some((car2, 3.0)));
+    }
+
+    #[test]
+    fn a_ground_map_reads_its_runs_and_copies_from_the_row_above() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        // 3 x 2 points: row 0 = 1 1 0, row 1 = as above (3 points).
+        let mut b = b"GRND".to_vec();
+        b.extend_from_slice(&3u16.to_le_bytes());
+        b.extend_from_slice(&2u16.to_le_bytes());
+        for v in [-10.0f32, 20.0, 2.0] {
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        b.extend_from_slice(&[2, 10, 20, 30, 40, 50, 60]);
+        b.extend_from_slice(&[1, 1, 0, 0, 2, 255]);
+        e.load_ground_map("g.bin", &b).unwrap();
+        let g = e.ground_map.as_ref().unwrap();
+        assert_eq!((g.w, g.h, g.step, g.x0, g.z0), (3, 2, 2.0, -10.0, 20.0));
+        assert_eq!(g.idx, vec![1, 1, 0, 1, 1, 0]);
+        assert_eq!(g.palette, vec![[10, 20, 30], [40, 50, 60]]);
+        assert!(e.load_ground_map("g.bin", &b[..b.len() - 2]).is_err(), "a point short");
+        let mut first = b.clone();
+        first.truncate(b.len() - 6);
+        first.extend_from_slice(&[0, 255, 1, 1, 0, 0, 2, 255]);
+        assert!(e.load_ground_map("g.bin", &first).is_err(), "nothing above the first row");
     }
 
     #[test]

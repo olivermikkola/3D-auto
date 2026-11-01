@@ -107,9 +107,22 @@ street off its line or a park without its trees shows at a glance. First finding
    player are a pool of invisible bodies moved about (`systems/trees.lua`), so a car still
    stops at a tree. `tools/test_trees.py`.
 2. **Ground.** The 10 m colour grid is blotchy from above and ponds, pitches and playgrounds
-   come out in steps: next.
+   come out in steps. Done: the ground map below.
 3. Smaller: white slivers at some building feet. (The tree crown in a wall below Myllysilta
    was one of `systems/aurajoki`'s hand-placed river trees; the photo's trees replace them.)
+
+### The ground map (November 2026)
+
+The terrain's colour points are 10 m apart, so a yard blurs into a blotch and a pitch knows
+only its edges' height lines. The importer now writes a second file next to the map,
+`maps/turku_ground.bin`: the aerial photo's ground every **2 m** (3161 x 3046 points, 52 -> 36
+colours), with the photo's shadows lifted (the game lights the ground itself), shaded lawn
+under the photo's crowns (the game draws the trees), and the survey's crisp grounds — pitches,
+courts, tracks, sand — in their own colours, as the terrain's points have them. A palette and
+an index a point (runs, and a run "as the row above"), so the file is 3.6 MB; the engine
+uploads the index and the palette as two textures, then drops the points again (in the browser
+they'd be held for nothing). One class (66) in the terrain's shader takes its colour from the
+map. `tools/ground_map.py`, `tools/test_ground_map.py`, Rust's `Engine::load_ground_map`.
 
 ### Street level against the laser scans (November 2026)
 
