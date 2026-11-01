@@ -62,6 +62,14 @@ class CityModelTests(unittest.TestCase):
         u = osm_import.model_heights([(205, 205, 18.0, 5, 1900, (14.0, 18.0), [(201, 205)])])
         self.assertEqual(u([(200, 200), (202, 200), (202, 210), (200, 210)]), (18.0, 1900, (14.0, 18.0)))
 
+    def test_a_height_over_the_sea_goes_by_the_storeys(self):
+        # A two-storey house of 1935 "43.9 m" (the ground 35 m up): 2 * 3.3 + 1.5.
+        h = osm_import.model_heights([(5, 5, 43.9, 2, 1935)])
+        self.assertAlmostEqual(h([(0, 0), (10, 0), (10, 10), (0, 10)])[0], 8.1)
+        # A tower of 12 storeys at 40 m stays as it is.
+        h = osm_import.model_heights([(5, 5, 40.0, 12, 1970)])
+        self.assertEqual(h([(0, 0), (10, 0), (10, 10), (0, 10)])[0], 40.0)
+
 
 if __name__ == "__main__":
     unittest.main()

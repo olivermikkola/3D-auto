@@ -391,6 +391,10 @@ struct Manifold {
 const ITERATIONS: usize = 10;
 const SLOP: f32 = 0.01;
 const BAUMGARTE: f32 = 0.2;
+/// The fastest the penetration bias pushes two bodies apart (m/s): two
+/// cars that end up a metre and a half into each other at a junction were
+/// thrown 18 m/s and two metres up into a building; now they slide apart.
+const MAX_PUSH: f32 = 4.0;
 
 fn body(ents: &[Option<Entity>], i: usize) -> (&Entity, &Body) {
     let e = ents[i].as_ref().unwrap();
@@ -753,7 +757,7 @@ fn solve(ents: &mut [Option<Entity>], m: &mut Manifold, dt: f32) {
     for p in &mut m.points {
         // Normal: push apart, with a bias that removes penetration.
         let vn = rel_vel(a, b, p.ra, p.rb).dot(m.n);
-        let bias = (BAUMGARTE / dt * (p.depth - SLOP).max(0.0)).max(p.bounce);
+        let bias = (BAUMGARTE / dt * (p.depth - SLOP).max(0.0)).min(MAX_PUSH).max(p.bounce);
         let old = p.pn;
         p.pn = (old + (bias - vn) * p.mass_n).max(0.0);
         apply(a, b, p.ra, p.rb, m.n * (p.pn - old));

@@ -28,6 +28,8 @@ engine.on("init", function()
     v[2] = v[2] + require("lib.roadnet").ground(v[1], v[3])
     v[5] = v[5] + require("lib.roadnet").ground(v[4], v[6])
   end
+  -- (where it ended up, for tools/reference.py to look from the same spot)
+  print(string.format("SHOT_CAM_FINAL=%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%g", v[1], v[2], v[3], v[4], v[5], v[6], v[7] or 60))
   local fog = os.getenv("FOG")
   if fog then
     local a, b = fog:match("([^,]+),([^,]+)")
