@@ -84,6 +84,10 @@ def render(binary, game, name, spot, folder, cwd):
     res = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=900)
     if res.returncode != 0 or not shot.exists():
         raise RuntimeError(f"{name}: render failed\n{res.stdout[-2000:]}\n{res.stderr[-2000:]}")
+    # Where the camera ended up (game/test/shot.lua), for tools/reference.py.
+    for line in res.stdout.splitlines():
+        if line.startswith("SHOT_CAM_FINAL="):
+            render.last_camera = [float(v) for v in line.split("=", 1)[1].split(",")]
     return shot
 
 

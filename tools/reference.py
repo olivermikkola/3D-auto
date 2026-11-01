@@ -14,6 +14,7 @@ trees shows at a glance.
     python3 tools/reference.py --out /tmp/ref                 # every postcard spot
     python3 tools/reference.py --out /tmp/ref --only kauppatori
     python3 tools/reference.py --out /tmp/ref --at -250,-80 --size 400
+    python3 tools/reference.py --out /tmp/ref --street   # the postcards against the laser scans
 
 The square is centred on the spot's `look` point (tools/postcards.py). The
 game's camera is high and narrow (near orthographic), so only tall buildings
@@ -70,7 +71,11 @@ def main(argv=None):
     ap.add_argument("--at", action="append", default=[], metavar="X,Z", help="a square centred here (game metres)")
     ap.add_argument("--size", type=float, default=360, help="the square's side in metres")
     ap.add_argument("--binary", type=Path, default=postcards.BINARY)
+    ap.add_argument("--street", action="store_true",
+                    help="each postcard as the game draws it above the same view of the laser scans (tools/lidar.py)")
     args = ap.parse_args(argv)
+    if args.street:
+        return street(args)
     squares = {}
     for at in args.at:
         x, z = (float(v) for v in at.split(","))
@@ -89,6 +94,30 @@ def main(argv=None):
             row.paste(postcards.label(game.copy(), f"game  {args.size:g} m"), (PX, 0))
             row.paste(postcards.label(Image.blend(real, game, 0.5), "blend"), (PX * 2, 0))
             row.save(args.out / f"{name}.png", optimize=True)
+            print(f"{name}: {args.out / (name + '.png')}", flush=True)
+
+
+def street(args):
+    """Each postcard spot from the same camera twice: the game, and Turku
+    as the laser scans and the aerial photo have it (tools/lidar.py)."""
+    import numpy as np
+    from PIL import Image
+    import lidar
+    args.out.mkdir(parents=True, exist_ok=True)
+    names = args.only.split(",") if args.only else list(postcards.SPOTS)
+    W, H = postcards.SIZE
+    with tempfile.TemporaryDirectory(prefix="reference-") as tmp:
+        for name in names:
+            sp = postcards.SPOTS[name]
+            shot = postcards.render(args.binary, postcards.ROOT / "game", name, sp, Path(tmp), postcards.ROOT)
+            game = Image.open(shot).convert("RGB")
+            ex, ey, ez, tx, ty, tz, fov = postcards.render.last_camera
+            cloud = lidar.Cloud(ex, ez, 1000)
+            real = Image.fromarray(lidar.render(cloud, (ex, ey, ez), (tx, ty, tz), fov, (W, H)))
+            both = Image.new("RGB", (W, H * 2))
+            both.paste(postcards.label(real, f"{name}  laser scans 2021/2023 + aerial 2022"), (0, 0))
+            both.paste(postcards.label(game, f"{name}  game"), (0, H))
+            both.save(args.out / f"{name}.png", optimize=True)
             print(f"{name}: {args.out / (name + '.png')}", flush=True)
 
 

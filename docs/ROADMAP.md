@@ -111,6 +111,25 @@ street off its line or a park without its trees shows at a glance. First finding
 3. Smaller: white slivers at some building feet. (The tree crown in a wall below Myllysilta
    was one of `systems/aurajoki`'s hand-placed river trees; the photo's trees replace them.)
 
+### Street level against the laser scans (November 2026)
+
+`tools/lidar.py` brings in Maanmittauslaitos's airborne laser scans of Turku (spring 2021 and
+summer 2023, about a point a square metre; nothing denser exists for Turku, with or without an
+API key), and `tools/reference.py --street` renders each postcard twice from the same camera:
+the game, and the scans' ground, roofs and crowns coloured from the aerial photo. Heights and
+street shapes match within a metre. What it found:
+
+- **Building heights.** 768 of the big boxes were over 6 m too tall: the city model has some
+  heights over the sea, not the ground (a two-storey house of 1935 at 43.9 m on a hill 35 m
+  up), which stood as thin towers in the suburbs. The importer now checks every box against the
+  scans' roofs (1026 lowered, 272 raised) and, where there are no scans, against its storeys.
+  Too tall by 6 m: 768 -> 39; too low: 103 -> 62 (mostly churches' spires and decks over roads,
+  left alone).
+- **Cars thrown into buildings.** Two traffic cars turning into each other at a junction got
+  a metre and a half into each other, and the physics pushed them apart at 18 m/s, two metres
+  up and into a wall. The push out of an overlap is now capped at 4 m/s (`MAX_PUSH`).
+- Turun taidemuseo is a `flats` box: it should be a landmark of its own.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

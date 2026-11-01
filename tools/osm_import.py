@@ -538,6 +538,11 @@ def model_heights(buildings):
     (tools/citymodel.py): one, its own; a block of several, the middle one's
     height and roof and the oldest year. None without any."""
     grid = {}  # (cell) -> [(x, z, building)]: each building at its middle and its address point
+    # A few of the model's heights are over the sea, not the ground (a
+    # two-storey house of 1935 "43.9 m" on a hill 35 m up): a height no
+    # building of its storeys could have goes by its storeys instead.
+    buildings = [(b[0], b[1], st * 3.3 + 1.5) + tuple(b[3:]) if b[2] and (st := b[3] or 0) and b[2] > st * 4.5 + 8 else b
+                 for b in buildings]
     for b in buildings:
         if b[2] and b[2] > 2:
             for x, z in [(b[0], b[1])] + list(b[6] if len(b) > 6 else []):
@@ -1042,6 +1047,7 @@ def main():
     ap.add_argument("--cache", type=Path)
     ap.add_argument("--no-aerial", action="store_true", help="leave the aerial photo's colours out")
     ap.add_argument("--no-citymodel", action="store_true", help="leave the city model's measured heights out")
+    ap.add_argument("--no-lidar", action="store_true", help="leave the laser scans' check of the heights out")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--only-railways", action="store_true",
                     help="only put railways, platforms and building outlines into the existing map (no terrain needed)")
@@ -1456,6 +1462,13 @@ def main():
                 roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
                 footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year, roof_h, span))
                 name = None  # the label goes on one box
+
+    # ---- heights the laser scans disagree with (tools/lidar.py) ----
+    if aerial and not args.no_lidar:
+        import lidar
+        if lidar.available():
+            footprints, lid_lowered, lid_raised = lidar.check_heights(footprints)
+            print(f"lidar: {lid_lowered} buildings lowered and {lid_raised} raised to the laser scans' roofs", file=sys.stderr)
 
     # ---- ground cover ----
     cover = {k: [] for k, _ in COVER}
