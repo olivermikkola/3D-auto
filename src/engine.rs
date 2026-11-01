@@ -300,6 +300,12 @@ impl Engine {
 
     /// Register (or replace) a named mesh. Returns its id.
     pub fn add_mesh(&mut self, name: &str, m: Mesh) -> usize {
+        self.add_mesh_sized(name, m, GPU_ONLY_VERTS)
+    }
+
+    /// `add_mesh`, sent to the GPU and dropped here from `gpu_only` vertices
+    /// up (the baked trees: many small chunks that add up).
+    fn add_mesh_sized(&mut self, name: &str, m: Mesh, gpu_only: usize) -> usize {
         let id = if let Some(&id) = self.mesh_ids.get(name) {
             self.meshes[id] = m;
             self.mesh_revs[id] += 1;
@@ -312,7 +318,7 @@ impl Engine {
             self.meshes.len() - 1
         };
         if let Some(up) = self.uploader.as_mut()
-            && self.meshes[id].verts.len() >= GPU_ONLY_VERTS
+            && self.meshes[id].verts.len() >= gpu_only.max(1)
         {
             up(self.epoch, id, self.mesh_revs[id], &self.meshes[id]);
             self.meshes[id] = Mesh::default();
@@ -541,7 +547,9 @@ impl Engine {
                 mesh::leafy_tree(&mut m, v3(t[0], t[1], t[2]), t[3], seed);
             }
             let name = format!("forest_{ci}_{cj}");
-            let mesh = self.add_mesh(&name, m);
+            // (to the GPU whatever its size: in the browser a city's small
+            // chunks would otherwise hold tens of MB)
+            let mesh = self.add_mesh_sized(&name, m, 1);
             self.forest_meshes.push(name);
             let mut e = Entity::new(Vec3::ZERO);
             e.mesh = Some(mesh);
