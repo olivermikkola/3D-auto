@@ -111,6 +111,9 @@ pub struct Engine {
     /// drawing it.
     pub terrain: Option<Terrain>,
     terrain_chunks: Vec<u32>,
+    /// The entities drawing the baked trees (`set_forest`).
+    forest_chunks: Vec<u32>,
+    forest_meshes: Vec<String>,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -211,6 +214,8 @@ impl Engine {
             tagged: HashMap::new(),
             terrain: None,
             terrain_chunks: Vec::new(),
+            forest_chunks: Vec::new(),
+            forest_meshes: Vec::new(),
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -412,6 +417,44 @@ impl Engine {
             }
         }
         self.terrain = Some(t);
+    }
+
+    /// Replace the baked trees: each (x, ground y, z, crown across) a leafy
+    /// tree (mesh::leafy_tree), baked into one mesh per `chunk` metres square
+    /// so a city's trees are a few hundred draws, not a hundred thousand.
+    /// They are only drawn; whatever should stop a car is the game's to add.
+    /// Returns the chunks made.
+    pub fn set_forest(&mut self, trees: &[[f32; 4]], chunk: f32) -> usize {
+        for id in std::mem::take(&mut self.forest_chunks) {
+            self.despawn(id);
+        }
+        // Emptied, not left holding a chunk nothing draws any more.
+        for name in std::mem::take(&mut self.forest_meshes) {
+            self.add_mesh(&name, Mesh::default());
+        }
+        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (i, t) in trees.iter().enumerate() {
+            cells.entry(((t[0] / chunk).floor() as i32, (t[2] / chunk).floor() as i32)).or_default().push(i);
+        }
+        let mut keys: Vec<_> = cells.keys().copied().collect();
+        keys.sort();
+        for (ci, cj) in keys {
+            let mut m = Mesh::default();
+            for &i in &cells[&(ci, cj)] {
+                let t = trees[i];
+                let seed = (t[0] * 10.0) as i32 as u32 ^ ((t[2] * 10.0) as i32 as u32).rotate_left(16);
+                mesh::leafy_tree(&mut m, v3(t[0], t[1], t[2]), t[3], seed);
+            }
+            let name = format!("forest_{ci}_{cj}");
+            let mesh = self.add_mesh(&name, m);
+            self.forest_meshes.push(name);
+            let mut e = Entity::new(Vec3::ZERO);
+            e.mesh = Some(mesh);
+            e.tag = "forest".to_string();
+            let id = self.spawn(e);
+            self.forest_chunks.push(id);
+        }
+        self.forest_chunks.len()
     }
 
     /// World-space position and direction of a light, if its anchor exists.

@@ -91,6 +91,23 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
   artifact (`wasm_peak_bytes`), and `tools/web_check.py` gives the same number locally.
 - The playtest itself: `docs/PLAYTEST.md`.
 
+## Visual pass against the real city (November 2026)
+
+`tools/reference.py` renders the game straight down over a square and puts it next to the
+city's 2022 aerial photo of the same square, and the two blended: a missing building, a
+street off its line or a park without its trees shows at a glance. First findings, worst first:
+
+1. **Trees.** The photo's parks, banks and yards are full of canopy; the game had a few
+   thousand small trees. Now the importer finds about 110,000 under the photo's canopy, each
+   its crown's size, off the roads, paths and buildings, and the engine bakes them into 200 m
+   chunk meshes (`engine.forest`, one draw a chunk, 26 vertices a tree); low/medium/high
+   quality stand about 24k/66k/109k. Only the trunks near the player are solid
+   (`systems/trees.lua`). `tools/test_trees.py`.
+2. **Ground.** The 10 m colour grid is blotchy from above and ponds, pitches and playgrounds
+   come out in steps: next.
+3. Smaller: a tree crown floating in a wall by the Aurajoki quay (below Myllysilta), white
+   slivers at some building feet.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

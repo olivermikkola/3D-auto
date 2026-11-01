@@ -1591,7 +1591,7 @@ def main():
 
     # ---- terrain: real heights, with the roads graded into them ----
     terrain = None
-    photo_trees = []
+    photo_trees, park_trees = [], []
     rail_hs = None
     quay_runs = []
     if elevation is not None or cfg.get("dem"):
@@ -1751,25 +1751,72 @@ def main():
             for n_, k in zip(land, idx.tolist()):
                 if k >= 0: cls[n_] = len(DRAW_ORDER) + 1 + k
             print(f"aerial: {len(land)} ground points coloured from the photo, {len(ground_palette)} colours", file=sys.stderr)
-            # Trees the photo shows where the survey has no wood (the
-            # street trees, the trees in front yards) within 14 m of a street, where
-            # they are seen: a 10 m grid (a crown's width), each spot under
-            # a crown nudged off the grid by its own hash so rows don't look
-            # planted by a robot.
+            # Trees the photo shows where the survey has no wood: the street
+            # trees, the trees in yards, parks and cemeteries. A 9 m grid (a
+            # city tree's crown), each spot under a crown nudged off the grid
+            # so rows don't look planted by a robot, and its crown as wide as
+            # the canopy round it: a lone birch small, a park's old lindens
+            # big. Those within 14 m of a street come first (they are seen).
             import random as random_
-            # Bare ground, and the grass strips and small parks streets are
-            # lined with (the woods get their own forest).
-            treeable = {0} | {DRAW_ORDER.index(c) + 1 for c in ("field", "park", "cemetery")}
+            # Anywhere but the water, the pitches, courts and tracks, and the
+            # woods (they get their own forest): the riverbank's lindens grow
+            # on the bank's edge, a car park's birches in the car park.
+            treeable = {0} | {DRAW_ORDER.index(c) + 1 for c in DRAW_ORDER if c in ("field", "park", "cemetery", "works", "parking")}
             def by_a_street(x, z, reach=14):
                 for ed, a, b in road_grid.near(x - reach, z - reach, x + reach, z + reach):
                     if seg_dist((x, z), a, b) < ed["width"] / 2 + reach: return True
                 return False
-            cand = [(x, z) for z in range(int(Z0) + 5, int(Z1) - 5, 10) for x in range(int(X0) + 5, int(X1) - 5, 10)
-                    if cover_at(x, z) in treeable and by_a_street(x, z)]
+            G = 9
+            cand = [(x, z) for z in range(int(Z0) + 5, int(Z1) - 5, G) for x in range(int(X0) + 5, int(X1) - 5, G)
+                    if cover_at(x, z) in treeable]
             crown = aerial.canopy([c[0] for c in cand], [c[1] for c in cand])
+            cand = [c for c, t in zip(cand, crown.tolist()) if t]
+            ring = [(dx, dz) for dx in (-G / 2, 0, G / 2) for dz in (-G / 2, 0, G / 2) if dx or dz]
+            around = aerial.canopy([c[0] + dx for c in cand for dx, dz in ring], [c[1] + dz for c in cand for dx, dz in ring])
+            # Not on a path or a service road: a trunk beside it, nudged off.
+            paved_grid = Grid(50)
+            for wd, svc, pts, look in paved:
+                for a, b in zip(pts, pts[1:]):
+                    paved_grid.add((wd, a, b), a, b)
+            def off_paved(x, z):
+                for _ in range(3):
+                    for wd, a, b in paved_grid.near(x - 8, z - 8, x + 8, z + 8):
+                        d = seg_dist((x, z), a, b)
+                        if d < wd / 2 + 1.2:
+                            t = max(0.0, min(1.0, ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1]))
+                                             / max(1e-9, (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)))
+                            cx, cz = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+                            k = (wd / 2 + 1.3) / max(d, 0.05)
+                            x, z = (cx + (x - cx) * k, cz + (z - cz) * k) if d > 0.05 else (x + wd / 2 + 1.3, z)
+                            break
+                    else:
+                        return x, z
+                return None
+            # Nor in a building or on a road (the game would have to check
+            # each of a hundred thousand trees as it loads).
+            box_grid = Grid(50)
+            for fp in footprints:
+                x, z, bw, bd, ang = fp[:5]
+                r_ = math.hypot(bw, bd) / 2
+                box_grid.add(fp, (x - r_, z - r_), (x + r_, z + r_))
+            def clear(x, z):
+                for ed, a, b in road_grid.near(x - 30, z - 30, x + 30, z + 30):
+                    if seg_dist((x, z), a, b) < ed["width"] / 2 + 1.5: return False
+                for bx, bz, bw, bd, ang, *_ in box_grid.near(x, z, x, z):
+                    c, s_ = math.cos(ang), math.sin(ang)
+                    u, v = (x - bx) * c + (z - bz) * s_, -(x - bx) * s_ + (z - bz) * c
+                    if abs(u) < bw / 2 + 1.5 and abs(v) < bd / 2 + 1.5: return False
+                return True
             rnd = random_.Random(7)
-            photo_trees = [(x + rnd.uniform(-1.8, 1.8), z + rnd.uniform(-1.8, 1.8)) for (x, z), t in zip(cand, crown.tolist()) if t]
-            print(f"aerial: {len(photo_trees)} trees from the photo", file=sys.stderr)
+            for n_, (x, z) in enumerate(cand):
+                full = sum(around[n_ * len(ring):(n_ + 1) * len(ring)].tolist()) / len(ring)
+                d = round(6 + 7 * full + rnd.uniform(-1, 1))  # crown 5-14 m across
+                at = off_paved(x + rnd.uniform(-2, 2), z + rnd.uniform(-2, 2))
+                if at is None or not clear(*at): continue
+                tree = (at[0], at[1], d)
+                (photo_trees if by_a_street(x, z) else park_trees).append(tree)
+            print(f"aerial: {len(photo_trees)} trees from the photo by the streets, {len(park_trees)} in parks and yards",
+                  file=sys.stderr)
         terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "palette": ground_palette}
         tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
         import struct
@@ -1861,8 +1908,11 @@ def main():
         L.append(f"    {{{q(name)}, {f(x)}, {f(z)}, {q(kind)}}},")
     L.append("  },")
     if photo_trees:
-        L.append("  -- trees the aerial photo shows outside parks and woods: x, z, x, z, ...")
-        L.append("  photo_trees = {" + ", ".join(f"{f(x)}, {f(z)}" for x, z in photo_trees) + "},")
+        L.append("  -- trees the aerial photo shows by the streets: x, z, crown across (m), ...")
+        L.append("  photo_trees = {" + ", ".join(f"{f(x)}, {f(z)}, {d}" for x, z, d in photo_trees) + "},")
+    if park_trees:
+        L.append("  -- and away from the streets, in parks and yards: the same")
+        L.append("  park_trees = {" + ", ".join(f"{f(x)}, {f(z)}, {d}" for x, z, d in park_trees) + "},")
     if terrain:
         L.append(f"  -- the ground's height every {f(STEP)} m from (x0, z0), in {terrain['file'].name} (Maanmittauslaitos")
         L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")

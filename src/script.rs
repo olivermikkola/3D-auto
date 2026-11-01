@@ -572,6 +572,17 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         e.set_terrain(Some(terrain), colors);
         Ok(())
     });
+    // Baked leafy trees, replacing any before: {x, y, z, crown across, ...}
+    // (y the ground's), in chunks of `chunk` metres (default 200). Drawn
+    // only, nothing collides with them. Returns how many chunks.
+    f!("forest", |e, _lua, (t, chunk): (Table, Option<f32>)| {
+        let v: Vec<f32> = t.sequence_values().collect::<Result<_>>()?;
+        if !v.len().is_multiple_of(4) {
+            return Err(mlua::Error::runtime("forest trees come in fours: x, y, z, crown"));
+        }
+        let trees: Vec<[f32; 4]> = v.chunks(4).map(|c| [c[0], c[1], c[2], c[3]]).collect();
+        Ok(e.set_forest(&trees, chunk.unwrap_or(200.0).max(10.0)))
+    });
     // Ground height and normal at (x, z); nothing off the heightfield.
     f!("terrain_height", |e, lua, (x, z): (f32, f32)| {
         multi(lua, e.terrain.as_ref().and_then(|t| t.surface(x, z)).map(|(h, n)| (h, n.x, n.y, n.z)))
