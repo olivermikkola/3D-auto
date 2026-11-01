@@ -80,10 +80,14 @@ uniform vec4 sun_color;
 uniform vec4 ambient;
 uniform vec4 ground;
 uniform vec4 params; // glow, light count, shadows on, shadow texel
+uniform vec4 gmap;  // the ground map: x0, z0, 1 / its width and depth in metres
+uniform vec4 gmap2; // its points across and down, on (1) or not
 uniform vec4 lpos[16]; // xyz, radius
 uniform vec4 lcol[16]; // rgb, intensity
 uniform vec4 ldir[16]; // xyz, cos(cone) or -1
 uniform sampler2D shadow_map;
+uniform sampler2D ground_idx; // each ground point's palette index, in alpha
+uniform sampler2D ground_pal; // 256 x 1
 
 float unpack(vec4 c) { return dot(c, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0)); }
 
@@ -194,6 +198,21 @@ float vnoise(vec2 p) {
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+// The ground map's colour at world (x, z) p: the four nearest points'
+// palette colours, blended (an index can't be).
+vec3 pal_at(vec2 t) {
+    float k = texture2D(ground_idx, (t + 0.5) / gmap2.xy).a;
+    return texture2D(ground_pal, vec2((k * 255.0 + 0.5) / 256.0, 0.5)).rgb;
+}
+vec3 ground_map(vec2 p) {
+    vec2 t = (p - gmap.xy) * gmap.zw * gmap2.xy - 0.5;
+    vec2 i = floor(t);
+    vec2 f = t - i;
+    vec3 a = mix(pal_at(i), pal_at(i + vec2(1.0, 0.0)), f.x);
+    vec3 b = mix(pal_at(i + vec2(0.0, 1.0)), pal_at(i + vec2(1.0, 1.0)), f.x);
+    return mix(a, b, f.y);
+}
+
 // The ground's surface by the pixel (64 worn asphalt, 65 setts), on its
 // colour c, at world (x, z) p.
 vec3 ground_surface(float id, vec3 c, vec2 p) {
@@ -221,7 +240,11 @@ vec3 ground_surface(float id, vec3 c, vec2 p) {
 void main() {
     vec3 n = normalize(v_normal);
     vec3 base = v_color * tint.rgb;
-    if (v_facade.x > 63.5 && n.y > 0.5) {
+    if (v_facade.x > 65.5) {
+        // The terrain: its colour from the ground map where there's one.
+        vec2 uv = (v_world.xz - gmap.xy) * gmap.zw;
+        if (gmap2.z > 0.5 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) base = ground_map(v_world.xz) * tint.rgb;
+    } else if (v_facade.x > 63.5 && n.y > 0.5) {
         // Far off, the pattern would shimmer: it fades to the plain colour.
         float far = smoothstep(40.0, 140.0, length(v_world - eye.xyz));
         base = mix(ground_surface(v_facade.x, base, v_world.xz), base, far);
@@ -334,6 +357,19 @@ const HUD_FS: &str = r#"
 varying vec4 v_color;
 void main() { gl_FragColor = v_color; }"#;
 
+/// A ground map's texture: points, not blended (an index can't be).
+fn ground_tex(format: TextureFormat, width: u32, height: u32) -> TextureParams {
+    TextureParams {
+        format,
+        width,
+        height,
+        min_filter: FilterMode::Nearest,
+        mag_filter: FilterMode::Nearest,
+        wrap: TextureWrap::Clamp,
+        ..Default::default()
+    }
+}
+
 #[repr(C)]
 struct Uniforms {
     mvp: [f32; 16],
@@ -350,6 +386,8 @@ struct Uniforms {
     ambient: [f32; 4],
     ground: [f32; 4],
     params: [f32; 4],
+    gmap: [f32; 4],
+    gmap2: [f32; 4],
     lpos: [[f32; 4]; MAX_LIGHTS],
     lcol: [[f32; 4]; MAX_LIGHTS],
     ldir: [[f32; 4]; MAX_LIGHTS],
@@ -384,6 +422,14 @@ pub struct Renderer {
     shadow_pass: RenderPass,
     shadow_tex: TextureId,
     sky_bind: Bindings,
+    /// The ground map's textures (placeholders until a map has one), and
+    /// its uniforms; `ground_rev` is the engine's map they hold.
+    ground_idx: TextureId,
+    ground_pal: TextureId,
+    gmap: [f32; 4],
+    gmap2: [f32; 4],
+    ground_rev: u32,
+    ground_taken: bool,
     meshes: Vec<Option<GpuMesh>>,
     /// Meshes uploaded since the last `take_uploaded`.
     uploaded: Vec<usize>,
@@ -548,11 +594,13 @@ impl Renderer {
                 ("ambient", Float4, 1),
                 ("ground", Float4, 1),
                 ("params", Float4, 1),
+                ("gmap", Float4, 1),
+                ("gmap2", Float4, 1),
                 ("lpos", Float4, MAX_LIGHTS),
                 ("lcol", Float4, MAX_LIGHTS),
                 ("ldir", Float4, MAX_LIGHTS),
             ],
-            &["shadow_map"],
+            &["shadow_map", "ground_idx", "ground_pal"],
         );
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
@@ -616,6 +664,8 @@ impl Renderer {
             hud_sh,
             PipelineParams { color_blend: blend(), ..Default::default() },
         );
+        let ground_idx = ctx.new_texture_from_data_and_format(&[0], ground_tex(TextureFormat::Alpha, 1, 1));
+        let ground_pal = ctx.new_texture_from_data_and_format(&[0; 4], ground_tex(TextureFormat::RGBA8, 1, 1));
         Renderer {
             ctx,
             opaque,
@@ -626,6 +676,12 @@ impl Renderer {
             shadow_pass,
             shadow_tex,
             sky_bind,
+            ground_idx,
+            ground_pal,
+            gmap: [0.0; 4],
+            gmap2: [1.0, 1.0, 0.0, 0.0],
+            ground_rev: 0,
+            ground_taken: false,
             meshes: Vec::new(),
             uploaded: Vec::new(),
             epoch: 0,
@@ -670,6 +726,42 @@ impl Renderer {
         }
     }
 
+    /// The engine's ground map onto the GPU when it's a new one (its
+    /// points are then the engine's to drop: `take_ground`).
+    fn sync_ground(&mut self, eng: &Engine) {
+        match &eng.ground_map {
+            Some(g) if g.rev != self.ground_rev && !g.idx.is_empty() => {
+                self.ctx.delete_texture(self.ground_idx);
+                self.ctx.delete_texture(self.ground_pal);
+                self.ground_idx =
+                    self.ctx.new_texture_from_data_and_format(&g.idx, ground_tex(TextureFormat::Alpha, g.w as u32, g.h as u32));
+                let mut pal = vec![0u8; 256 * 4];
+                for (k, c) in g.palette.iter().take(256).enumerate() {
+                    pal[4 * k..4 * k + 3].copy_from_slice(c);
+                    pal[4 * k + 3] = 255;
+                }
+                self.ground_pal = self.ctx.new_texture_from_data_and_format(&pal, ground_tex(TextureFormat::RGBA8, 256, 1));
+                for m in self.meshes.iter_mut().flatten() {
+                    m.bind.images = vec![self.shadow_tex, self.ground_idx, self.ground_pal];
+                }
+                let (wm, hm) = (g.w as f32 * g.step, g.h as f32 * g.step);
+                // (the points are at the cells' middles: x0 is the first one's)
+                self.gmap = [g.x0 - g.step / 2.0, g.z0 - g.step / 2.0, 1.0 / wm, 1.0 / hm];
+                self.gmap2 = [g.w as f32, g.h as f32, 1.0, 0.0];
+                self.ground_rev = g.rev;
+                self.ground_taken = true;
+            }
+            None => self.gmap2[2] = 0.0,
+            _ => {}
+        }
+    }
+
+    /// Whether a ground map went to the GPU since the last call: its points
+    /// can go from the engine (in the browser they'd be 10 MB held for nothing).
+    pub fn take_ground(&mut self) -> bool {
+        std::mem::take(&mut self.ground_taken)
+    }
+
     /// Mesh i at revision rev onto the GPU, replacing what was there.
     fn put(&mut self, i: usize, rev: u32, m: &Mesh) {
         if self.meshes.len() <= i {
@@ -686,7 +778,7 @@ impl Renderer {
         let ib = self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&m.indices));
         let (center, radius) = mesh_bounds(m);
         self.meshes[i] = Some(GpuMesh {
-            bind: Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![self.shadow_tex] },
+            bind: Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![self.shadow_tex, self.ground_idx, self.ground_pal] },
             count: m.indices.len() as i32,
             radius,
             center,
@@ -702,6 +794,7 @@ impl Renderer {
 
     fn sync(&mut self, eng: &Engine) {
         self.reset_if(eng.epoch);
+        self.sync_ground(eng);
         self.meshes.resize_with(self.meshes.len().max(eng.meshes.len()), || None);
         for (i, m) in eng.meshes.iter().enumerate() {
             let rev = eng.mesh_revs[i];
@@ -840,6 +933,8 @@ impl Renderer {
             ambient: c4(env.ambient, 1.),
             ground: c4(env.ground, 1.),
             params: [env.glow, 0.0, if shadows { 1.0 } else { 0.0 }, 1.0 / SHADOW_RES as f32],
+            gmap: self.gmap,
+            gmap2: self.gmap2,
             lpos: [[0.0; 4]; MAX_LIGHTS],
             lcol: [[0.0; 4]; MAX_LIGHTS],
             ldir: [[0.0; 4]; MAX_LIGHTS],
