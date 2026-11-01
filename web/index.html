@@ -22,7 +22,7 @@
             font: 20px/1.4 system-ui, sans-serif; text-align: center;
             align-items: center; justify-content: center; flex-direction: column; }
     #turn b { font-size: 64px; display: block; transform: rotate(90deg); margin-bottom: 24px; }
-    @media (orientation: portrait) and (pointer: coarse) { #turn { display: flex; } }
+    @media (orientation: portrait) { .touch #turn { display: flex; } }
   </style>
 </head>
 <body>
@@ -81,6 +81,11 @@
       if (b.length <= cap) bytes(ptr, b.length).set(b);
       return b.length;
     }
+    function touch_screen() {
+      return matchMedia("(pointer: coarse)").matches
+        || (navigator.maxTouchPoints > 1 && /Macintosh|iPhone|iPad/.test(navigator.userAgent));
+    }
+    if (touch_screen()) document.documentElement.classList.add("touch");
     function storage() { try { return window.localStorage; } catch (e) { return null; } }
     // Ask the browser not to clear the saves when space runs low.
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -92,10 +97,12 @@
         imports.env.console_log = ptr => { show(UTF8ToString(ptr)); log(ptr); };
         // The page's query string, for the game's environment (src/web.rs).
         // A touch screen as the main pointer (a phone or tablet) adds phone=1,
+        // also an iPhone in "desktop website" mode (it says it's a Mac with
+        // a fine pointer; a real Mac has no touch points),
         // so a first start picks the low graphics preset (lib/settings).
         imports.env.web_query = (ptr, cap) => {
           let search = location.search;
-          if (matchMedia("(pointer: coarse)").matches && !/[?&]phone=/.test(search)) {
+          if (touch_screen() && !/[?&]phone=/.test(search)) {
             search += (search ? "&" : "?") + "phone=1";
           }
           const q = new TextEncoder().encode(search);
@@ -136,13 +143,15 @@
     // allow this over https or on localhost.
     // On the first tap: full screen and locked sideways where the browser
     // allows it (Android; an iPhone ignores both, and #turn covers that).
-    // Browsers only grant these from a tap, and touchend is one.
-    document.addEventListener("touchend", () => {
+    // Browsers only grant these from a tap, and the end of one is.
+    document.addEventListener("pointerup", function first(e) {
+      if (e.pointerType == "mouse") return;
+      document.removeEventListener("pointerup", first);
       const lock = () => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {});
       const el = document.documentElement;
       if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({navigationUI: "hide"}).then(lock, lock);
       else lock();
-    }, {once: true});
+    });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => show("offline cache: " + e.message));
   </script>
 </body>

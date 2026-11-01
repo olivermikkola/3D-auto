@@ -1272,38 +1272,37 @@ var importObject = {
                 }
             };
 
-            canvas.addEventListener("touchstart", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_BEGAN, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchend", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_ENDED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchcancel", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_CANCELED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchmove", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_MOVED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
+            // Touches as pointer events (not touch events): an iPhone in
+            // "desktop website" mode doesn't send touch events to the page,
+            // pointer events come in every mode. A mouse stays the mouse's
+            // (onmousedown and so on above); preventDefault on pointerdown
+            // keeps a tap from also arriving as a mouse click (the gun).
+            const touch_phase = {
+                pointerdown: SAPP_EVENTTYPE_TOUCHES_BEGAN, pointermove: SAPP_EVENTTYPE_TOUCHES_MOVED,
+                pointerup: SAPP_EVENTTYPE_TOUCHES_ENDED, pointercancel: SAPP_EVENTTYPE_TOUCHES_CANCELED,
+            };
+            const touching = new Set();
+            for (const type in touch_phase) {
+                canvas.addEventListener(type, function (event) {
+                    if (event.pointerType == "mouse") return;
+                    event.preventDefault();
+                    if (type == "pointerdown") {
+                        touching.add(event.pointerId);
+                        canvas.setPointerCapture && canvas.setPointerCapture(event.pointerId);
+                    } else if (!touching.has(event.pointerId)) {
+                        return;
+                    } else if (type != "pointermove") {
+                        touching.delete(event.pointerId);
+                    }
+                    let relative_position = mouse_relative_position(event.clientX, event.clientY);
+                    wasm_exports.touch(touch_phase[type], event.pointerId, relative_position.x, relative_position.y);
+                });
+            }
+            // (Touch events still fire alongside on most phones: kept from
+            // scrolling or zooming the page, but not sent on.)
+            for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
+                canvas.addEventListener(type, function (event) { event.preventDefault(); });
+            }
 
             window.onresize = function () {
                 resize(canvas, wasm_exports.resize);
