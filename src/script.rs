@@ -572,6 +572,36 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         e.set_terrain(Some(terrain), colors);
         Ok(())
     });
+    // The map's trees (engine.rs load_forest), baked into leafy chunks:
+    // forest(file, street, park) stands those by a street whose hash of
+    // their place is under `street` (0..1), the rest under `park`, and
+    // returns how many there are and how many stand; forest() takes them
+    // away. Drawn only, nothing collides with them.
+    f!("forest", |e, _lua, (file, street, park): (Option<String>, Option<f32>, Option<f32>)| {
+        let Some(file) = file else {
+            e.forest = None;
+            e.stand_forest(0.0, 0.0);
+            return Ok((0, 0));
+        };
+        if e.forest.as_ref().is_none_or(|f| f.file != file) {
+            let path = game_path(&e.root, &file)?;
+            let bytes = crate::vfs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
+            e.load_forest(&file, &bytes).map_err(mlua::Error::runtime)?;
+        }
+        let all = e.forest.as_ref().map_or(0, |f| f.trees.len());
+        Ok((all, e.stand_forest(street.unwrap_or(1.0), park.unwrap_or(1.0))))
+    });
+    // The standing trees within r of (x, z): {number, x, z, crown across, ...}.
+    f!("forest_near", |e, lua, (x, z, r): (f32, f32, f32)| {
+        let t = lua.create_table()?;
+        for (k, (i, tx, tz, crown)) in e.forest_near(x, z, r).into_iter().enumerate() {
+            t.raw_set(4 * k + 1, i)?;
+            t.raw_set(4 * k + 2, tx)?;
+            t.raw_set(4 * k + 3, tz)?;
+            t.raw_set(4 * k + 4, crown)?;
+        }
+        Ok(t)
+    });
     // Ground height and normal at (x, z); nothing off the heightfield.
     f!("terrain_height", |e, lua, (x, z): (f32, f32)| {
         multi(lua, e.terrain.as_ref().and_then(|t| t.surface(x, z)).map(|(h, n)| (h, n.x, n.y, n.z)))

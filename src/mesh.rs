@@ -463,6 +463,84 @@ pub fn cylinder(sides: usize) -> Mesh {
     m
 }
 
+/// A leafy tree (a linden, a maple, a birch) standing at `base`, its crown
+/// `crown` metres across, added to `m`: a trunk and one lumpy crown, darker
+/// underneath, its shape and green varied by `seed`. 26 vertices: a city's
+/// hundred thousand trees bake into a few chunk meshes (Engine::set_forest).
+pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
+    const SIDES: usize = 7;
+    // A hash's next number, 0..1.
+    let mut s = seed.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
+    let mut rnd = || {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        (s % 10_000) as f32 / 10_000.0
+    };
+    let r = crown / 2.0;
+    let height = 0.9 * crown + 3.0;
+    let ry = r * (0.8 + 0.2 * rnd());
+    let mid = base + v3(0.0, height - ry, 0.0);
+    let leaf = v3(0.2 + 0.08 * rnd(), 0.36 + 0.12 * rnd(), 0.13 + 0.07 * rnd());
+    let bark = v3(0.37, 0.34, 0.3); // (grey-brown: lindens' and birches' bark, lit by the sky too)
+    let push = |m: &mut Mesh, p: Vec3, n: Vec3, c: Vec3| {
+        m.verts.push(Vertex::new(p, n, c, 0.0));
+        m.verts.len() as u32 - 1
+    };
+    // Each triangle wound to face away from `centre`.
+    let tri = |m: &mut Mesh, a: u32, b: u32, c: u32, centre: Vec3| {
+        let (pa, pb, pc) = (m.verts[a as usize].pos(), m.verts[b as usize].pos(), m.verts[c as usize].pos());
+        let out = (pb - pa).cross(pc - pa).dot((pa + pb + pc) * (1.0 / 3.0) - centre) > 0.0;
+        m.indices.extend_from_slice(&if out { [a, b, c] } else { [a, c, b] });
+    };
+    // The trunk, five sides, up into the crown.
+    let tr = 0.1 + 0.025 * crown;
+    let axis = base + v3(0.0, (height - ry) / 2.0, 0.0);
+    let ring = |k: usize, y: f32| {
+        let a = k as f32 / 5.0 * std::f32::consts::TAU;
+        (v3(a.cos() * tr, y, a.sin() * tr), v3(a.cos(), 0.8, a.sin()).norm())
+    };
+    let first = m.verts.len() as u32;
+    for k in 0..5 {
+        let ((p0, n), (p1, _)) = (ring(k, 0.0), ring(k, height - ry));
+        push(m, base + p0, n, bark);
+        push(m, base + p1, n, bark);
+    }
+    for k in 0..5u32 {
+        let (a, b, c, d) = (first + 2 * k, first + 2 * k + 1, first + 2 * ((k + 1) % 5), first + 2 * ((k + 1) % 5) + 1);
+        tri(m, a, c, b, axis);
+        tri(m, b, c, d, axis);
+    }
+    // The crown: a point below, two rings, a point on top; every vertex
+    // pushed in or out a little so no two trees are alike.
+    let spin = rnd() * std::f32::consts::TAU;
+    let shade = |f: f32| leaf * f;
+    let vert = |m: &mut Mesh, p: Vec3, f: f32| {
+        // (bent up, as light comes through leaves: no black underside)
+        let n = (v3((p.x - mid.x) / r, (p.y - mid.y) / ry, (p.z - mid.z) / r).norm() + v3(0.0, 0.7, 0.0)).norm();
+        push(m, p, n, shade(f))
+    };
+    let bottom = vert(m, mid + v3(0.0, -ry * 0.85, 0.0), 0.75);
+    let mut rings = [[0u32; SIDES]; 2];
+    for (ring, (y, rad, f, twist)) in rings.iter_mut().zip([(-0.3, 0.95, 0.9, 0.0), (0.4, 0.8, 1.05, 0.5)]) {
+        for (k, slot) in ring.iter_mut().enumerate() {
+            let a = spin + (k as f32 + twist) / SIDES as f32 * std::f32::consts::TAU;
+            let w = r * rad * (0.82 + 0.3 * rnd());
+            let p = mid + v3(a.cos() * w, ry * (y + 0.12 * (rnd() - 0.5)), a.sin() * w);
+            *slot = vert(m, p, f);
+        }
+    }
+    let top = vert(m, mid + v3(r * 0.15 * (rnd() - 0.5), ry, r * 0.15 * (rnd() - 0.5)), 1.15);
+    for k in 0..SIDES {
+        let k1 = (k + 1) % SIDES;
+        let ([l0, l1], [u0, u1]) = ([rings[0][k], rings[0][k1]], [rings[1][k], rings[1][k1]]);
+        tri(m, bottom, l0, l1, mid);
+        tri(m, l0, l1, u0, mid);
+        tri(m, l1, u1, u0, mid);
+        tri(m, u0, u1, top, mid);
+    }
+}
+
 /// Low-poly UV sphere, diameter 1.
 pub fn sphere(rings: usize, segs: usize) -> Mesh {
     let mut m = Mesh::default();
@@ -620,6 +698,30 @@ mod tests {
         assert!((w("AB") - 1.1).abs() < 1e-3, "two letters 11 pixels of 0.1 m: {}", w("AB"));
         assert!(text(&cube(), " ", 0.7, 0.05).verts.is_empty());
         assert!(!text(&cube(), "Ä", 0.7, 0.05).verts.is_empty());
+    }
+
+    #[test]
+    fn a_leafy_tree_stands_on_its_base_its_crown_as_wide_as_asked_facing_out() {
+        let mut m = Mesh::default();
+        leafy_tree(&mut m, v3(10.0, 2.0, -5.0), 10.0, 7);
+        assert_eq!(m.verts.len(), 26, "small: a hundred thousand of them bake into chunks");
+        let lo = m.verts.iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min);
+        let (hi, wide) = m.verts.iter().fold((f32::NEG_INFINITY, 0f32), |(h, w), v| {
+            (h.max(v.pos[1]), w.max(((v.pos[0] - 10.0).powi(2) + (v.pos[2] + 5.0).powi(2)).sqrt()))
+        });
+        assert!((lo - 2.0).abs() < 1e-4, "on the ground: {lo}");
+        assert!(hi > 2.0 + 10.0 && hi < 2.0 + 13.0, "about 12 m tall: {}", hi - 2.0);
+        assert!(wide > 4.0 && wide < 6.0, "crown about 10 m across: {}", 2.0 * wide);
+        // Every face of the crown faces away from the crown's middle (it's
+        // drawn with back faces culled), and the trunk's from its axis.
+        let mid = m.verts[10..].iter().fold(Vec3::ZERO, |a, v| a + v.pos()) * (1.0 / 16.0);
+        for t in m.indices.chunks(3) {
+            let [a, b, c] = [t[0], t[1], t[2]].map(|i| m.verts[i as usize].pos());
+            let n = (b - a).cross(c - a);
+            let centre = (a + b + c) * (1.0 / 3.0);
+            let from = if t[0] < 10 { v3(10.0, centre.y, -5.0) } else { mid };
+            assert!(n.dot(centre - from) > 0.0, "a face turned in at {centre:?}");
+        }
     }
 
     #[test]

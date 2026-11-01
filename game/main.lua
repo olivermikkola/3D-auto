@@ -51,6 +51,7 @@ require "systems.shelters"
 require "systems.shopsigns"
 require "systems.ambience"
 require "systems.parking"
+require "systems.trees"
 require "lib.menu"
 require "lib.shop"
 
@@ -133,6 +134,7 @@ engine.on("init", function()
   require("systems.shelters").build()
   require("systems.shopsigns").build()
   require("systems.parking").build()
+  require("systems.trees").build()
   require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
   require("systems.heli").build()
   require("systems.terraces").build()
@@ -213,6 +215,7 @@ if os.getenv("WATER_TEST") then require "test.water_probe" end
 if os.getenv("RAIL_PROFILE_TEST") then require "test.rail_profile_probe" end
 if os.getenv("DECK_TEST") then require "test.deck_probe" end
 if os.getenv("QUAY_TEST") then require "test.quay_probe" end
+if os.getenv("TREES_TEST") then require "test.trees_probe" end
 if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
 if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
 if os.getenv("RACER_TEST") then require "test.racer_probe" end

@@ -123,6 +123,7 @@ function A.build(map)
   -- and quay walls stood in the river): nothing goes down on a carriageway
   -- or in the water.
   local function off_road(x, z, r) return not R.on_carriageway(x, z, r) and not R.wet(x, z) end
+  local photo_trees = map.trees_file ~= nil -- (the aerial photo's, on the banks too: lib/roadnet)
   local quay_stone = {0.52, 0.50, 0.48}
   local bollard_iron = {0.18, 0.18, 0.20}
 
@@ -166,12 +167,14 @@ function A.build(map)
             }
           end
 
-          -- Riverside promenade weeping willows & linden trees
+          -- Riverside promenade weeping willows & linden trees (where the
+          -- map has no trees from the aerial photo, which stand where the
+          -- real ones do and never in a building)
           local rx, rz = U.right(yaw)
           local tx = x + rx * (bank_name == "west" and -4.5 or 4.5)
           local tz = z + rz * (bank_name == "west" and -4.5 or 4.5)
           local ty = U.ground(tx, tz)
-          if not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
+          if not photo_trees and not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
             engine.spawn{
               mesh = (s % 2 == 0) and "willow_tree" or "tree",
               pos = {tx, ty, tz},
@@ -203,7 +206,7 @@ function A.build(map)
           local tx = x + rx * (bank_name == "west" and -6.0 or 6.0)
           local tz = z + rz * (bank_name == "west" and -6.0 or 6.0)
           local ty = U.ground(tx, tz)
-          if not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
+          if not photo_trees and not R.wet(tx, tz) and off_road(tx, tz, 1.5) then
             engine.spawn{
               mesh = "tree",
               pos = {tx, ty, tz},

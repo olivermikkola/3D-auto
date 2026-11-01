@@ -15,6 +15,32 @@ static EPOCH: AtomicU64 = AtomicU64::new(1);
 pub const TICK_HZ: f64 = 60.0;
 /// Meshes at least this big keep their vertices only on the GPU once drawn.
 const GPU_ONLY_VERTS: usize = 4096;
+/// The baked trees' chunk, metres square.
+const FOREST_CHUNK: f32 = 200.0;
+
+/// One of a map's trees (`Engine::load_forest`).
+pub struct Tree {
+    pub x: f32,
+    pub z: f32,
+    pub crown: f32,
+    pub street: bool,
+    pub hash: f32,
+}
+
+/// A map's trees, which of them stand at the current quality, and the
+/// trees by 50 m square for `forest_near`.
+pub struct Forest {
+    pub file: String,
+    pub trees: Vec<Tree>,
+    pub standing: Vec<bool>,
+    cells: HashMap<(i32, i32), Vec<u32>>,
+}
+
+impl Forest {
+    fn cell(x: f32, z: f32) -> (i32, i32) {
+        ((x / 50.0).floor() as i32, (z / 50.0).floor() as i32)
+    }
+}
 
 /// Sends a mesh to the GPU as soon as it's made: (engine epoch, mesh id,
 /// revision, mesh). Set by the windowed game; headless runs have none.
@@ -30,6 +56,8 @@ pub struct Entity {
     pub body: Option<Body>,
     pub tag: String,
     pub visible: bool,
+    /// Casts the sun's shadow (not the baked trees: see `set_forest`).
+    pub shadow: bool,
     /// Self-illumination that ignores time of day (muzzle flashes, fire, pickups).
     pub glow: f32,
     /// Pose before the last tick, so frames between ticks can be drawn in
@@ -48,6 +76,7 @@ impl Entity {
             body: None,
             tag: String::new(),
             visible: true,
+            shadow: true,
             glow: 0.0,
             prev: None,
         }
@@ -111,6 +140,11 @@ pub struct Engine {
     /// drawing it.
     pub terrain: Option<Terrain>,
     terrain_chunks: Vec<u32>,
+    /// The entities drawing the baked trees (`set_forest`).
+    forest_chunks: Vec<u32>,
+    forest_meshes: Vec<String>,
+    /// The map's trees, loaded from its file (`load_forest`).
+    pub forest: Option<Forest>,
     pub meshes: Vec<Mesh>,
     pub mesh_ids: HashMap<String, usize>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
@@ -211,6 +245,9 @@ impl Engine {
             tagged: HashMap::new(),
             terrain: None,
             terrain_chunks: Vec::new(),
+            forest_chunks: Vec::new(),
+            forest_meshes: Vec::new(),
+            forest: None,
             meshes: Vec::new(),
             mesh_ids: HashMap::new(),
             mesh_revs: Vec::new(),
@@ -263,6 +300,12 @@ impl Engine {
 
     /// Register (or replace) a named mesh. Returns its id.
     pub fn add_mesh(&mut self, name: &str, m: Mesh) -> usize {
+        self.add_mesh_sized(name, m, GPU_ONLY_VERTS)
+    }
+
+    /// `add_mesh`, sent to the GPU and dropped here from `gpu_only` vertices
+    /// up (the baked trees: many small chunks that add up).
+    fn add_mesh_sized(&mut self, name: &str, m: Mesh, gpu_only: usize) -> usize {
         let id = if let Some(&id) = self.mesh_ids.get(name) {
             self.meshes[id] = m;
             self.mesh_revs[id] += 1;
@@ -275,7 +318,7 @@ impl Engine {
             self.meshes.len() - 1
         };
         if let Some(up) = self.uploader.as_mut()
-            && self.meshes[id].verts.len() >= GPU_ONLY_VERTS
+            && self.meshes[id].verts.len() >= gpu_only.max(1)
         {
             up(self.epoch, id, self.mesh_revs[id], &self.meshes[id]);
             self.meshes[id] = Mesh::default();
@@ -414,6 +457,114 @@ impl Engine {
         self.terrain = Some(t);
     }
 
+    /// Load a map's trees: 10 bytes each, x and z (f32, little-endian),
+    /// the crown across in metres and 1 for a street's tree (u8 each).
+    pub fn load_forest(&mut self, file: &str, bytes: &[u8]) -> Result<usize, String> {
+        if !bytes.len().is_multiple_of(10) {
+            return Err(format!("{file} is {} bytes, not 10 a tree", bytes.len()));
+        }
+        let f32_at = |b: &[u8]| f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        let trees: Vec<Tree> = bytes
+            .chunks(10)
+            .map(|b| {
+                let (x, z) = (f32_at(&b[0..4]), f32_at(&b[4..8]));
+                // A hash of the place, 0..1: which trees a lower quality leaves out.
+                let h = ((x * 10.0).floor() as i32).wrapping_mul(73_856_093) ^ ((z * 10.0).floor() as i32).wrapping_mul(19_349_663);
+                Tree { x, z, crown: b[8] as f32, street: b[9] != 0, hash: h.rem_euclid(1000) as f32 / 1000.0 }
+            })
+            .collect();
+        let mut cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for (i, t) in trees.iter().enumerate() {
+            cells.entry(Forest::cell(t.x, t.z)).or_default().push(i as u32);
+        }
+        let n = trees.len();
+        self.forest = Some(Forest { file: file.to_string(), standing: vec![false; n], trees, cells });
+        Ok(n)
+    }
+
+    /// Stand the loaded trees: those by a street where their hash is under
+    /// `street`, the rest under `park`, and bake them. Returns how many stand.
+    pub fn stand_forest(&mut self, street: f32, park: f32) -> usize {
+        let Some(f) = self.forest.as_mut() else {
+            self.set_forest(&[], FOREST_CHUNK);
+            return 0;
+        };
+        let ground = |x: f32, z: f32| self.terrain.as_ref().and_then(|t| t.surface(x, z)).map_or(0.0, |(h, _)| h);
+        let mut baked = Vec::new();
+        for (t, on) in f.trees.iter().zip(f.standing.iter_mut()) {
+            *on = t.hash < if t.street { street } else { park };
+            if *on {
+                baked.push([t.x, ground(t.x, t.z), t.z, t.crown]);
+            }
+        }
+        self.set_forest(&baked, FOREST_CHUNK);
+        baked.len()
+    }
+
+    /// The standing trees within `r` of (x, z): (number, x, z, crown).
+    pub fn forest_near(&self, x: f32, z: f32, r: f32) -> Vec<(u32, f32, f32, f32)> {
+        let Some(f) = &self.forest else { return Vec::new() };
+        let ((i0, j0), (i1, j1)) = (Forest::cell(x - r, z - r), Forest::cell(x + r, z + r));
+        let mut out = Vec::new();
+        for i in i0..=i1 {
+            for j in j0..=j1 {
+                for &k in f.cells.get(&(i, j)).map_or(&[][..], |v| v.as_slice()) {
+                    let t = &f.trees[k as usize];
+                    if f.standing[k as usize] && (t.x - x).powi(2) + (t.z - z).powi(2) < r * r {
+                        out.push((k, t.x, t.z, t.crown));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Replace the baked trees: each (x, ground y, z, crown across) a leafy
+    /// tree (mesh::leafy_tree), baked into one mesh per `chunk` metres square
+    /// so a city's trees are a few hundred draws, not a hundred thousand.
+    /// They are only drawn, cast no sun shadow; whatever should stop a car
+    /// is the game's to add.
+    /// Returns the chunks made.
+    pub fn set_forest(&mut self, trees: &[[f32; 4]], chunk: f32) -> usize {
+        for id in std::mem::take(&mut self.forest_chunks) {
+            self.despawn(id);
+        }
+        // Emptied, not left holding a chunk nothing draws any more.
+        for name in std::mem::take(&mut self.forest_meshes) {
+            self.add_mesh(&name, Mesh::default());
+        }
+        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (i, t) in trees.iter().enumerate() {
+            cells.entry(((t[0] / chunk).floor() as i32, (t[2] / chunk).floor() as i32)).or_default().push(i);
+        }
+        let mut keys: Vec<_> = cells.keys().copied().collect();
+        keys.sort();
+        for (ci, cj) in keys {
+            let mut m = Mesh::default();
+            for &i in &cells[&(ci, cj)] {
+                let t = trees[i];
+                let seed = (t[0] * 10.0) as i32 as u32 ^ ((t[2] * 10.0) as i32 as u32).rotate_left(16);
+                mesh::leafy_tree(&mut m, v3(t[0], t[1], t[2]), t[3], seed);
+            }
+            let name = format!("forest_{ci}_{cj}");
+            // (to the GPU whatever its size: in the browser a city's small
+            // chunks would otherwise hold tens of MB)
+            let mesh = self.add_mesh_sized(&name, m, 1);
+            self.forest_meshes.push(name);
+            let mut e = Entity::new(Vec3::ZERO);
+            e.mesh = Some(mesh);
+            e.tag = "forest".to_string();
+            // No sun shadow: a crown's would be a solid black disc on the
+            // ground (real leaves let light through), and a city's trees
+            // would double the shadow pass. The ground under them is a
+            // shaded grass instead (tools/osm_import.py).
+            e.shadow = false;
+            let id = self.spawn(e);
+            self.forest_chunks.push(id);
+        }
+        self.forest_chunks.len()
+    }
+
     /// World-space position and direction of a light, if its anchor exists.
     pub fn light_world(&self, l: &Light) -> Option<(Vec3, Vec3)> {
         match l.follow {
@@ -537,6 +688,30 @@ mod tests {
         assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("lamp"), None), None);
         e.despawn(car);
         assert_eq!(e.nearest(Vec3::ZERO, 10.0, Some("car"), None), Some((car2, 3.0)));
+    }
+
+    #[test]
+    fn a_forest_loads_stands_by_quality_and_answers_whats_near() {
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        let mut bytes = Vec::new();
+        for k in 0..400 {
+            let (x, z) = ((k % 20) as f32 * 9.0, (k / 20) as f32 * 9.0);
+            bytes.extend_from_slice(&x.to_le_bytes());
+            bytes.extend_from_slice(&z.to_le_bytes());
+            bytes.extend_from_slice(&[8, (k % 4 == 0) as u8]);
+        }
+        assert_eq!(e.load_forest("t.bin", &bytes), Ok(400));
+        assert!(e.load_forest("t.bin", &bytes[..15]).is_err(), "10 bytes a tree");
+        e.load_forest("t.bin", &bytes).unwrap();
+        assert_eq!(e.stand_forest(1.0, 1.0), 400);
+        let some = e.stand_forest(1.0, 0.3);
+        assert!(some > 100 + 60 && some < 100 + 150, "every street tree and about 30 % of the rest: {some}");
+        assert_eq!(e.find("forest").len(), 1, "one chunk for a 171 m square");
+        let near = e.forest_near(0.0, 0.0, 12.0);
+        assert!(near.iter().all(|t| t.1 * t.1 + t.2 * t.2 < 144.0 && e.forest.as_ref().unwrap().standing[t.0 as usize]));
+        assert!(near.iter().any(|t| t.0 == 0), "a street tree always stands");
+        assert_eq!(e.stand_forest(0.0, 0.0), 0);
+        assert!(e.forest_near(0.0, 0.0, 1e6).is_empty() && e.find("forest").is_empty());
     }
 
     #[test]

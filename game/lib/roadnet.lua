@@ -638,6 +638,23 @@ local COVER = {
 }
 local LINE = {0.95, 0.95, 0.92}
 
+-- How many of the photo's trees stand, by graphics quality (low, medium,
+-- high): those by the streets, and those in the parks and yards.
+R.TREES = {street = {0.5, 1, 1}, park = {0.15, 0.5, 1}}
+
+-- Stand the map's trees (R.trees_file, from the aerial photo) the current
+-- quality has and bake them (engine.forest); R.trees_all and
+-- R.trees_standing count them, R.forest_built counts the maps built.
+function R.bake_trees()
+  local tier = quality.tier()
+  if R.trees_file then
+    R.trees_all, R.trees_standing = engine.forest(R.trees_file, R.TREES.street[tier], R.TREES.park[tier])
+  else
+    R.trees_all, R.trees_standing = engine.forest()
+  end
+end
+quality.watch(function() if R.forest_built then R.bake_trees() end end)
+
 -- A Finnish stone church: grey fieldstone walls, a steep black roof, and
 -- red wooden boards in its gables. Unit footprint, real height.
 local churches = {}
@@ -3766,38 +3783,29 @@ build = function(map, kit)
     end
   end
 
-  -- The trees the aerial photo shows by the streets (lindens, maples,
-  -- birches: leafy), where there's room, thinned evenly to their budget.
-  local photo = map.photo_trees or {}
-  local photo_n, photo_budget = 0, map.photo_trees_max or 6000
-  local every = math.max(1, (#photo / 2) / photo_budget)
-  local next_k = 0
-  for k = 1, #photo - 1, 2 do
-    if (k - 1) / 2 >= next_k then
-      local x, z = photo[k], photo[k + 1]
-      if free(H, x, z, 2.5) and not R.on_carriageway(x, z, 1.5) and not R.wet(x, z) then
-        -- (sized by a hash, not r(): the rest of the map keeps its random draws)
-        kit.static{mesh = "tree", pos = {x, 0, z}, size = {0.5, 6, 0.5}, scale = 1.5 + (k * 7919 % 101) / 120, tag = "tree"}
-        add_circle(H, x, z, 2)
-        photo_n = photo_n + 1
-        next_k = next_k + every
-        if photo_n >= photo_budget then break end
-      end
-    end
-  end
-  L.photo_trees = photo_n
+  -- The trees the aerial photo shows (lindens, maples, birches: leafy),
+  -- by the streets and in the parks and yards, each its crown's size, kept
+  -- off the roads, paths, buildings and water by the importer. The engine
+  -- holds and bakes them; systems/trees gives the ones near the player
+  -- trunks to hit.
+  R.trees_file = map.trees_file
+  R.forest_built = (R.forest_built or 0) + 1
+  R.bake_trees()
+  L.photo_trees = R.trees_all
 
   -- Forest wherever there's room: in the surveyed woods and parks, else
   -- anywhere, up to the map's budget.
   pine_mesh()
   local trees, budget = 0, map.trees or 900
+  -- (the photo's trees stand in the parks and cemeteries of a map that has them)
+  local function planted(c) return c[3] and not (map.trees_file and (c[1] == "park" or c[1] == "cemetery")) end
   local want = 0 -- trees the cover asks for; thinned evenly to the budget
   for _, c in ipairs(COVER) do
-    for _, st in ipairs(c[3] and (map.cover or {})[c[1]] or {}) do want = want + (st[3] - st[1]) * (st[4] - st[2]) / c[3] end
+    for _, st in ipairs(planted(c) and (map.cover or {})[c[1]] or {}) do want = want + (st[3] - st[1]) * (st[4] - st[2]) / c[3] end
   end
   local thin = math.min(1, budget / math.max(1, want))
   for _, c in ipairs(COVER) do
-    for _, st in ipairs(c[3] and (map.cover or {})[c[1]] or {}) do
+    for _, st in ipairs(planted(c) and (map.cover or {})[c[1]] or {}) do
       local n = (st[3] - st[1]) * (st[4] - st[2]) / c[3] * thin
       n = math.floor(n) + (r() < n % 1 and 1 or 0)
       for _ = 1, n do
