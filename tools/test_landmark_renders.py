@@ -52,8 +52,10 @@ SHOTS = {
     "kupittaa_maauimala": ((1105, 22, 745), (1150, 3, 690), [((88, 176, 224), 20, 0.09)]),
     # Ikituuri, Ylioppilaskylä's round tower: its green and turquoise panels.
     "ikituuri": ((830, 15, -965), (872, 22, -1012), [((44, 100, 92), 16, 0.03)]),
-    # The Orthodox church on Kauppatori: its green dome, its yellow walls in shade.
-    "ortodoksinen_kirkko": ((-190, 30, -40), (-220, 14, -87), [((72, 107, 92), 20, 0.03), ((72, 66, 51), 12, 0.09)]),
+    # The Orthodox church on Kauppatori: its green dome (~2.7 % of the middle;
+    # the ground round it used to be a grey-green near enough to count too),
+    # its yellow walls in shade.
+    "ortodoksinen_kirkko": ((-190, 30, -40), (-220, 14, -87), [((72, 107, 92), 20, 0.02), ((72, 66, 51), 12, 0.09)]),
     # Raisio's centre: the orange-red panels of the flats on Raisiontie.
     "raisio_center": ((870, 45, -1680), (850, 5, -1760), [((116, 52, 28), 14, 0.018)], "raisio"),
 }

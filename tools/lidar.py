@@ -126,7 +126,6 @@ class Cloud:
         self._ground_grid(allp[allp[:, 3] == GROUND], cx, cz, reach)
         photo = aerial.Aerial("turku", ORIGIN, (cx - reach, cz - reach, cx + reach, cz + reach))
         self.ground, self.roofs, self.crowns = [], [], []
-        self.roofs_of = {}  # year -> its roofs (check_heights goes by the newest that saw a building)
         for year, pts in p.items():
             if not len(pts):
                 continue
@@ -144,7 +143,6 @@ class Cloud:
                 self.crowns.append(np.concatenate([pts[c, :3], col[c]], axis=1))
             roof = high & ~green
             self.roofs.append(np.concatenate([pts[roof, :3], col[roof]], axis=1))
-            self.roofs_of[year] = self.roofs[-1]
         self.ground, self.roofs, self.crowns = (np.concatenate(v) for v in (self.ground, self.roofs, self.crowns))
 
     def _ground_grid(self, g, cx, cz, reach):
@@ -220,41 +218,34 @@ def check_heights(boxes, block=1000, cloud_at=None):
             cloud = (cloud_at or Cloud)(cx, cz, block / 2 + 80)
         except SystemExit:
             continue
+        R = cloud.roofs
+        if not len(R):
+            continue
         cell = 20.0
-        years = []  # newest first: (year, roofs sorted by cell, their cells' keys)
-        for year in sorted(getattr(cloud, "roofs_of", {"": cloud.roofs}), reverse=True):
-            R = getattr(cloud, "roofs_of", {"": cloud.roofs})[year]
-            ci = np.floor(R[:, 0] / cell).astype(np.int64)
-            cj = np.floor(R[:, 2] / cell).astype(np.int64)
-            order = np.lexsort((ci, cj))
-            years.append((year, R[order], (cj * 1_000_003 + ci)[order]))
+        ci = np.floor(R[:, 0] / cell).astype(np.int64)
+        cj = np.floor(R[:, 2] / cell).astype(np.int64)
+        order = np.lexsort((ci, cj))
+        R, ci, cj = R[order], ci[order], cj[order]
+        keys = cj * 1_000_003 + ci
         for k in ks:
             x, z, w, d, ang, h, kind = boxes[k][:7]
             roof_h = boxes[k][10] if len(boxes[k]) > 10 and boxes[k][10] else 0.0
             if kind == "church" or (len(boxes[k]) > 11 and boxes[k][11]):
                 continue
             rad = math.hypot(w, d) / 2
+            sel = []
+            for j in range(math.floor((z - rad) / cell), math.floor((z + rad) / cell) + 1):
+                for i in range(math.floor((x - rad) / cell), math.floor((x + rad) / cell) + 1):
+                    key = j * 1_000_003 + i
+                    a, b = np.searchsorted(keys, key), np.searchsorted(keys, key, side="right")
+                    if b > a:
+                        sel.append(R[a:b])
+            P = np.concatenate(sel) if sel else np.zeros((0, 6))
             ca, sa = math.cos(ang), math.sin(ang)
-            built = boxes[k][9] if len(boxes[k]) > 9 and boxes[k][9] else None
-            # The newest scan that saw the roof (a building finished in 2021
-            # was half up in that spring's).
-            for year, R, keys in years:
-                sel = []
-                for j in range(math.floor((z - rad) / cell), math.floor((z + rad) / cell) + 1):
-                    for i in range(math.floor((x - rad) / cell), math.floor((x + rad) / cell) + 1):
-                        key = j * 1_000_003 + i
-                        a, b = np.searchsorted(keys, key), np.searchsorted(keys, key, side="right")
-                        if b > a:
-                            sel.append(R[a:b])
-                P = np.concatenate(sel) if sel else np.zeros((0, 6))
-                u = (P[:, 0] - x) * ca + (P[:, 2] - z) * sa
-                v = -(P[:, 0] - x) * sa + (P[:, 2] - z) * ca
-                ins = (np.abs(u) < w / 2 - 0.5) & (np.abs(v) < d / 2 - 0.5)
-                if ins.sum() >= max(3, w * d / 6):
-                    break
-            if year and built and str(year).isdigit() and built >= int(year):
-                continue  # finished in the scan's year or after: the scan saw a building site
-            if ins.sum() < max(3, w * d / 6):
+            u = (P[:, 0] - x) * ca + (P[:, 2] - z) * sa
+            v = -(P[:, 0] - x) * sa + (P[:, 2] - z) * ca
+            ins = (np.abs(u) < w / 2 - 0.5) & (np.abs(v) < d / 2 - 0.5)
+            if ins.sum() < max(3, w * d / 3):
                 # A shed or a house the scans see only ground in can't be a
                 # tower (the city model gave a few small ones its own
                 # height over the sea): a storey or two.
