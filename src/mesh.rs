@@ -482,7 +482,7 @@ pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
     let ry = r * (0.8 + 0.2 * rnd());
     let mid = base + v3(0.0, height - ry, 0.0);
     let leaf = v3(0.2 + 0.08 * rnd(), 0.36 + 0.12 * rnd(), 0.13 + 0.07 * rnd());
-    let bark = v3(0.3, 0.23, 0.17);
+    let bark = v3(0.37, 0.34, 0.3); // (grey-brown: lindens' and birches' bark, lit by the sky too)
     let push = |m: &mut Mesh, p: Vec3, n: Vec3, c: Vec3| {
         m.verts.push(Vertex::new(p, n, c, 0.0));
         m.verts.len() as u32 - 1
@@ -498,7 +498,7 @@ pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
     let axis = base + v3(0.0, (height - ry) / 2.0, 0.0);
     let ring = |k: usize, y: f32| {
         let a = k as f32 / 5.0 * std::f32::consts::TAU;
-        (v3(a.cos() * tr, y, a.sin() * tr), v3(a.cos(), 0.0, a.sin()))
+        (v3(a.cos() * tr, y, a.sin() * tr), v3(a.cos(), 0.8, a.sin()).norm())
     };
     let first = m.verts.len() as u32;
     for k in 0..5 {

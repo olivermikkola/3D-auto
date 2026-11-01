@@ -123,7 +123,7 @@ function A.build(map)
   -- and quay walls stood in the river): nothing goes down on a carriageway
   -- or in the water.
   local function off_road(x, z, r) return not R.on_carriageway(x, z, r) and not R.wet(x, z) end
-  local photo_trees = map.park_trees ~= nil -- (lib/roadnet R.trees: the aerial photo's, on the banks too)
+  local photo_trees = map.trees_file ~= nil -- (the aerial photo's, on the banks too: lib/roadnet)
   local quay_stone = {0.52, 0.50, 0.48}
   local bollard_iron = {0.18, 0.18, 0.20}
 

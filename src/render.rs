@@ -766,7 +766,7 @@ impl Renderer {
             let (center, r) = world_bounds(g.center, g.radius, e.pos, e.rot, e.scale);
             let to = center - cam.eye;
             let dist = to.len();
-            if shadows && e.color[3] >= 1.0 && Some(mi) != plane {
+            if shadows && e.shadow && e.color[3] >= 1.0 && Some(mi) != plane {
                 let d = center - focus;
                 if (d.x * d.x + d.z * d.z).sqrt() - r < SHADOW_SIZE * 0.75 {
                     casters.push((e, mi));

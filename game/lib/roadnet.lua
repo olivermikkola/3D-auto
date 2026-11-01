@@ -642,25 +642,18 @@ local LINE = {0.95, 0.95, 0.92}
 -- high): those by the streets, and those in the parks and yards.
 R.TREES = {street = {0.5, 1, 1}, park = {0.15, 0.5, 1}}
 
--- Bake R.trees that stand at the current quality into the engine's forest;
--- R.trees.on[k] says whether tree k stands.
+-- Stand the map's trees (R.trees_file, from the aerial photo) the current
+-- quality has and bake them (engine.forest); R.trees_all and
+-- R.trees_standing count them, R.forest_built counts the maps built.
 function R.bake_trees()
-  local T, tier = R.trees, quality.tier()
-  local street, park = R.TREES.street[tier], R.TREES.park[tier]
-  local flat, n = {}, 0
-  T.on = {}
-  for k = 1, #T.x do
-    local on = T.hash[k] < (T.street[k] and street or park)
-    T.on[k] = on
-    if on then
-      flat[n + 1], flat[n + 2], flat[n + 3], flat[n + 4] = T.x[k], engine.terrain_height(T.x[k], T.z[k]) or 0, T.z[k], T.d[k]
-      n = n + 4
-    end
+  local tier = quality.tier()
+  if R.trees_file then
+    R.trees_all, R.trees_standing = engine.forest(R.trees_file, R.TREES.street[tier], R.TREES.park[tier])
+  else
+    R.trees_all, R.trees_standing = engine.forest()
   end
-  engine.forest(flat)
-  R.trees_standing = n / 4
 end
-quality.watch(function() if R.trees then R.bake_trees() end end)
+quality.watch(function() if R.forest_built then R.bake_trees() end end)
 
 -- A Finnish stone church: grey fieldstone walls, a steep black roof, and
 -- red wooden boards in its gables. Unit footprint, real height.
@@ -3791,35 +3784,21 @@ build = function(map, kit)
   end
 
   -- The trees the aerial photo shows (lindens, maples, birches: leafy),
-  -- by the streets and in the parks and yards, each its crown's size, where
-  -- there's room. Baked into chunk meshes by the engine (engine.forest);
-  -- R.trees keeps them for R.bake_trees and systems/trees, which gives the
-  -- ones near the player trunks to hit.
-  local T = {x = {}, z = {}, d = {}, hash = {}, street = {}}
-  for _, list in ipairs{map.photo_trees or {}, map.park_trees or {}} do
-    local street = list == map.photo_trees
-    for k = 1, #list - 2, 3 do
-      local x, z = list[k], list[k + 1]
-      -- (the importer kept them off the roads and out of the buildings)
-      if not R.wet(x, z) then
-        local n = #T.x + 1
-        T.x[n], T.z[n], T.d[n], T.street[n] = x, z, list[k + 2], street
-        -- (thinned by a hash of the place, not r(): the rest of the map
-        -- keeps its random draws)
-        T.hash[n] = (math.floor(x * 10) * 73856093 ~ math.floor(z * 10) * 19349663) % 1000 / 1000
-      end
-    end
-  end
-  R.trees = T
+  -- by the streets and in the parks and yards, each its crown's size, kept
+  -- off the roads, paths, buildings and water by the importer. The engine
+  -- holds and bakes them; systems/trees gives the ones near the player
+  -- trunks to hit.
+  R.trees_file = map.trees_file
+  R.forest_built = (R.forest_built or 0) + 1
   R.bake_trees()
-  L.photo_trees = #T.x
+  L.photo_trees = R.trees_all
 
   -- Forest wherever there's room: in the surveyed woods and parks, else
   -- anywhere, up to the map's budget.
   pine_mesh()
   local trees, budget = 0, map.trees or 900
   -- (the photo's trees stand in the parks and cemeteries of a map that has them)
-  local function planted(c) return c[3] and not (map.park_trees and (c[1] == "park" or c[1] == "cemetery")) end
+  local function planted(c) return c[3] and not (map.trees_file and (c[1] == "park" or c[1] == "cemetery")) end
   local want = 0 -- trees the cover asks for; thinned evenly to the budget
   for _, c in ipairs(COVER) do
     for _, st in ipairs(planted(c) and (map.cover or {})[c[1]] or {}) do want = want + (st[3] - st[1]) * (st[4] - st[2]) / c[3] end

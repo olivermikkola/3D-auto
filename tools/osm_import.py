@@ -1591,7 +1591,7 @@ def main():
 
     # ---- terrain: real heights, with the roads graded into them ----
     terrain = None
-    photo_trees, park_trees = [], []
+    photo_trees = []  # (x, z, crown across, by a street?)
     rail_hs = None
     quay_runs = []
     if elevation is not None or cfg.get("dem"):
@@ -1748,7 +1748,16 @@ def main():
             photo_k = {0} | {DRAW_ORDER.index(c) + 1 for c in ("field", "forest", "park", "cemetery", "works", "parking")}
             land = [n_ for n_, k in enumerate(cls) if k in photo_k]
             ground_palette, idx = aerial.ground([X0 + (n_ % tw) * STEP for n_ in land], [Z0 + (n_ // tw) * STEP for n_ in land], STEP)
-            for n_, k in zip(land, idx.tolist()):
+            # Except under the trees outside the woods: there the photo has
+            # the crowns and their shade, and the game draws the trees (and
+            # their shadows) itself; the ground under them is grass.
+            under = aerial.canopy([X0 + (n_ % tw) * STEP for n_ in land], [Z0 + (n_ // tw) * STEP for n_ in land]).tolist()
+            # Grass in a crown's shade (the trees cast none: the engine's
+            # forest): the photo's colour nearest a park's lawn, a little dark.
+            grass = {0, DRAW_ORDER.index("field") + 1, DRAW_ORDER.index("park") + 1, DRAW_ORDER.index("cemetery") + 1}
+            shade_k = min(range(len(ground_palette)), key=lambda k: sum((a - b) ** 2 for a, b in zip(ground_palette[k], (0.27, 0.42, 0.21))))
+            for n_, k, u in zip(land, idx.tolist(), under):
+                if u and cls[n_] in grass: k = shade_k
                 if k >= 0: cls[n_] = len(DRAW_ORDER) + 1 + k
             print(f"aerial: {len(land)} ground points coloured from the photo, {len(ground_palette)} colours", file=sys.stderr)
             # Trees the photo shows where the survey has no wood: the street
@@ -1822,10 +1831,11 @@ def main():
                         at = p_
                         break
                 if at is None: continue
-                tree = (at[0], at[1], d)
-                (photo_trees if by_a_street(x, z) else park_trees).append(tree)
-            print(f"aerial: {len(photo_trees)} trees from the photo by the streets, {len(park_trees)} in parks and yards",
-                  file=sys.stderr)
+                if any(cover_at(at[0] + dx, at[1] + dz) == water_k for dx, dz in ((0, 0), (3, 0), (-3, 0), (0, 3), (0, -3))):
+                    continue  # (at the water's edge: the river's grid creeps up the bank)
+                photo_trees.append((at[0], at[1], d, by_a_street(x, z)))
+            print(f"aerial: {sum(t[3] for t in photo_trees)} trees from the photo by the streets, "
+                  f"{sum(not t[3] for t in photo_trees)} in parks and yards", file=sys.stderr)
         terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "palette": ground_palette}
         tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
         import struct
@@ -1917,11 +1927,14 @@ def main():
         L.append(f"    {{{q(name)}, {f(x)}, {f(z)}, {q(kind)}}},")
     L.append("  },")
     if photo_trees:
-        L.append("  -- trees the aerial photo shows by the streets: x, z, crown across (m), ...")
-        L.append("  photo_trees = {" + ", ".join(f"{f(x)}, {f(z)}, {d}" for x, z, d in photo_trees) + "},")
-    if park_trees:
-        L.append("  -- and away from the streets, in parks and yards: the same")
-        L.append("  park_trees = {" + ", ".join(f"{f(x)}, {f(z)}, {d}" for x, z, d in park_trees) + "},")
+        # The trees go in a file of their own (a hundred thousand of them
+        # as Lua numbers would cost the browser tens of MB to load): 10
+        # bytes each, x and z (f32), crown across (m) and by a street (u8).
+        import struct
+        trees_dest = dest.with_name(dest.stem.replace("_osm", "") + "_trees.bin")
+        trees_dest.write_bytes(b"".join(struct.pack("<ffBB", x, z, min(255, d), 1 if st else 0) for x, z, d, st in photo_trees))
+        L.append(f"  -- the trees the aerial photo shows: {len(photo_trees)} in {trees_dest.name} (engine.forest)")
+        L.append(f"  trees_file = {q('maps/' + trees_dest.name)},")
     if terrain:
         L.append(f"  -- the ground's height every {f(STEP)} m from (x0, z0), in {terrain['file'].name} (Maanmittauslaitos")
         L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")
