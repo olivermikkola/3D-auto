@@ -2778,6 +2778,9 @@ build = function(map, kit)
     -- A `low` one (over water, not a road) arches gently between its banks.
     local g0 = (up[1] or up[2]) and 0 or (engine.terrain_height(pts[1][1], pts[1][2]) or 0)
     local g1 = (up[1] or up[2]) and 0 or (engine.terrain_height(pts[#pts][1], pts[#pts][2]) or 0)
+    -- Those heights are the sea's: spawn mustn't add the ground under each
+    -- piece on top (it stood twice the hill's height up, over Helsingin valtatie).
+    local abs = not (up[1] or up[2]) or nil
     local top = b.low and math.min(1.6, 0.3 + total * 0.03) or TOP
     local function base(sv) return g0 + (g1 - g0) * sv / math.max(total, 1e-3) end
     local function height(sv)
@@ -2801,15 +2804,15 @@ build = function(map, kit)
         local mid = (h0 + h1 + y0 + y1) / 2
         if along_deck(x, z, yaw, width) then goto next_piece end
         local deck = {mesh = "cube", pos = {x, mid, z}, yaw = yaw, pitch = pitch, size = {width, 0.4, l * 1.02},
-                      color = {0.62, 0.62, 0.6}, tag = "bridge"}
+                      color = {0.62, 0.62, 0.6}, tag = "bridge", abs = abs}
         if high then kit.static(deck) else engine.spawn(deck) end
         for _, side in ipairs{-1, 1} do
           if b.concrete then
             kit.static{mesh = "cube", pos = {x + rx * side * (width / 2 - 0.1), mid + 0.35, z + rz * side * (width / 2 - 0.1)},
-                       yaw = yaw, pitch = pitch, size = {0.25, 1.3, l * 1.02}, color = {0.72, 0.71, 0.68}, tag = "wall"}
+                       yaw = yaw, pitch = pitch, size = {0.25, 1.3, l * 1.02}, color = {0.72, 0.71, 0.68}, tag = "wall", abs = abs}
           else
             engine.spawn{mesh = "cube", pos = {x + rx * side * width / 2, mid + 0.6, z + rz * side * width / 2}, yaw = yaw,
-                         pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}}
+                         pitch = pitch, size = {0.1, 1.0, l * 1.02}, color = {0.35, 0.4, 0.45}, abs = abs}
           end
         end
         -- Pillars off the asphalt, every few pieces.
@@ -2817,7 +2820,7 @@ build = function(map, kit)
         if k % 3 == 1 and mid - foot > 2.5 then
           local ei, _, _, _, d = R.nearest_edge(x, z)
           if not ei or d > NET.edges[ei].width / 2 + 1.5 then
-            kit.static{mesh = "cylinder", pos = {x, (mid + foot) / 2, z}, size = {0.7, mid - foot, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge"}
+            kit.static{mesh = "cylinder", pos = {x, (mid + foot) / 2, z}, size = {0.7, mid - foot, 0.7}, color = {0.6, 0.6, 0.58}, tag = "bridge", abs = abs}
           end
         end
         ::next_piece::
