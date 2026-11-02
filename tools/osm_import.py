@@ -1854,6 +1854,27 @@ def main():
         import struct
         tdest.write_bytes(struct.pack(f"<{tw * td}h", *(round(h * 100) for h in hgt)) + bytes(cls))
         terrain["file"] = tdest
+        # The ground's colours every 2 m (tools/ground_map.py): the
+        # terrain's 10 m points blur a yard into a blotch.
+        if aerial:
+            import numpy as np
+            import ground_map
+            gstep = 2.0
+            gw, gh = int((tw - 1) * STEP / gstep) + 1, int((td - 1) * STEP / gstep) + 1
+            gcls = np.zeros((gh, gw), np.uint8)
+            for k, c in enumerate(DRAW_ORDER):  # (drawn in this order: the later on top)
+                for st in strips.get(c, []):
+                    a0, a1 = int(math.ceil((st[1] - Z0) / gstep)), int(math.ceil((st[3] - Z0) / gstep))
+                    b0, b1 = int(math.ceil((st[0] - X0) / gstep)), int(math.ceil((st[2] - X0) / gstep))
+                    gcls[max(0, a0):max(0, a1), max(0, b0):max(0, b1)] = k + 1
+            # (as lib/roadnet's COVER has them)
+            crisp = {DRAW_ORDER.index(c) + 1: rgb for c, rgb in (("track", (0.68, 0.33, 0.24)), ("sand", (0.78, 0.68, 0.5)),
+                                                                  ("court", (0.36, 0.46, 0.6)), ("pitch", (0.25, 0.56, 0.22)))}
+            gpal, gidx = ground_map.build(aerial, X0, Z0, gw, gh, gstep, gcls, crisp, DRAW_ORDER.index("forest") + 1)
+            gdest = dest.with_name(dest.stem.replace("_osm", "") + "_ground.bin")
+            size = ground_map.write(gdest, X0, Z0, gstep, gpal, gidx)
+            terrain["ground_map"] = gdest
+            print(f"ground map: {gw} x {gh} points {gstep:g} m apart, {len(gpal)} colours, {size / 1e6:.1f} MB", file=sys.stderr)
 
     # ---- write ----
     def f(v): return f"{v:.1f}".rstrip("0").rstrip(".")
@@ -1953,6 +1974,7 @@ def main():
         L.append("  -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)")
         L.append(f"  terrain = {{x0 = {X0}, z0 = {Z0}, step = {f(STEP)}, w = {terrain['w']}, d = {terrain['d']}, "
                  f"file = {q('maps/' + terrain['file'].name)}, classes = {{{', '.join(q(c) for c in DRAW_ORDER)}}}"
+                 + (f", ground_map = {q('maps/' + terrain['ground_map'].name)}" if terrain.get("ground_map") else "")
                  + (", aerial = {" + ", ".join("{" + ", ".join(f"{v:.3f}" for v in c) + "}" for c in terrain["palette"]) + "}"
                     if terrain["palette"] else "") + "},")
         if terrain["palette"]:

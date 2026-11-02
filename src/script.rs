@@ -490,7 +490,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     });
 
     // The ground as a heightfield: {x0, z0, step, w, d, heights = {w * d
-    // numbers, row by row toward +z}, colors = {r, g, b per height}?, roads =
+    // numbers, row by row toward +z}, colors = {r, g, b per height}?,
+    // ground_map = a file of its colours a finer step apart?, roads =
     // {ax, az, ay, bx, bz, by, half width, road number, asphalt half width,
     // side 0 raised (0 or 1), side 1 raised, ...}?, kerb = meters?}; nil
     // removes it.
@@ -570,6 +571,14 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         terrain.kerb = t.get::<Option<f32>>("kerb")?.unwrap_or(0.0);
         let terrain = terrain.with_roads(roads);
         e.set_terrain(Some(terrain), colors);
+        // The ground's colours finer than its points: a file (engine.rs
+        // load_ground_map).
+        e.ground_map = None;
+        if let Some(rel) = t.get::<Option<String>>("ground_map")? {
+            let path = game_path(&e.root, &rel)?;
+            let bytes = crate::vfs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
+            e.load_ground_map(&rel, &bytes).map_err(mlua::Error::runtime)?;
+        }
         Ok(())
     });
     // The map's trees (engine.rs load_forest), baked into leafy chunks:

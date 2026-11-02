@@ -1600,7 +1600,7 @@ function R.build(map, kit)
   -- Then the ground's colours from an aerial photo, where the importer took them.
   for _, c in ipairs(t.aerial or {}) do palette[#palette + 1] = c end
   classify(map)
-  engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette,
+  engine.terrain{x0 = t.x0, z0 = t.z0, step = t.step, w = t.w, d = t.d, heights = t.file, palette = palette, ground_map = t.ground_map,
                  roads = road_surface(map), kerb = KERB}
   GROUND = function(x, z) return R.water_level(x, z) or engine.terrain_height(x, z) or 0 end
   local spawn = engine.spawn
