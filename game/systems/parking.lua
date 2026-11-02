@@ -98,7 +98,7 @@ local function put_up()
           local o = e.width / 2 - city.PARK_W / 2
           if e.parking[side] and (not lane or o - lane >= ROOM) then
             o = o * (side == 1 and -1 or 1)
-            local rx, rz = fz, -fx
+            local rx, rz = -fz, fx -- right of a to b (U.right; this was its mirror, so a one-sided street's cars stood on the other side, in the lane)
             -- The right side faces a to b; the left faces back, unless one way.
             local facing = (side == 2 or e.oneway) and yaw or yaw + math.pi
             local first = math.ceil((s0 + SLOT / 2) / SLOT)
