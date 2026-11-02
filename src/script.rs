@@ -705,7 +705,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                 out.mark_facade(from, id, p.get::<Option<bool>>("facade_scaled")?.unwrap_or(false));
             }
             // A ground surface the shader draws where it faces up: 64 worn
-            // asphalt, 65 setts (mesh::GROUND_*).
+            // asphalt, 65 setts, 67 water (mesh::GROUND_*).
             if let Some(id) = ground_id(&p)? {
                 out.mark_ground(from, id);
             }
@@ -1022,11 +1022,11 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     Ok(api)
 }
 
-/// A part's `ground` surface id, if any: 64 worn asphalt, 65 setts
-/// (mesh::GROUND_*). Anything else is a typo in the game's Lua.
+/// A part's `ground` surface id, if any: 64 worn asphalt, 65 setts, 67
+/// water (mesh::GROUND_*). Anything else is a typo in the game's Lua.
 fn ground_id(p: &Table) -> Result<Option<u8>> {
     match p.get::<Option<u8>>("ground")? {
-        Some(id) if id != mesh::GROUND_ASPHALT && id != mesh::GROUND_SETTS => {
+        Some(id) if ![mesh::GROUND_ASPHALT, mesh::GROUND_SETTS, mesh::GROUND_WATER].contains(&id) => {
             Err(mlua::Error::runtime(format!("unknown ground surface {id}")))
         }
         id => Ok(id),

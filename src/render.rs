@@ -240,11 +240,11 @@ vec3 ground_surface(float id, vec3 c, vec2 p) {
 void main() {
     vec3 n = normalize(v_normal);
     vec3 base = v_color * tint.rgb;
-    if (v_facade.x > 65.5) {
+    if (v_facade.x > 65.5 && v_facade.x < 66.5) {
         // The terrain: its colour from the ground map where there's one.
         vec2 uv = (v_world.xz - gmap.xy) * gmap.zw;
         if (gmap2.z > 0.5 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) base = ground_map(v_world.xz) * tint.rgb;
-    } else if (v_facade.x > 63.5 && n.y > 0.5) {
+    } else if (v_facade.x > 63.5 && v_facade.x < 65.5 && n.y > 0.5) {
         // Far off, the pattern would shimmer: it fades to the plain colour.
         float far = smoothstep(40.0, 140.0, length(v_world - eye.xyz));
         base = mix(ground_surface(v_facade.x, base, v_world.xz), base, far);
@@ -294,11 +294,25 @@ void main() {
     vec3 col = base * light * (1.0 - 0.35 * wet) + base * glow * 1.8;
     // Glass mirrors the sky (the fog's colour is the horizon's: dark at night).
     col = mix(col, fog_color.rgb * 0.75, pane * (1.0 - lit_window * params.x));
-    // Glass mirrors the sky (the fog's colour is the horizon's: dark at night).
-    col = mix(col, fog_color.rgb * 0.75, pane * (1.0 - lit_window * params.x));
     vec3 to_eye = normalize(eye.xyz - v_world);
     float sheen = pow(1.0 - max(to_eye.y, 0.0), 5.0);
     col = mix(col, fog_color.rgb * 0.8, wet * sheen * 0.7);
+    if (v_facade.x > 66.5 && n.y > 0.5) {
+        // Water: its own colour seen from above (the aerial photo's), the
+        // sky's at a low angle (Fresnel), on small ripples that fade out
+        // far off (they'd shimmer), and the sun glinting off them.
+        float near = 1.0 - smoothstep(60.0, 220.0, length(v_world - eye.xyz));
+        vec2 p = v_world.xz;
+        vec2 g = vec2(vnoise(p * 0.8 + vec2(0.4, 0.0)) - vnoise(p * 0.8 - vec2(0.4, 0.0)),
+                      vnoise(p * 0.8 + vec2(0.0, 0.4)) - vnoise(p * 0.8 - vec2(0.0, 0.4))) * 0.18
+               + vec2(vnoise(p * 0.21 + vec2(1.5, 7.0)) - vnoise(p * 0.21 - vec2(1.5, -7.0)),
+                      vnoise(p * 0.21 + vec2(7.0, 1.5)) - vnoise(p * 0.21 - vec2(-7.0, 1.5))) * 0.12;
+        vec3 wn = normalize(vec3(-g.x * near, 1.0, -g.y * near));
+        float fres = 0.03 + 0.97 * pow(1.0 - max(dot(to_eye, wn), 0.0), 5.0);
+        col = mix(col, fog_color.rgb * 0.85, min(fres, 0.85));
+        float glint = pow(max(dot(reflect(-to_eye, wn), sun.xyz), 0.0), 150.0);
+        col += sun_color.rgb * glint * shadow(ndl) * 0.7;
+    }
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
     f = f * f * (1.0 - 0.7 * glow);
