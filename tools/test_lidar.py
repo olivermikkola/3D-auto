@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import lidar
+import osm_import
 
 try:
     import numpy as np
@@ -83,6 +84,20 @@ class LidarTests(unittest.TestCase):
         self.assertEqual(out[1][5], 3.0)
         self.assertEqual(out[2][5], 21.0)
         self.assertEqual((lowered, raised), (1, 0))
+
+    def test_an_outline_and_its_boxes_keep_one_height(self):
+        # An L drawn as its outline (20 m), the two boxes it stands for; the
+        # scans lowered the big one to 14 m and left the small one. A box in
+        # it of another height (a tower on the block) stays its own.
+        pts = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
+        outline = (20.0, "flats", None, pts, None, 1960, False)
+        before = [(20, 5, 40, 10, 0.0, 20.0, "flats"), (5, 20, 10, 20, 0.0, 20.0, "flats"), (35, 5, 5, 5, 0.0, 30.0, "flats"),
+                  (100, 100, 10, 10, 0.0, 20.0, "flats")]
+        after = [before[0][:5] + (14.0, "flats"), before[1], before[2], before[3][:5] + (9.0, "flats")]
+        (o,), boxes = osm_import.one_height([outline], before, after)
+        self.assertEqual(o[0], 14.0)  # the big box's: it has the most of the floor
+        self.assertEqual([b[5] for b in boxes], [14.0, 14.0, 30.0, 9.0])
+        self.assertEqual(o[1:], outline[1:])
 
 
 if __name__ == "__main__":

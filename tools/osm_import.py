@@ -705,6 +705,38 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     return out
 
 
+def one_height(outlines, before, after):
+    """The laser scans' heights (lidar.check_heights: `before` -> `after`,
+    the boxes) for the outlines too. The game draws an outline in place of
+    the boxes inside it as tall as it is (roadnet's outline_of), so a box
+    the scans moved on its own stood through its building's roof. Each
+    outline and the boxes it stood for take one height: the median of the
+    scans' for those boxes, by their area. Returns (outlines, boxes)."""
+    grid = {}
+    for k, b in enumerate(before):
+        grid.setdefault((math.floor(b[0] / 50), math.floor(b[1] / 50)), []).append(k)
+    out, boxes = [], list(after)
+    for o in outlines:
+        h, pts = o[0], o[3]
+        xs, zs = [p[0] for p in pts], [p[1] for p in pts]
+        mine = [k for i in range(math.floor(min(xs) / 50), math.floor(max(xs) / 50) + 1)
+                for j in range(math.floor(min(zs) / 50), math.floor(max(zs) / 50) + 1)
+                for k in grid.get((i, j), ())
+                if abs(before[k][5] - h) < 0.5 and inside_poly(pts, before[k][0], before[k][1])]
+        if mine and any(after[k][5] != before[k][5] for k in mine):
+            hs = sorted((after[k][5], after[k][2] * after[k][3]) for k in mine)
+            half, acc = sum(a for _, a in hs) / 2, 0.0
+            for nh, a in hs:
+                acc += a
+                if acc >= half:
+                    break
+            o = (nh,) + tuple(o[1:])
+            for k in mine:
+                boxes[k] = boxes[k][:5] + (nh,) + tuple(boxes[k][6:])
+        out.append(o)
+    return out, boxes
+
+
 def outline_lines(outlines, f):
     L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour, year = built}",
          "  outlines = {"]
@@ -1023,6 +1055,10 @@ def splice_railways(dest, els, P, f, aerial=None, model_h=None, ground=None):
     spanned = set(re.findall(r"\n    \{[-\d.]+, \"\w+\", [^,{]*(?:\{[^}]*\})?,? ?\{(-?[\d.]+, -?[\d.]+)\}[^\n]*span = true", text))
     outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
                            lambda poly: f"{f(poly[0][0])}, {f(poly[0][1])}" in spanned)
+    # (And their heights: the full import's are the laser scans', see one_height.)
+    def corners(pts): return ", ".join(f"{{{f(x)}, {f(z)}}}" for x, z in pts[:3])
+    had = dict((k, float(h)) for h, k in re.findall(r"\n    \{(-?[\d.]+), \"\w+\", [^,{]*(?:\{[^}]*\})?,? ?(\{[^}]*\}, \{[^}]*\}, \{[^}]*\})", text))
+    outlines = [(had.get(corners(o[3]), o[0]),) + tuple(o[1:]) for o in outlines]
     lines = text.split("\n")
     out, skip = [], False
     for line in lines:
@@ -1464,11 +1500,17 @@ def main():
                 name = None  # the label goes on one box
 
     # ---- heights the laser scans disagree with (tools/lidar.py) ----
+    before = None
     if aerial and not args.no_lidar:
         import lidar
         if lidar.available():
+            before = footprints
             footprints, lid_lowered, lid_raised = lidar.check_heights(footprints)
             print(f"lidar: {lid_lowered} buildings lowered and {lid_raised} raised to the laser scans' roofs", file=sys.stderr)
+    outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
+                           lambda poly: road_under(poly, road_grid) >= SPAN_MIN)
+    if before is not None:
+        outlines, footprints = one_height(outlines, before, footprints)
 
     # ---- ground cover ----
     cover = {k: [] for k, _ in COVER}
@@ -1940,8 +1982,7 @@ def main():
         for level, pts in quay_runs:
             L.append(f"    {{{f(level)}, " + ", ".join(f"{f(x)}, {f(z)}, {f(t)}, {f(w)}" for x, z, t, w in pts) + "},")
         L.append("  },")
-    L.extend(outline_lines(outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
-                                      lambda poly: road_under(poly, road_grid) >= SPAN_MIN), f))
+    L.extend(outline_lines(outlines, f))
     L.append("  -- towers and masts: {x, z, height, \"lattice\" or \"pylon\"}")
     L.append("  towers = {" + ", ".join(f"{{{f(x)}, {f(z)}, {f(h)}, {q(k)}}}" for x, z, h, k in towers) + "},")
     L.append("  -- gantry cranes: the rails' {x, z, length, span, yaw, cranes on them}")
