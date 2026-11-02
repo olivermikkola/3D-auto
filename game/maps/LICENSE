@@ -39,6 +39,14 @@ Commons Attribution 4.0 International (CC BY 4.0,
 https://creativecommons.org/licenses/by/4.0/). Only averaged colours are
 kept; the photo itself is not part of the game.
 
+turku_bus.lua is not covered by this license either. Its bus lines are
+derived by tools/foli_lines.py from Föli's timetable data (GTFS,
+data.foli.fi): (c) FÖLI Turun seudun joukkoliikenne, licensed under Creative
+Commons Attribution 4.0 International (CC BY 4.0,
+https://creativecommons.org/licenses/by/4.0/), matched onto the streets of
+turku_osm.lua above. Only each line's number, destination, colour, trip
+count and the map's junctions it passes are kept.
+
 The building heights and the years buildings were finished in turku_osm.lua
 come by tools/citymodel.py from the City of Turku's city model: Turun
 kaupunkitietomalli, (c) Turun kaupunki, licensed under Creative Commons

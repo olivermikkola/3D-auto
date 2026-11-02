@@ -8,6 +8,7 @@ local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local signals = require "systems.signals"
 local busstops = require "systems.busstops"
+local buslines = require "lib.buslines"
 
 local T = {cars = {}, BUSES = 8} -- BUSES: one car in so many is a Föli bus
 local LANE, CRUISE = 3.2, 11 -- LANE: how far before a bend a car aims (and its lane on a grid)
@@ -40,12 +41,16 @@ local HELD = 60 -- s queued without moving: well over a light's cycle (systems/s
 -- A one-way street that just ends (cut off at the map's edge) has no way
 -- on at all: the car is lost, and gets moved to another street.
 local function pick_next(c)
-  -- A car with a plan (a street racer) takes the next junction on it.
+  -- A car with a plan (a street racer, a bus on its line) takes the next
+  -- junction on it. (A bus draws the number it would have to pick a way,
+  -- so the rest of traffic's draws stay as they were.)
   if c.plan and #c.plan > 0 then
+    if c.line then math.random() end
     c.from, c.to = c.to, table.remove(c.plan, 1)
     route(c)
     return
   end
+  c.line = nil -- (at the end of its line: on as any car)
   local opts, back = {}, false
   for _, n in ipairs(city.links(c.to) or {}) do
     if n ~= c.from then opts[#opts + 1] = n else back = true end
@@ -68,6 +73,27 @@ local function room(c, x, z)
     if engine.nearest(x, y, z, 9, tag, c.id) then return false end
   end
   return not engine.nearest(x, y, z, 2.5, "parked")
+end
+
+-- Where in its lane car c is t of the way along its road (by length, on a
+-- bendy one), heading which way; c.wp set to the bend it's making for.
+local function along(c, t)
+  if #c.path > 2 then
+    local len, segs = 0, {}
+    for i = 2, #c.path do
+      segs[i] = U.dist2d(c.path[i - 1][1], c.path[i - 1][2], c.path[i][1], c.path[i][2])
+      len = len + segs[i]
+    end
+    local want = t * len
+    c.wp = 2
+    while c.wp < #c.path and want > segs[c.wp] do want, c.wp = want - segs[c.wp], c.wp + 1 end
+    t = want / segs[c.wp]
+  end
+  local a, b = c.path[c.wp - 1], c.path[c.wp]
+  local ax, az, bx, bz = a[1], a[2], b[1], b[2]
+  local yaw = math.atan(bx - ax, bz - az)
+  local rx, rz = U.right(yaw)
+  return ax + (bx - ax) * t + rx * c.lane, az + (bz - az) * t + rz * c.lane, yaw
 end
 
 -- Place car c on a random street segment between `min_dist` and NEAR from
@@ -102,25 +128,7 @@ local function place(c, min_dist)
       c.from, c.to = c.to, c.from
     end
     route(c)
-    local t = 0.3 + math.random() * 0.4
-    -- Somewhere in the middle of the road: on a bendy one, the bend
-    -- that far along, by length.
-    if #c.path > 2 then
-      local len, segs = 0, {}
-      for i = 2, #c.path do
-        segs[i] = U.dist2d(c.path[i - 1][1], c.path[i - 1][2], c.path[i][1], c.path[i][2])
-        len = len + segs[i]
-      end
-      local want = t * len
-      c.wp = 2
-      while c.wp < #c.path and want > segs[c.wp] do want, c.wp = want - segs[c.wp], c.wp + 1 end
-      t = want / segs[c.wp]
-    end
-    local a, b = c.path[c.wp - 1], c.path[c.wp]
-    local ax, az, bx, bz = a[1], a[2], b[1], b[2]
-    local yaw = math.atan(bx - ax, bz - az)
-    local rx, rz = U.right(yaw)
-    local x, z = ax + (bx - ax) * t + rx * c.lane, az + (bz - az) * t + rz * c.lane
+    local x, z, yaw = along(c, 0.3 + math.random() * 0.4)
     local d = px and U.dist2d(x, z, px, pz)
     if (not px or (d >= min_dist and d <= NEAR)) and room(c, x, z) then
       c.speed, c.stuck = 0, 0
@@ -138,6 +146,41 @@ local function kind_of(n)
   if h < 14 then return "van" elseif h < 24 then return "cab" elseif h < 31 then return "sports" end
 end
 
+-- A bus just placed (at x, z): onto a Föli line (lib/buslines). If its
+-- street is on one, it drives the rest of that; else it's moved to the
+-- nearest street that is, as far from the player as a car is put (no
+-- random draws: the rest of traffic draws what it always did). Returns
+-- where it is now (or nil: where it was) and its line, if any.
+local function on_line(c, min_dist, x, z)
+  local line, k = buslines.at(c.from, c.to)
+  if line then
+    c.line, c.plan = line, buslines.after(line, k)
+    return nil, nil, nil, nil, line
+  end
+  local px, _, pz = U.player_pos()
+  if not px then return end
+  local best, bd
+  for _, s in ipairs(buslines.near(x, z, NEAR)) do
+    local ax, az = city.pos(s[1])
+    local bx, bz = city.pos(s[2])
+    local mx, mz = (ax + bx) / 2, (az + bz) / 2
+    local dp, dx = U.dist2d(mx, mz, px, pz), U.dist2d(mx, mz, x, z)
+    if dp >= min_dist and dp <= NEAR and dx < (bd or math.huge) then best, bd = s, dx end
+  end
+  if not best then return end
+  local from, to, wp, path, lane = c.from, c.to, c.wp, c.path, c.lane
+  c.from, c.to = best[1], best[2]
+  route(c)
+  local nx, nz, yaw = along(c, 0.5)
+  if not room(c, nx, nz) then
+    c.from, c.to, c.wp, c.path, c.lane = from, to, wp, path, lane
+    return
+  end
+  c.line, c.plan = best[3], buslines.after(best[3], best[4])
+  c.speed, c.stuck = 0, 0
+  return nx, nz, yaw, city.height_on(c.from, c.to, nx, nz), best[3]
+end
+
 local function add_car(min_dist)
   local c = {}
   local x, z, yaw, y = place(c, min_dist)
@@ -147,7 +190,13 @@ local function add_car(min_dist)
   local is_bus = (map_name == "raisio" or map_name == "turku") and (math.random(T.BUSES) == 1)
   added = added + 1
   local kind = not is_bus and kind_of(added) or nil
-  local mesh = is_bus and "bus" or kind
+  local line
+  if is_bus then
+    local nx, nz, nyaw, ny
+    nx, nz, nyaw, ny, line = on_line(c, min_dist, x, z)
+    if nx then x, z, yaw, y = nx, nz, nyaw, ny end
+  end
+  local mesh = is_bus and (line and buslines.mesh(line) or "bus") or kind
   local tag = is_bus and "bus" or "car"
   local color
   if kind == "cab" then
@@ -335,6 +384,12 @@ local function update(id, c, dt)
     local px, _, pz = U.player_pos()
     if not c.keep and (c.lost or c.stuck > 6 or (px and U.dist2d(x, z, px, pz) > FAR)) then
       local nx, nz, nyaw2, ny = place(c, 90)
+      if nx and c.is_bus then
+        c.line, c.plan = nil, nil
+        local lx, lz, lyaw, ly, line = on_line(c, 90, nx, nz)
+        if lx then nx, nz, nyaw2, ny = lx, lz, lyaw, ly end
+        engine.set_mesh(id, line and buslines.mesh(line) or "bus")
+      end
       if nx then
         -- On the road it was put on: a bridge's deck, not the river under it.
         -- At its own height: a bus put down at a car's (0.8 m) stood half
