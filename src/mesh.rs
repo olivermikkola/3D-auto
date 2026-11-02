@@ -102,6 +102,8 @@ pub const GROUND_ASPHALT: u8 = 64;
 pub const GROUND_SETTS: u8 = 65;
 /// The terrain: coloured from the map's ground map where it has one (render.rs).
 pub const GROUND_TERRAIN: u8 = 66;
+/// Water: it mirrors the sky at a low angle, ripples and glints (render.rs).
+pub const GROUND_WATER: u8 = 67;
 /// The width of a facade's window bays, by facade id (render.rs's `bay`).
 pub fn facade_bay(id: u8) -> f32 {
     match id & !FACADE_SCALED {
