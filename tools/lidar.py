@@ -126,6 +126,8 @@ class Cloud:
         self._ground_grid(allp[allp[:, 3] == GROUND], cx, cz, reach)
         photo = aerial.Aerial("turku", ORIGIN, (cx - reach, cz - reach, cx + reach, cz + reach))
         self.ground, self.roofs, self.crowns = [], [], []
+        self.roofs_of = {}  # year -> its roofs (check_heights goes by the newest that saw a building)
+        self.ground_of = {}  # year -> its ground points
         for year, pts in p.items():
             if not len(pts):
                 continue
@@ -136,6 +138,7 @@ class Cloud:
             is_ground = pts[:, 3] == GROUND
             high = ~is_ground & (above > 2.5)
             self.ground.append(np.concatenate([pts[is_ground, :3], col[is_ground]], axis=1))
+            self.ground_of[year] = self.ground[-1]
             # Crowns from the summer's scan, roofs from both: the spring's
             # sees them through bare trees.
             if year == "2023":
@@ -143,6 +146,7 @@ class Cloud:
                 self.crowns.append(np.concatenate([pts[c, :3], col[c]], axis=1))
             roof = high & ~green
             self.roofs.append(np.concatenate([pts[roof, :3], col[roof]], axis=1))
+            self.roofs_of[year] = self.roofs[-1]
         self.ground, self.roofs, self.crowns = (np.concatenate(v) for v in (self.ground, self.roofs, self.crowns))
 
     def _ground_grid(self, g, cx, cz, reach):
@@ -184,10 +188,10 @@ def available():
     return any((CACHE / f"turku-{y}").glob("*.npz") for y in SCANS)
 
 
-def ground_in(cloud, x, z, w, d, ang):
-    """How many of the scans' ground points fall inside a box."""
+def ground_in(cloud, x, z, w, d, ang, year=None):
+    """How many of the scans' (or one year's) ground points fall inside a box."""
     import numpy as np
-    G = cloud.ground
+    G = getattr(cloud, "ground_of", {}).get(year, cloud.ground)
     rad = math.hypot(w, d) / 2
     m = (np.abs(G[:, 0] - x) < rad) & (np.abs(G[:, 2] - z) < rad)
     P = G[m]
@@ -218,39 +222,53 @@ def check_heights(boxes, block=1000, cloud_at=None):
             cloud = (cloud_at or Cloud)(cx, cz, block / 2 + 80)
         except SystemExit:
             continue
-        R = cloud.roofs
-        if not len(R):
-            continue
         cell = 20.0
-        ci = np.floor(R[:, 0] / cell).astype(np.int64)
-        cj = np.floor(R[:, 2] / cell).astype(np.int64)
-        order = np.lexsort((ci, cj))
-        R, ci, cj = R[order], ci[order], cj[order]
-        keys = cj * 1_000_003 + ci
+        years = []  # newest first: (year, roofs sorted by cell, their cells' keys)
+        for year in sorted(getattr(cloud, "roofs_of", {"": cloud.roofs}), reverse=True):
+            R = getattr(cloud, "roofs_of", {"": cloud.roofs})[year]
+            ci = np.floor(R[:, 0] / cell).astype(np.int64)
+            cj = np.floor(R[:, 2] / cell).astype(np.int64)
+            order = np.lexsort((ci, cj))
+            years.append((year, R[order], (cj * 1_000_003 + ci)[order]))
         for k in ks:
             x, z, w, d, ang, h, kind = boxes[k][:7]
             roof_h = boxes[k][10] if len(boxes[k]) > 10 and boxes[k][10] else 0.0
             if kind == "church" or (len(boxes[k]) > 11 and boxes[k][11]):
                 continue
             rad = math.hypot(w, d) / 2
-            sel = []
-            for j in range(math.floor((z - rad) / cell), math.floor((z + rad) / cell) + 1):
-                for i in range(math.floor((x - rad) / cell), math.floor((x + rad) / cell) + 1):
-                    key = j * 1_000_003 + i
-                    a, b = np.searchsorted(keys, key), np.searchsorted(keys, key, side="right")
-                    if b > a:
-                        sel.append(R[a:b])
-            P = np.concatenate(sel) if sel else np.zeros((0, 6))
             ca, sa = math.cos(ang), math.sin(ang)
-            u = (P[:, 0] - x) * ca + (P[:, 2] - z) * sa
-            v = -(P[:, 0] - x) * sa + (P[:, 2] - z) * ca
-            ins = (np.abs(u) < w / 2 - 0.5) & (np.abs(v) < d / 2 - 0.5)
-            if ins.sum() < max(3, w * d / 3):
+            built = boxes[k][9] if len(boxes[k]) > 9 and boxes[k][9] else None
+            # The newest scan that saw the roof (a building finished in 2021
+            # was half up in that spring's).
+            seen = None  # (year, points on the roof) of the newest scan after it was built
+            for year, R, keys in years:
+                sel = []
+                for j in range(math.floor((z - rad) / cell), math.floor((z + rad) / cell) + 1):
+                    for i in range(math.floor((x - rad) / cell), math.floor((x + rad) / cell) + 1):
+                        key = j * 1_000_003 + i
+                        a, b = np.searchsorted(keys, key), np.searchsorted(keys, key, side="right")
+                        if b > a:
+                            sel.append(R[a:b])
+                P = np.concatenate(sel) if sel else np.zeros((0, 6))
+                u = (P[:, 0] - x) * ca + (P[:, 2] - z) * sa
+                v = -(P[:, 0] - x) * sa + (P[:, 2] - z) * ca
+                ins = (np.abs(u) < w / 2 - 0.5) & (np.abs(v) < d / 2 - 0.5)
+                after = not (year and built and str(year).isdigit() and built >= int(year))
+                if seen is None and after:
+                    seen = (year, int(ins.sum()))
+                if ins.sum() >= max(3, w * d / 6):
+                    break
+            else:
+                after = seen is not None
+            if not after:
+                continue  # finished in the scan's year or after: the scan saw a building site
+            if ins.sum() < max(3, w * d / 6):
                 # A shed or a house the scans see only ground in can't be a
                 # tower (the city model gave a few small ones its own
-                # height over the sea): a storey or two.
+                # height over the sea): a storey or two. (Only by a scan
+                # taken once it was up.)
                 top = h + (boxes[k][10] or 0 if len(boxes[k]) > 10 else 0)
-                if kind in ("shed", "house") and top > 12 and ins.sum() == 0 and ground_in(cloud, x, z, w, d, ang) >= max(2, w * d / 8):
+                if kind in ("shed", "house") and top > 12 and seen and seen[1] == 0 and ground_in(cloud, x, z, w, d, ang, seen[0]) >= max(2, w * d / 8):
                     b = list(boxes[k])
                     b[5] = 3.0 if kind == "shed" else 6.0
                     out[k] = tuple(b)

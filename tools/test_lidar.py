@@ -66,6 +66,24 @@ class LidarTests(unittest.TestCase):
         self.assertEqual(out[3][5], 12.0)
         self.assertEqual(out[4][5], 3.0)
 
+    def test_a_building_goes_by_a_scan_taken_once_it_was_up(self):
+        boxes = [
+            (0, 0, 10, 10, 0.0, 16.0, "flats", False, None, 2021, None, False),   # a site in 2021, up in 2023
+            (100, 0, 6, 6, 0.0, 21.0, "shed", False, None, 2022, None, False),    # 2023 sees only ground: a shed
+            (200, 0, 6, 6, 0.0, 21.0, "shed", False, None, 2023, None, False),    # no scan after it: kept
+        ]
+        site = roof(0, 0, 10, 10, 13)
+        ground = [(x + u, 10, v, 0.4, 0.4, 0.4) for x in (100, 200) for u in (-2, 0, 2) for v in (-2, 0, 2)]
+        cloud = FakeCloud([], [])
+        cloud.roofs_of = {"2021": np.array(site).reshape(-1, 6), "2023": roof(0, 0, 10, 10, 26.0)}
+        cloud.roofs_of["2023"] = np.array(cloud.roofs_of["2023"]).reshape(-1, 6)
+        cloud.ground_of = {"2021": np.zeros((0, 6)), "2023": np.array(ground).reshape(-1, 6)}
+        out, lowered, raised = lidar.check_heights(boxes, block=1000, cloud_at=lambda cx, cz, r: cloud)
+        self.assertEqual(out[0][5], 16.0)  # the 2023 roof agrees; the 2021 site's lower points don't count
+        self.assertEqual(out[1][5], 3.0)
+        self.assertEqual(out[2][5], 21.0)
+        self.assertEqual((lowered, raised), (1, 0))
+
 
 if __name__ == "__main__":
     unittest.main()
