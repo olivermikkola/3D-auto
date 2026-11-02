@@ -56,13 +56,20 @@ def main():
         browser = p.chromium.launch(headless=True, args=[
             "--disable-gpu", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-dev-shm-usage",
             "--autoplay-policy=no-user-gesture-required"])
-        page = browser.new_context(viewport={"width": 1280, "height": 720}).new_page()
+        # A phone's landscape size: software WebGL on a 2-core runner draws the
+        # water's surface at about a frame a second at 1280x720, too slow to answer a click.
+        page = browser.new_context(viewport={"width": 844, "height": 390}).new_page()
+        page.set_default_timeout(90000)
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url)
         check(wait_ready(page, a.wait), "the starter map loads")
 
         # Writing: hiding the help is remembered.
-        page.click("#glcanvas")
+        fps = page.evaluate("""() => new Promise(r => { let n = 0; const t0 = performance.now();
+            (function f() { n++; if (performance.now() - t0 < 3000) requestAnimationFrame(f);
+                            else r(n / ((performance.now() - t0) / 1000)); })(); })""")
+        print(f"     {fps:.1f} frames a second")
+        page.mouse.click(422, 195)
         page.keyboard.press("F1")
         time.sleep(1.5)
         check(page.evaluate("localStorage.getItem('gta/help_seen')") is not None, "hiding the help writes gta/help_seen")
