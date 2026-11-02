@@ -261,12 +261,32 @@ void main() {
     }
     float ndl = max(dot(n, sun.xyz), 0.0);
     vec3 light = mix(ground.rgb, ambient.rgb, 0.5 + 0.5 * n.y) + sun_color.rgb * ndl * shadow(ndl);
+    vec3 to_eye = normalize(eye.xyz - v_world);
+    // Water's ripples (see below): small, fading out far off (they'd shimmer).
+    float water = step(66.5, v_facade.x) * step(0.5, n.y);
+    vec3 wn = n;
+    if (water > 0.5) {
+        float near = 1.0 - smoothstep(60.0, 220.0, length(v_world - eye.xyz));
+        vec2 p = v_world.xz;
+        vec2 g = vec2(vnoise(p * 0.8 + vec2(0.4, 0.0)) - vnoise(p * 0.8 - vec2(0.4, 0.0)),
+                      vnoise(p * 0.8 + vec2(0.0, 0.4)) - vnoise(p * 0.8 - vec2(0.0, 0.4))) * 0.18
+               + vec2(vnoise(p * 0.21 + vec2(1.5, 7.0)) - vnoise(p * 0.21 - vec2(1.5, -7.0)),
+                      vnoise(p * 0.21 + vec2(7.0, 1.5)) - vnoise(p * 0.21 - vec2(-7.0, 1.5))) * 0.12;
+        wn = normalize(vec3(-g.x * near, 1.0, -g.y * near));
+    }
     vec3 lamps = vec3(0.0);
+    vec3 glints = vec3(0.0);
     for (int i = 0; i < 16; i++) {
         if (float(i) >= params.y) break;
         vec3 l = lpos[i].xyz - v_world;
         float d = length(l);
         l /= max(d, 0.001);
+        // On water a lamp glints off the ripples too, a streak toward you
+        // reaching far past the pool it lights (the quays' lights at night).
+        if (water > 0.5) {
+            glints += lcol[i].rgb * (lcol[i].w * 0.8 * pow(max(dot(wn, normalize(l + to_eye)), 0.0), 90.0)
+                                     * clamp(1.0 - d / (lpos[i].w * 6.0), 0.0, 1.0));
+        }
         float att = clamp(1.0 - d / lpos[i].w, 0.0, 1.0);
         // A spot fades from its axis out to the cone's edge, not just at it.
         float c = ldir[i].w;
@@ -294,33 +314,17 @@ void main() {
     vec3 col = base * light * (1.0 - 0.35 * wet) + base * glow * 1.8;
     // Glass mirrors the sky (the fog's colour is the horizon's: dark at night).
     col = mix(col, fog_color.rgb * 0.75, pane * (1.0 - lit_window * params.x));
-    vec3 to_eye = normalize(eye.xyz - v_world);
     float sheen = pow(1.0 - max(to_eye.y, 0.0), 5.0);
     col = mix(col, fog_color.rgb * 0.8, wet * sheen * 0.7);
-    if (v_facade.x > 66.5 && n.y > 0.5) {
+    if (water > 0.5) {
         // Water: its own colour seen from above (the aerial photo's), the
-        // sky's at a low angle (Fresnel), on small ripples that fade out
-        // far off (they'd shimmer), and the sun glinting off them.
-        float near = 1.0 - smoothstep(60.0, 220.0, length(v_world - eye.xyz));
-        vec2 p = v_world.xz;
-        vec2 g = vec2(vnoise(p * 0.8 + vec2(0.4, 0.0)) - vnoise(p * 0.8 - vec2(0.4, 0.0)),
-                      vnoise(p * 0.8 + vec2(0.0, 0.4)) - vnoise(p * 0.8 - vec2(0.0, 0.4))) * 0.18
-               + vec2(vnoise(p * 0.21 + vec2(1.5, 7.0)) - vnoise(p * 0.21 - vec2(1.5, -7.0)),
-                      vnoise(p * 0.21 + vec2(7.0, 1.5)) - vnoise(p * 0.21 - vec2(-7.0, 1.5))) * 0.12;
-        vec3 wn = normalize(vec3(-g.x * near, 1.0, -g.y * near));
+        // sky's at a low angle (Fresnel), on its ripples, and the sun and
+        // the lamps glinting off them.
         float fres = 0.03 + 0.97 * pow(1.0 - max(dot(to_eye, wn), 0.0), 5.0);
         col = mix(col, fog_color.rgb * 0.85, min(fres, 0.85));
         float glint = pow(max(dot(reflect(-to_eye, wn), sun.xyz), 0.0), 150.0);
         col += sun_color.rgb * glint * shadow(ndl) * 0.7;
-        // At night the lamps along the quays glint off it too, a streak
-        // down the ripples toward you, far past the pool each lights.
-        for (int i = 0; i < 16; i++) {
-            if (float(i) >= params.y) break;
-            vec3 l = lpos[i].xyz - v_world;
-            float d = length(l);
-            float s = pow(max(dot(wn, normalize(l / max(d, 0.001) + to_eye)), 0.0), 90.0);
-            col += lcol[i].rgb * (lcol[i].w * s * clamp(1.0 - d / (lpos[i].w * 6.0), 0.0, 1.0) * 0.8);
-        }
+        col += glints;
     }
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
