@@ -716,6 +716,8 @@ def outline_lines(outlines, f):
     return L
 
 
+WATER_FLOOR = 0.13             # the darkest a water's photo colour stays
+POND = (0.11, 0.14, 0.14)      # ...lifted half toward this
 QUAY_STEP = 4.0   # m between a quay's points
 QUAY_MIN = 0.8    # m a bank stands over the water to get a wall
 QUAY_WIDE = 10.0  # m of level quay behind the wall at most: the terrain grid's cell
@@ -1990,6 +1992,11 @@ def main():
                 import numpy as np
                 X, Z = np.meshgrid(np.linspace(a, c, 8), np.linspace(b, d, 8))
                 col = aerial.robust(X.ravel(), Z.ravel())
+                if col and sum(col) / 3 < WATER_FLOOR:
+                    # (a pond under the trees' shade is near black in the
+                    # photo, a hole in the ground in the game: a dark pond)
+                    lum = max(sum(col) / 3, 1e-3)
+                    col = [(v * WATER_FLOOR / lum + p) / 2 for v, p in zip(col, POND)]
                 return "," + ",".join(f"{v:.2f}" for v in col) if col else ""
             L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}{water_colour(a, b, c, d)}}}"
                                             for (a, b, c, d), y in zip(out, terrain["levels"])) + "},")
