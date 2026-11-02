@@ -442,24 +442,34 @@ impl Broad {
         self.statics = 0;
         self.rebuilds += 1;
         for (i, e) in ents.iter().enumerate() {
-            let Some(e) = e else { continue };
-            let Some(b) = &e.body else { continue };
-            if b.kind != Kind::Static {
-                continue;
+            if let Some(e) = e {
+                self.place(i, e);
             }
-            let (c, h) = (e.pos, extents(b.half, e.rot));
-            self.boxes[i] = Some((c, h));
-            self.poses[i] = Some(Self::pose(e.pos, e.rot, b.half));
-            self.statics += 1;
-            let (x0, x1, z0, z1) = Self::range(c, h);
-            if x1 - x0 > Self::BIG || z1 - z0 > Self::BIG {
-                self.big.push(i);
-                continue;
-            }
-            for x in x0..=x1 {
-                for z in z0..=z1 {
-                    self.cells.entry((x, z)).or_default().push(i);
-                }
+        }
+    }
+
+    /// Put a static into the grid as it stands now.
+    fn place(&mut self, i: usize, e: &Entity) {
+        let Some(b) = &e.body else { return };
+        if b.kind != Kind::Static {
+            return;
+        }
+        if self.boxes.len() <= i {
+            self.boxes.resize(i + 1, None);
+            self.poses.resize(i + 1, None);
+        }
+        let (c, h) = (e.pos, extents(b.half, e.rot));
+        self.boxes[i] = Some((c, h));
+        self.poses[i] = Some(Self::pose(e.pos, e.rot, b.half));
+        self.statics += 1;
+        let (x0, x1, z0, z1) = Self::range(c, h);
+        if x1 - x0 > Self::BIG || z1 - z0 > Self::BIG {
+            self.big.push(i);
+            return;
+        }
+        for x in x0..=x1 {
+            for z in z0..=z1 {
+                self.cells.entry((x, z)).or_default().push(i);
             }
         }
     }
@@ -482,6 +492,13 @@ impl Broad {
                 }
             }
         }
+    }
+
+    /// Statics in the grid cell at p, not counting big ones (tests).
+    #[cfg(test)]
+    fn near_count(&self, p: Vec3) -> usize {
+        let (x, _, z, _) = Self::range(p, Vec3::ZERO);
+        self.cells.get(&(x, z)).map_or(0, |v| v.len())
     }
 
     /// Entities near the box: statics from its cells, big ones and `movers`, sorted.
@@ -513,13 +530,15 @@ pub fn step(
     // 1. Forces. Also notice whether any static body changed since the grid was built.
     let mut dynamic = Vec::new();
     let mut movers = Vec::new();
-    let (mut statics, mut stale) = (0, false);
+    let (mut statics, mut stale) = (0, Vec::new());
     for (i, e) in ents.iter_mut().enumerate() {
         let Some(e) = e else { continue };
         let Some(b) = &mut e.body else { continue };
         if b.kind == Kind::Static {
             statics += 1;
-            stale = stale || broad.poses.get(i).copied().flatten() != Some(Broad::pose(e.pos, e.rot, b.half));
+            if broad.poses.get(i).copied().flatten() != Some(Broad::pose(e.pos, e.rot, b.half)) {
+                stale.push(i);
+            }
             continue;
         }
         movers.push(i);
@@ -533,8 +552,20 @@ pub fn step(
             dynamic.push(i);
         }
     }
-    if stale || statics != broad.statics {
+    // A few statics moved or came: just those, out of the grid and back in
+    // (the trees' trunks, moved about every half second, rebuilt the whole
+    // city's grid each time: a 15-20 ms step, a stutter on a phone). Many,
+    // or one gone without a word, and it's built afresh.
+    if stale.len() > 64 {
         broad.rebuild(ents);
+    } else {
+        for &i in &stale {
+            broad.forget(i);
+            broad.place(i, ents[i].as_ref().unwrap());
+        }
+        if statics != broad.statics {
+            broad.rebuild(ents);
+        }
     }
     broad.movers.clone_from(&movers);
     broad.len = ents.len();
@@ -1214,7 +1245,7 @@ mod tests {
     #[test]
     fn broad_phase_notices_statics_moving() {
         // A crate resting on a platform falls when the platform is moved away,
-        // and the grid is only rebuilt when a static actually changes.
+        // and moving it moves just it in the grid, no rebuild of the lot.
         let platform = ent(v3(40., 3.0, 0.), Kind::Static, v3(2., 0.5, 2.));
         let mut w = vec![ground(), platform, ent(v3(40., 4.0, 0.), Kind::Dynamic, v3(0.5, 0.5, 0.5))];
         let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
@@ -1222,12 +1253,14 @@ mod tests {
             step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         }
         assert!((get(&w, 2).pos.y - 4.0).abs() < 0.05, "crate rests on the platform");
-        assert_eq!(broad.rebuilds, 1, "nothing static changed, so one build");
+        let built = broad.rebuilds;
         w[1].as_mut().unwrap().pos.x = 80.0;
         for _ in 0..60 {
             step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, None);
         }
-        assert_eq!(broad.rebuilds, 2, "moving the platform rebuilt the grid");
+        assert_eq!(broad.rebuilds, built, "moving the platform didn't rebuild the grid");
+        assert_eq!(broad.near_count(v3(80., 3.0, 0.)), 1, "the platform is in its new cell");
+        assert_eq!(broad.near_count(v3(40., 3.0, 0.)), 0, "and gone from its old one");
         assert!(get(&w, 2).pos.y < 1.0, "and the crate fell to the ground (y = {})", get(&w, 2).pos.y);
     }
 
