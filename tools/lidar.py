@@ -201,18 +201,22 @@ def ground_in(cloud, x, z, w, d, ang, year=None):
     return int(((np.abs(u) < w / 2) & (np.abs(v) < d / 2)).sum())
 
 
-def check_heights(boxes, block=1000, cloud_at=None):
+def check_heights(boxes, block=1000, cloud_at=None, flat=()):
     """The importer's building boxes (x, z, w, d, angle, eave height, kind,
     ..., roof height at [10], over a road at [11]) with the heights the
     laser scans clearly disagree with put right: a box whose roof the
     scans see (a point every 3 m² or more) lowered when even its highest
     tenth is 4 m (and a fifth) below the box's top, raised when three
     quarters of it are that much above it. Churches keep theirs (a spire is a few
-    points). Returns (boxes, how many lowered, how many raised).
+    points). A low box drawn with a roof of its own (flats, a shop, a civic
+    building: PITCHABLE) that has none from the city model gets a pitched
+    one where the scans see a ridge along it (not those in `flat`, indices
+    of boxes an outline with a flat roof draws). Returns (boxes, how many
+    lowered, how many raised, how many pitched).
     cloud_at(cx, cz, reach) gives the scans round a point (Cloud)."""
     import numpy as np
     out = list(boxes)
-    lowered = raised = 0
+    lowered = raised = pitched = 0
     by_block = {}
     for k, b in enumerate(boxes):
         by_block.setdefault((math.floor(b[0] / block), math.floor(b[1] / block)), []).append(k)
@@ -276,6 +280,15 @@ def check_heights(boxes, block=1000, cloud_at=None):
                 continue
             g = float(cloud.ground_at(np.array([x]), np.array([z]))[0])
             tops = P[ins, 1] - g
+            if kind in PITCHABLE and not roof_h and k not in flat and len(tops) >= max(12, w * d / 5):
+                across, half = (v[ins], d / 2) if w >= d else (u[ins], w / 2)
+                ridge = ridge_of(tops, across, half)
+                if ridge:
+                    b = list(boxes[k])
+                    b[5], b[10] = ridge
+                    out[k] = tuple(b)
+                    pitched += 1
+                    continue
             p75, p90 = float(np.percentile(tops, 75)), float(np.percentile(tops, 90))
             top = h + roof_h
             slack = max(4.0, 0.2 * top)
@@ -290,7 +303,42 @@ def check_heights(boxes, block=1000, cloud_at=None):
                 b = list(boxes[k])
                 b[5] = round(new, 1)
                 out[k] = tuple(b)
-    return out, lowered, raised
+    return out, lowered, raised, pitched
+
+
+PITCHABLE = ("flats", "shop", "civic", "police")  # (houses and terraces have a gable of their own)
+
+
+def ridge_of(tops, across, half):
+    """A pitched roof in the scans' points on a box: (eave, ridge over the
+    eave), or None. Its tops (m over the ground) against where each is
+    across the box (0 at the middle line, +-half at the long sides), in
+    five bands, each band's middle height (a chimney, a dormer or a lower
+    wing's few points don't move it): a gable along the box's length climbs
+    from both sides, about equally, to the middle. (An old town block's
+    mansard, steep and then flat on top, passes for one, as it looks from
+    the street.) Only a box 5-22 m across and a rise of 1.2-9 m."""
+    import numpy as np
+    if not 2.5 <= half <= 11:
+        return None
+    a = np.asarray(across) / half
+    bands, up = [], []  # each band's middle height, and how far up the slope it is (0 eave, 1 ridge)
+    for lo, hi in ((-1.01, -0.6), (-0.6, -0.2), (-0.2, 0.2), (0.2, 0.6), (0.6, 1.01)):
+        m = (a >= lo) & (a < hi)
+        if m.sum() < 3:
+            return None
+        bands.append(float(np.median(np.asarray(tops)[m])))
+        up.append(float(np.median(1 - np.minimum(np.abs(a[m]), 1))))
+    l0, l1, c, r1, r0 = bands
+    climbs = c - l0 >= 1.0 and c - r0 >= 1.0 and l1 >= l0 - 0.3 and r1 >= r0 - 0.3 and c >= max(l1, r1) - 0.4
+    if not climbs or abs(l0 - r0) > 1.0:
+        return None
+    out = (up[0] + up[4]) / 2
+    rise = (c - (l0 + r0) / 2) / max(up[2] - out, 0.3)
+    eave = (l0 + r0) / 2 - rise * out
+    if not (1.2 <= rise <= 9 and eave >= 2.5):
+        return None
+    return round(eave, 1), round(rise, 1)
 
 
 WALL = (0.74, 0.71, 0.66)  # a plaster for the walls the plane didn't see

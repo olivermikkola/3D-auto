@@ -623,13 +623,20 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             let p = p?;
             // A footprint pushed up: outline = {x, z, x, z, ...} (part-local),
             // walls from 0 to `height` and a flat roof (and a floor with
-            // floor = true: a building on a deck is seen from below).
+            // floor = true: a building on a deck is seen from below). With
+            // `rise`, a pitched roof instead: its sides slope up `rise` and in
+            // `insets` = {m, one a side} (mesh::hip_roof), or `height` flat
+            // where it can't.
             if let Some(outline) = p.get::<Option<Vec<f32>>>("outline")? {
                 let pts: Vec<(f32, f32)> = outline.as_chunks::<2>().0.iter().map(|&[x, z]| (x, z)).collect();
                 let c = color(&p.get("color")?)?;
                 let h = p.get::<Option<f32>>("height")?.unwrap_or(1.0);
                 let floor = p.get::<Option<bool>>("floor")?.unwrap_or(false);
-                let src = mesh::prism(&pts, 0.0, h, Vec3::ONE, floor);
+                let pitched = match (p.get::<Option<f32>>("rise")?, p.get::<Option<Vec<f32>>>("insets")?) {
+                    (Some(rise), Some(insets)) => mesh::hip_roof(&pts, rise, &insets, Vec3::ONE),
+                    _ => None,
+                };
+                let src = pitched.unwrap_or_else(|| mesh::prism(&pts, 0.0, h, Vec3::ONE, floor));
                 let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
                 let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
                 let from = out.verts.len();

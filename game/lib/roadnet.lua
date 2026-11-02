@@ -3213,7 +3213,7 @@ build = function(map, kit)
     end
     if clear or o.span then
       OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1,
-                 span = o.span}
+                 span = o.span, pitch = o.pitch}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -3659,7 +3659,30 @@ build = function(map, kit)
         for _, p in ipairs(pd.pts) do pf[#pf + 1] = p[1] - cx; pf[#pf + 1] = p[2] - cz end
         add(cx, cz, {outline = pf, height = base - pd.base, pos = {cx, pd.base, cz}, color = color, abs = true, facade = facade})
       end
-      add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
+      if o.pitch then
+        -- Its pitched roof (the city model's): each side slopes in about
+        -- half the building's width, but a wall shared with a neighbour as
+        -- tall stands up to the ridge (a gable end), so a row of them has
+        -- one roof along the street, not a valley between each.
+        local per = 0
+        for k = 1, n do
+          local a, b = o.pts[k], o.pts[k % n + 1]
+          per = per + math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+        end
+        local r = math.max(2.5, math.min(9, 1.1 * area(o.pts) / per))
+        local insets = {}
+        for k = 1, n do
+          local a, b = o.pts[k], o.pts[k % n + 1]
+          local dx, dz = b[1] - a[1], b[2] - a[2]
+          local len = math.max(1e-6, math.sqrt(dx * dx + dz * dz))
+          local mx, mz, nx, nz = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, dz / len, -dx / len
+          if inside_poly(o.pts, mx + nx * 0.3, mz + nz * 0.3) then nx, nz = -nx, -nz end
+          insets[k] = party_wall(o, mx + nx * 0.5, mz + nz * 0.5) and 0 or r
+        end
+        add(cx, cz, {outline = flat, height = 0.2, rise = o.pitch, insets = insets, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
+      else
+        add(cx, cz, {outline = flat, height = 0.2, pos = {cx, base + h, cz}, color = o.roof or ROOF, abs = true})
+      end
       local floors = (o.kind == "works" or facade) and 0 or math.max(1, math.floor(h / kit.FLOOR + 0.5))
       for k = 1, n do
         local a, b = o.pts[k], o.pts[k % n + 1]
@@ -3676,7 +3699,7 @@ build = function(map, kit)
             plinths = plinths + 1
             add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
                                size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
-          elseif facade and facade ~= GLASS_F and not party_wall(o, mx + nx * 0.5, mz + nz * 0.5) then
+          elseif facade and facade ~= GLASS_F and not o.pitch and not party_wall(o, mx + nx * 0.5, mz + nz * 0.5) then
             -- the parapet's coping, a lighter edge to the roof (a shade:
             -- brighter, it drew every roof outlined in white; and not on a
             -- wall shared with a neighbour as tall, inside its roof)
