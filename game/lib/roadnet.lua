@@ -3034,13 +3034,22 @@ build = function(map, kit)
                    color = {0.55, 0.5, 0.42}, tag = "pier"}
         if width < 4 then
           for t = 3, len - 2, 4.2 do
+            -- Only off a jetty out in the water, bow to stern afloat: one along
+            -- a bank (the Aurajoki's by Auransilta, 271 m) lined both its
+            -- sides with them, on the street too; the river's quays are the
+            -- restaurant boats'.
+            local cx, cz = ax + fx * t, az + fz * t
+            local function wet(side, o) return R.water_at(cx + rx * side * (width / 2 + o), cz + rz * side * (width / 2 + o)) end
+            local out = wet(-1, 4) and wet(1, 4)
             for _, side in ipairs{-1, 1} do
-              if r() < 0.7 then
+              local keep = r() < 0.7 -- drawn as before: the rest of the town's dice stay put
+              local mast = keep and r() < 0.4
+              if keep and out and wet(side, 0.5) and wet(side, 7.5) then
                 local bx2, bz2 = ax + fx * t + rx * side * (width / 2 + 4), az + fz * t + rz * side * (width / 2 + 4)
                 local by = yaw + math.pi / 2
                 boats.add(bx2, bz2, {mesh = "cube", pos = {bx2, 0.6, bz2}, yaw = by, size = {2.6, 1.3, 7}, color = {0.95, 0.95, 0.94}})
                 boats.add(bx2, bz2, {mesh = "cube", pos = {bx2, 1.6, bz2}, yaw = by, size = {1.8, 0.9, 2.8}, color = {0.75, 0.78, 0.82}})
-                if r() < 0.4 then
+                if mast then
                   boats.add(bx2, bz2, {mesh = "cylinder", pos = {bx2, 6.5, bz2}, size = {0.15, 11, 0.15}, color = {0.9, 0.9, 0.9}})
                 end
               end
