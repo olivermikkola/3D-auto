@@ -48,7 +48,7 @@ local function script()
       if dd < bd then best, bd = i, dd end
     end
     local a, b = e.pts[best - 1], e.pts[best]
-    local right = (p.x - a[1]) * (b[2] - a[2]) - (p.z - a[2]) * (b[1] - a[1]) > 0 -- (right of a to b: along U.right)
+    local right = (p.x - a[1]) * (b[2] - a[2]) - (p.z - a[2]) * (b[1] - a[1]) < 0 -- (right of a to b: along U.right, which is (-fz, fx))
     local fx, fz = b[1] - a[1], b[2] - a[2]
     local l = math.sqrt(fx * fx + fz * fz)
     local off = math.abs((p.x - a[1]) * fz - (p.z - a[2]) * fx) / l -- from the middle
