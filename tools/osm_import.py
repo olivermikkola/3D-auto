@@ -687,7 +687,8 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
     (height, kind, wall colour or None, points, roof colour or None, year
-    built or None). The
+    built or None, over a road, a pitched roof's rise over the eaves or
+    None). The
     game draws these as they are and keeps the boxes only to collide with.
     `roof_of(points)` gives an untagged roof its colour (the aerial photo)."""
     out = []
@@ -704,9 +705,10 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
             pts = simplify(poly, 0.3)  # open: the closing side is implied
             roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
             h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)
+            rise = None
             if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
-                h = pitch[0]  # to the eaves, as its boxes have it
-            out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly))))
+                h, rise = pitch[0], round(pitch[1] - pitch[0], 1)  # to the eaves, as its boxes have it, and the roof over them
+            out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly)), rise))
     return out
 
 
@@ -743,11 +745,13 @@ def one_height(outlines, before, after):
 
 
 def outline_lines(outlines, f):
-    L = ["  -- footprints drawn as they are: {height, kind, wall colour or false, points..., roof = colour, year = built}",
+    L = ["  -- footprints drawn as they are: {height (to the eaves), kind, wall colour or false, points..., roof = colour,",
+         "  -- year = built, pitch = a pitched roof's rise over the eaves}",
          "  outlines = {"]
-    for h, kind, wall, pts, roof, year, span in outlines:
+    for h, kind, wall, pts, roof, year, span, *rise in outlines:
         w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
         r = (", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else "") + (f", year = {year}" if year else "") + (", span = true" if span else "")
+        r += f", pitch = {f(rise[0])}" if rise and rise[0] else ""
         L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L

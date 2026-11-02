@@ -350,30 +350,9 @@ pub fn ribbon_sloped(pts: &[Vec3], width: &dyn Fn(usize) -> f32, drop: &dyn Fn(u
 /// up on a deck, seen from the road under it). Faces point out, flat shaded.
 pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bool) -> Mesh {
     let mut m = Mesh::default();
-    let mut pts: Vec<(f32, f32)> = Vec::with_capacity(outline.len());
-    for &p in outline {
-        if pts.last().is_none_or(|q: &(f32, f32)| (q.0 - p.0).abs() + (q.1 - p.1).abs() > 1e-4) {
-            pts.push(p);
-        }
-    }
-    while pts.len() > 1 && (pts[0].0 - pts[pts.len() - 1].0).abs() + (pts[0].1 - pts[pts.len() - 1].1).abs() <= 1e-4 {
-        pts.pop();
-    }
+    let pts = clockwise(outline);
     if pts.len() < 3 {
         return m;
-    }
-    // The faces' winding (see cube's +y) wants the outline clockwise seen
-    // from above, which in x, z is a negative shoelace area.
-    let twice_area = |p: &[(f32, f32)]| -> f32 {
-        (0..p.len())
-            .map(|i| {
-                let (a, b) = (p[i], p[(i + 1) % p.len()]);
-                a.0 * b.1 - b.0 * a.1
-            })
-            .sum()
-    };
-    if twice_area(&pts) > 0.0 {
-        pts.reverse();
     }
     let at = |p: (f32, f32), y: f32| v3(p.0, y, p.1);
     for i in 0..pts.len() {
@@ -387,6 +366,145 @@ pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bo
         }
     }
     m
+}
+
+fn twice_area(p: &[(f32, f32)]) -> f32 {
+    (0..p.len())
+        .map(|i| {
+            let (a, b) = (p[i], p[(i + 1) % p.len()]);
+            a.0 * b.1 - b.0 * a.1
+        })
+        .sum()
+}
+
+/// An outline without repeated points, clockwise seen from above (the
+/// faces' winding, see cube's +y, wants that: in x, z a negative shoelace
+/// area).
+fn clockwise(outline: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    clockwise_idx(outline).0
+}
+
+/// clockwise, and for each of its sides (point i to i + 1) the side of
+/// `outline` it is (that side's first point's index).
+fn clockwise_idx(outline: &[(f32, f32)]) -> (Vec<(f32, f32)>, Vec<usize>) {
+    let same = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() + (a.1 - b.1).abs() <= 1e-4;
+    // The last point of each run of repeats starts the side after it.
+    let mut idx: Vec<usize> = Vec::with_capacity(outline.len());
+    for (i, &p) in outline.iter().enumerate() {
+        if idx.last().is_some_and(|&k| same(outline[k], p)) {
+            idx.pop();
+        }
+        idx.push(i);
+    }
+    while idx.len() > 1 && same(outline[idx[0]], outline[idx[idx.len() - 1]]) {
+        idx.remove(0);
+    }
+    let mut pts: Vec<(f32, f32)> = idx.iter().map(|&k| outline[k]).collect();
+    let n = idx.len();
+    if n >= 3 && twice_area(&pts) > 0.0 {
+        pts.reverse();
+        // Side i now runs from the old side's end back to its start.
+        let rev: Vec<usize> = idx.iter().rev().copied().collect();
+        let sides = (0..n).map(|i| rev[(i + 1) % n]).collect();
+        return (pts, sides);
+    }
+    (pts, idx)
+}
+
+/// The outline with each side i moved `r[i]` inward (0: it stays), each
+/// corner where its two sides' moved lines meet; None where that turns it
+/// inside out (a side shorter than the move between two turns the same
+/// way, a wing narrower than the moves) or a corner so sharp its point
+/// runs off. `pts` clockwise (see clockwise).
+fn inset(pts: &[(f32, f32)], r: &[f32]) -> Option<Vec<(f32, f32)>> {
+    let n = pts.len();
+    // Clockwise in x, z (negative area): inward is the side's (dz, -dx).
+    let inward = |i: usize| {
+        let (a, b) = (pts[i], pts[(i + 1) % n]);
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let l = (dx * dx + dz * dz).sqrt().max(1e-6);
+        (dz / l, -dx / l)
+    };
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let p = (i + n - 1) % n;
+        let (n0, n1, r0, r1) = (inward(p), inward(i), r[p], r[i]);
+        // The point the two moved lines share: n0.v = r0, n1.v = r1.
+        let det = n0.0 * n1.1 - n0.1 * n1.0;
+        let v = if det.abs() < 0.05 {
+            // (Near straight on: both sides one line, moved the same.)
+            if (r0 - r1).abs() > 0.01 || n0.0 * n1.0 + n0.1 * n1.1 < 0.0 {
+                return None;
+            }
+            (n1.0 * r1, n1.1 * r1)
+        } else {
+            ((r0 * n1.1 - r1 * n0.1) / det, (n0.0 * r1 - n1.0 * r0) / det)
+        };
+        if v.0 * v.0 + v.1 * v.1 > 9.0 * r0.max(r1) * r0.max(r1) + 1e-6 {
+            return None;
+        }
+        out.push((pts[i].0 + v.0, pts[i].1 + v.1));
+    }
+    // Every side still runs the way it did, and none crosses another.
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let (d, e) = ((pts[j].0 - pts[i].0, pts[j].1 - pts[i].1), (out[j].0 - out[i].0, out[j].1 - out[i].1));
+        if d.0 * e.0 + d.1 * e.1 <= 0.01 * (d.0 * d.0 + d.1 * d.1) {
+            return None;
+        }
+    }
+    let cross = |o: (f32, f32), a: (f32, f32), b: (f32, f32)| (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0);
+    for i in 0..n {
+        for j in i + 2..n {
+            if i == 0 && j == n - 1 {
+                continue;
+            }
+            let (a, b, c, d) = (out[i], out[(i + 1) % n], out[j], out[(j + 1) % n]);
+            if cross(a, b, c) * cross(a, b, d) < 0.0 && cross(c, d, a) * cross(c, d, b) < 0.0 {
+                return None;
+            }
+        }
+    }
+    (twice_area(&out) < 0.0).then_some(out)
+}
+
+/// A pitched roof over an outline (x, z points, not closed), its eaves at
+/// y 0: each side i slopes up `rise` and in `insets[i]` metres (the side
+/// from point i to i + 1; 0: a gable end, upright, against a neighbour's
+/// wall), and what's left in the middle is flat (a hip roof on a narrow
+/// box, a ridge round an L or a block round a yard). Where the outline is
+/// too narrow for that somewhere, smaller moves at the same slope; None if
+/// even a fifth of them are (the caller keeps a flat roof).
+pub fn hip_roof(outline: &[(f32, f32)], rise: f32, insets: &[f32], col: Vec3) -> Option<Mesh> {
+    let (pts, sides) = clockwise_idx(outline);
+    let biggest = insets.iter().copied().fold(0.0, f32::max);
+    if pts.len() < 3 || rise <= 0.0 || biggest <= 0.0 || insets.len() != outline.len() {
+        return None;
+    }
+    let want: Vec<f32> = sides.iter().map(|&k| insets[k].max(0.0)).collect();
+    let mut scale = 1.0;
+    let top = loop {
+        let r: Vec<f32> = want.iter().map(|v| v * scale).collect();
+        if let Some(top) = inset(&pts, &r) {
+            break top;
+        }
+        scale *= 0.7;
+        if scale < 0.2 {
+            return None;
+        }
+    };
+    let h = rise * scale;
+    let mut m = Mesh::default();
+    let at = |p: (f32, f32), y: f32| v3(p.0, y, p.1);
+    let n = pts.len();
+    for i in 0..n {
+        let j = (i + 1) % n;
+        m.quad(at(pts[i], 0.0), at(pts[j], 0.0), at(top[j], h), at(top[i], h), col);
+    }
+    for [a, b, c] in ear_clip(&top) {
+        m.tri(at(top[a], h), at(top[b], h), at(top[c], h), col);
+    }
+    Some(m)
 }
 
 /// Triangles (as indices into `pts`) covering a simple polygon that runs
@@ -863,6 +981,38 @@ mod tests {
         // Out of range clamps rather than wrapping round.
         let w = Vertex::new(Vec3::ZERO, v3(0.0, 1.0, 0.0), v3(1.4, -0.2, 0.5), 2.0);
         assert_eq!((w.color[0], w.color[1], w.color[3]), (255, 0, 255));
+    }
+
+    #[test]
+    fn a_hip_roof_slopes_up_and_in_and_faces_out() {
+        // A 20 x 10 box: in 4 m all round, 3 m up; its faces all point up
+        // and away from the middle, and its top is 12 x 2 at 3 m.
+        let pts = [(-10.0, -5.0), (10.0, -5.0), (10.0, 5.0), (-10.0, 5.0)];
+        let m = hip_roof(&pts, 3.0, &[4.0; 4], Vec3::ONE).unwrap();
+        let top: Vec<_> = m.verts.iter().filter(|v| (v.pos[1] - 3.0).abs() < 1e-4).collect();
+        assert!(top.iter().all(|v| (v.pos[0].abs() - 6.0).abs() < 1e-3 && (v.pos[2].abs() - 1.0).abs() < 1e-3));
+        for v in &m.verts {
+            let n = v.normal();
+            assert!(n.y > 0.3, "{n:?}");
+            let away = v3(v.pos[0], 0.0, v.pos[2]);
+            assert!(n.x * away.x + n.z * away.z >= -1e-3, "{n:?} at {:?}", v.pos);
+        }
+        // An L whose wing is 6 m wide: 4 m in is too far, so 2.8 at the same
+        // slope; one 1 m wide gets none.
+        let l = [(0.0, 0.0), (20.0, 0.0), (20.0, 6.0), (6.0, 6.0), (6.0, 20.0), (0.0, 20.0)];
+        let m = hip_roof(&l, 3.0, &[4.0; 6], Vec3::ONE).unwrap();
+        let ymax = m.verts.iter().map(|v| v.pos[1]).fold(0.0, f32::max);
+        assert!((ymax - 3.0 * 0.7).abs() < 1e-3, "{ymax}");
+        assert!(hip_roof(&[(0.0, 0.0), (20.0, 0.0), (20.0, 1.0), (0.0, 1.0)], 3.0, &[4.0; 4], Vec3::ONE).is_none());
+        // Against a neighbour on its east side (x = 10, the side from point
+        // 1 to 2, the outline either way round): that end stands upright, a
+        // gable, the ridge running to it; the west end is hipped.
+        for pts in [[(-10.0, 5.0), (10.0, 5.0), (10.0, -5.0), (-10.0, -5.0)], [(-10.0, -5.0), (10.0, -5.0), (10.0, 5.0), (-10.0, 5.0)]] {
+            let m = hip_roof(&pts, 3.0, &[4.0, 0.0, 4.0, 4.0], Vec3::ONE).unwrap();
+            let top: Vec<_> = m.verts.iter().filter(|v| (v.pos[1] - 3.0).abs() < 1e-4).map(|v| v.pos[0]).collect();
+            let (lo, hi) = top.iter().fold((f32::MAX, f32::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+            assert!((lo + 6.0).abs() < 1e-3 && (hi - 10.0).abs() < 1e-3, "{lo} {hi}");
+        }
     }
 
     #[test]
