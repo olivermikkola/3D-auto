@@ -312,6 +312,15 @@ void main() {
         col = mix(col, fog_color.rgb * 0.85, min(fres, 0.85));
         float glint = pow(max(dot(reflect(-to_eye, wn), sun.xyz), 0.0), 150.0);
         col += sun_color.rgb * glint * shadow(ndl) * 0.7;
+        // At night the lamps along the quays glint off it too, a streak
+        // down the ripples toward you, far past the pool each lights.
+        for (int i = 0; i < 16; i++) {
+            if (float(i) >= params.y) break;
+            vec3 l = lpos[i].xyz - v_world;
+            float d = length(l);
+            float s = pow(max(dot(wn, normalize(l / max(d, 0.001) + to_eye)), 0.0), 90.0);
+            col += lcol[i].rgb * (lcol[i].w * s * clamp(1.0 - d / (lpos[i].w * 6.0), 0.0, 1.0) * 0.8);
+        }
     }
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
