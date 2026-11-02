@@ -54,7 +54,7 @@ local function over_water(map, pts)
   if not rows then
     rows = {}
     for _, st in ipairs(water) do
-      for j = math.floor(st[2] / 4 + 0.5), math.floor(st[4] / 4 + 0.5) - 1 do
+      for j = math.floor(st[2] + 0.5), math.floor(st[4] + 0.5) - 1 do -- (rows a meter tall)
         rows[j] = rows[j] or {}
         table.insert(rows[j], st)
       end
@@ -66,7 +66,7 @@ local function over_water(map, pts)
     local n = math.max(1, math.ceil(math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2) / 3))
     for k = 0, n do
       local x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
-      for _, st in ipairs(rows[math.floor(z / 4)] or {}) do
+      for _, st in ipairs(rows[math.floor(z)] or {}) do
         if x >= st[1] and x <= st[3] then return true end
       end
     end
@@ -4135,8 +4135,8 @@ function R.pickup_spots(map)
 end
 
 -- Is (x, z) on the map's water (its surveyed cover), and not on a bridge?
--- Rows of water spans, ROW meters tall like the importer's strips.
-local ROW = 4
+-- Rows of water spans, a meter tall (the importer's strips are 1 or 4 m).
+local ROW = 1
 local function water_rows()
   local water = NET and (NET.map.cover or {}).water
   if not water then return nil end

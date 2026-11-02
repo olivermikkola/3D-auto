@@ -162,6 +162,7 @@ def sidewalks(t):
     return "both" if left and right else "left" if left else "right" if right else "no"
 
 ROW = 4.0  # ground cover is rasterized in strips this tall
+WATER_ROW = 1.0  # ...water's this tall (its edge is seen)
 STEP = 10.0  # terrain heights every this many meters
 # A tunnel's cutting (the game roofs it over) is flat out to 6 m past the
 # road's edge, then climbs back to the ground over TUNNEL_BLEND meters; the
@@ -750,6 +751,39 @@ def outline_lines(outlines, f):
 
 WATER_FLOOR = 0.13             # the darkest a water's photo colour stays
 POND = (0.11, 0.14, 0.14)      # ...lifted half toward this
+LEVEL_REACH = 40.0             # m round a strip of water whose lowest level it takes
+POND_AREA = 50000.0            # m²: a body of water smaller than this is one colour,
+SKY = (0.22, 0.29, 0.32)       # ...half this: a pond's still water shows the sky
+
+
+def water_bodies(strips, levels):
+    """The bodies of water the strips make (those touching are one), and
+    each strip's level: the lowest of its body's within LEVEL_REACH. A pond
+    lies flat at one level, not in terraces at the ground model's height
+    under each strip, and a river still steps down along its length."""
+    grid, parent = Grid(50), list(range(len(strips)))
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i, st in enumerate(strips):
+        grid.add(i, (st[0], st[1]), (st[2], st[3]))
+    for i, a in enumerate(strips):
+        for j in grid.near(a[0], a[1], a[2], a[3]):
+            b = strips[j]
+            if j < i and b[0] < a[2] and b[2] > a[0] and b[1] <= a[3] and b[3] >= a[1]:
+                parent[root(i)] = root(j)
+    body = [root(i) for i in range(len(strips))]
+    out = []
+    for i, a in enumerate(strips):
+        r = LEVEL_REACH
+        out.append(min(levels[j] for j in grid.near(a[0] - r, a[1] - r, a[2] + r, a[3] + r)
+                       if body[j] == body[i] and strips[j][0] - r <= a[2] and strips[j][2] + r >= a[0]
+                       and strips[j][1] - r <= a[3] and strips[j][3] + r >= a[1]))
+    return out, body
+
+
 QUAY_STEP = 4.0   # m between a quay's points
 QUAY_MIN = 0.8    # m a bank stands over the water to get a wall
 QUAY_WIDE = 10.0  # m of level quay behind the wall at most: the terrain grid's cell
@@ -1528,20 +1562,21 @@ def main():
         out = []
         for poly in polys:
             zs = [p[1] for p in poly]
-            z = math.floor(max(Z0, min(zs)) / ROW) * ROW
+            row = WATER_ROW if cls == "water" else ROW
+            z = math.floor(max(Z0, min(zs)) / row) * row
             open_runs = {}
             while z < min(Z1, max(zs)):
                 nxt = {}
-                for x0, x1 in spans(poly, z + ROW / 2):
+                for x0, x1 in spans(poly, z + row / 2):
                     x0, x1 = max(X0, round(x0)), min(X1, round(x1))
                     if x1 - x0 < 2: continue
                     key = (x0, x1)
                     if key in open_runs: nxt[key] = open_runs.pop(key)
                     else: nxt[key] = [x0, z, x1, z]
-                    nxt[key][3] = z + ROW
+                    nxt[key][3] = z + row
                 out.extend(open_runs.values())
                 open_runs = nxt
-                z += ROW
+                z += row
             out.extend(open_runs.values())
         strips[cls] = out
 
@@ -1767,6 +1802,13 @@ def main():
         levels = []
         for st in strips.get("water", []):
             levels.append(round(max(0.0, ground((st[0] + st[2]) / 2, (st[1] + st[3]) / 2)), 1))
+        levels, bodies = water_bodies(strips.get("water", []), levels)
+        level_grid = Grid(50)
+        for st, y in zip(strips.get("water", []), levels):
+            level_grid.add((st, y), (st[0], st[1]), (st[2], st[3]))
+        def level_at(x, z):
+            return min((y for st, y in level_grid.near(x, z, x, z) if st[0] <= x <= st[2] and st[1] <= z <= st[3]),
+                       default=None)
         tw, td = int(math.ceil((X1 - X0) / STEP)) + 1, int(math.ceil((Z1 - Z0) / STEP)) + 1
         hgt, cls = [], []
         for j in range(td):
@@ -1790,7 +1832,9 @@ def main():
                     h = h + (best[1] - h) * w_
                 k = cover_at(x, z)
                 if k == water_k:
-                    h = min(h, ground(x, z) - 1.5)
+                    # (the bed under the level the water lies at, not
+                    # only under the ground model: no grass through a pond)
+                    h = min(h, ground(x, z) - 1.5, (level_at(x, z) or h) - 1.0)
                 hgt.append(max(-327, min(327, h)))
                 cls.append(k)
         if quay_runs:
@@ -1893,7 +1937,7 @@ def main():
                 photo_trees.append((at[0], at[1], d, by_a_street(x, z)))
             print(f"aerial: {sum(t[3] for t in photo_trees)} trees from the photo by the streets, "
                   f"{sum(not t[3] for t in photo_trees)} in parks and yards", file=sys.stderr)
-        terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "palette": ground_palette}
+        terrain = {"w": tw, "d": td, "heights": hgt, "classes": cls, "levels": levels, "bodies": bodies, "palette": ground_palette}
         tdest = dest.with_name(dest.stem.replace("_osm", "") + "_terrain.bin")
         import struct
         tdest.write_bytes(struct.pack(f"<{tw * td}h", *(round(h * 100) for h in hgt)) + bytes(cls))
@@ -2028,19 +2072,33 @@ def main():
         if cls == "water" and terrain:
             # With an aerial photo each strip also has the water's colour
             # there: the Aurajoki is brown, the sea grey-blue.
-            def water_colour(a, b, c, d):
-                if not aerial: return ""
+            # A pond is one colour (the photo's, across it), not a patchwork
+            # of its strips'; a river or the sea goes by the photo's there.
+            def photo(a, b, c, d):
+                if not aerial: return None
                 import numpy as np
                 X, Z = np.meshgrid(np.linspace(a, c, 8), np.linspace(b, d, 8))
-                col = aerial.robust(X.ravel(), Z.ravel())
+                return aerial.robust(X.ravel(), Z.ravel())
+            cols = [photo(*st) for st in out]
+            size, mix = {}, {}
+            for st, col, bd in zip(out, cols, terrain["bodies"]):
+                a_ = (st[2] - st[0]) * (st[3] - st[1])
+                size[bd] = size.get(bd, 0) + a_
+                if col:
+                    m = mix.setdefault(bd, [0.0, 0.0, 0.0, 0.0])
+                    for i_ in range(3): m[i_] += col[i_] * a_
+                    m[3] += a_
+            def water_colour(col, bd):
+                if size[bd] < POND_AREA and bd in mix:
+                    col = [(v / mix[bd][3] + k) / 2 for v, k in zip(mix[bd][:3], SKY)]
                 if col and sum(col) / 3 < WATER_FLOOR:
                     # (a pond under the trees' shade is near black in the
                     # photo, a hole in the ground in the game: a dark pond)
                     lum = max(sum(col) / 3, 1e-3)
                     col = [(v * WATER_FLOOR / lum + p) / 2 for v, p in zip(col, POND)]
                 return "," + ",".join(f"{v:.2f}" for v in col) if col else ""
-            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}{water_colour(a, b, c, d)}}}"
-                                            for (a, b, c, d), y in zip(out, terrain["levels"])) + "},")
+            L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)},{f(y)}{water_colour(col, bd)}}}"
+                                            for (a, b, c, d), y, col, bd in zip(out, terrain["levels"], cols, terrain["bodies"])) + "},")
         else:
             L.append(f"    {cls} = {{" + ", ".join(f"{{{a},{f(b)},{c},{f(d)}}}" for a, b, c, d in out) + "},")
     L.append("  },")
