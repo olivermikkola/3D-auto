@@ -796,6 +796,8 @@ QUAY_STEP = 4.0   # m between a quay's points
 QUAY_MIN = 0.8    # m a bank stands over the water to get a wall
 QUAY_WIDE = 10.0  # m of level quay behind the wall at most: the terrain grid's cell
 QUAY_GAP = 2.5    # m kept clear past a road's edge (its pavement)
+QUAY_DECK = 4.0   # m a quay stops short of a bridge's side
+QUAY_ALONG = 0.7  # how nearly along the bank a street runs for the quay to be level with it
 
 
 def quays(rings_xz, ground, wet, roads=None, inside=lambda x, z: True):
@@ -847,7 +849,11 @@ def quays(rings_xz, ground, wet, roads=None, inside=lambda x, z: True):
                     if room < w:
                         dx, dz = b[0] - a[0], b[1] - a[1]
                         t_ = max(0.0, min(1.0, ((x - a[0]) * dx + (z - a[1]) * dz) / ((dx * dx + dz * dz) or 1e-9)))
-                        w, by = room, ya + (yb - ya) * t_
+                        # Level with a street along the bank, not one heading
+                        # across it onto a bridge: that one climbs over the
+                        # quay (Tuomiokirkkosilta's ends lifted it 3.6 m).
+                        along = abs(dx * rz - dz * rx) / (math.hypot(dx, dz) or 1e-9)
+                        w, by = room, (ya + (yb - ya) * t_ if along > QUAY_ALONG else None)
             if by is not None: top = by + 0.12  # level with the pavement (a kerb up from the street)
             cur.append((round(x, 1), round(z, 1), top, round(max(0.0, w), 1)))
             levels.append(level)
@@ -1745,7 +1751,7 @@ def main():
                 for s_ in (10, 20):
                     p = (ax + (bx - ax) * s_ / L_, az + (bz - az) * s_ / L_)
                     if cover_at(*p) != water_k: jh[j] = max(jh[j], ground(*p))
-        prof_grid = Grid(50)
+        prof_grid, deck_grid = Grid(50), Grid(50)
         for ed_ in edges:
             pts = ed_["pts"]
             ss, xs = [0.0], [pts[0]]
@@ -1798,6 +1804,9 @@ def main():
             if not ed_["deck"]:
                 for (a, ya), (b, yb) in zip(ed_["profile"], ed_["profile"][1:]):
                     prof_grid.add((ed_, a, b, ya, yb), a, b, pad=ed_["width"] / 2 + 26)
+            else:
+                for (a, _), (b, _) in zip(ed_["profile"], ed_["profile"][1:]):
+                    deck_grid.add((ed_, a, b), a, b, pad=ed_["width"] / 2 + QUAY_DECK)
         # The river's quays: its walled banks (not the sea's shore, nor ponds).
         river = []
         for el in els:
@@ -1805,8 +1814,12 @@ def main():
             if t.get("water") == "river" or t.get("waterway") == "riverbank":
                 river += [[P(p["lat"], p["lon"]) for p in ring[:-1]] for ring in rings(el)]
         qb = cfg.get("quays")
+        # A quay stops at a bridge: its end stands on its own abutment.
+        def under_deck(x, z):
+            return any(seg_dist((x, z), a, b) < ed["width"] / 2 + QUAY_DECK for ed, a, b in deck_grid.near(x, z, x, z))
         quay_runs = quays(river, ground, lambda x, z: cover_at(x, z) == water_k, prof_grid,
-                          lambda x, z: inside(x, z, 10) and qb["x"][0] <= x <= qb["x"][1] and qb["z"][0] <= z <= qb["z"][1]) if qb else []
+                          lambda x, z: inside(x, z, 10) and qb["x"][0] <= x <= qb["x"][1] and qb["z"][0] <= z <= qb["z"][1]
+                          and not under_deck(x, z)) if qb else []
         print(f"quays: {len(quay_runs)} walled banks, {sum(len(r[1]) for r in quay_runs) * QUAY_STEP / 1000:.1f} km", file=sys.stderr)
         # Water lies flat at its own level (the sea at 0, a reservoir higher):
         # each strip at the ground model's height there, the bed below it.

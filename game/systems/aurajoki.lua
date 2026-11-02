@@ -142,9 +142,12 @@ function A.build(map)
 
         -- Urban stone quay section (Forum Marinum to Tuomiokirkko)
         if z > A.QUAYS[1] and z < A.QUAYS[2] then
-          -- Low granite edge quay barrier, where it misses the street
+          -- Low granite edge quay barrier, where it misses the street. Not
+          -- where the map has its quays (their own walls, at the real edge):
+          -- on these hand-drawn banks it stood on the ground's slopes, in
+          -- the air by Tuomiokirkkosilta.
           local fx, fz = math.sin(yaw) * 7.9, math.cos(yaw) * 7.9
-          local wall = off_road(x, z, 0.6) and off_road(x + fx, z + fz, 0.6) and off_road(x - fx, z - fz, 0.6)
+          local wall = not map.quays and off_road(x, z, 0.6) and off_road(x + fx, z + fz, 0.6) and off_road(x - fx, z - fz, 0.6)
           if wall then engine.spawn{
             mesh = "cube",
             pos = {x, y + 0.35, z},
