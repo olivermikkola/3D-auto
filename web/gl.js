@@ -12,6 +12,7 @@ const version = 2;
 
 const canvas = document.querySelector("#glcanvas");
 var gl;
+var is_webgl2 = false;
 
 var clipboard = null;
 
@@ -89,6 +90,7 @@ function init_webgl(version) {
         }
     } else {
         gl = canvas.getContext("webgl2");
+        is_webgl2 = gl !== null;
     }
     if (gl === null) {
         alert("Unable to initialize WebGL. Your browser or machine may not support it.");
@@ -116,6 +118,48 @@ function assert(flag, message) {
 function getArray(ptr, arr, n) {
     return new arr(wasm_memory.buffer, ptr, n);
 }
+
+// Uniforms are set for every draw, mostly to what they already were (the sun,
+// fog and lights are the same for a whole frame): a new view of the module's
+// memory per call was thousands of objects a frame for the collector, and each
+// call goes to the GPU process. So read them through one view, and send a
+// value only when it changed. A uniform keeps its value in its program, and a
+// location belongs to one program, so skipping a repeat changes nothing.
+var uniform_f32 = null;
+var uniform_last = [];
+function uniformChanged(location, ptr, n) {
+    if (uniform_f32 == null || uniform_f32.buffer !== wasm_memory.buffer) {
+        uniform_f32 = new Float32Array(wasm_memory.buffer);
+    }
+    var at = ptr >> 2, last = uniform_last[location];
+    if (last === undefined || last.length != n) {
+        uniform_last[location] = uniform_f32.slice(at, at + n);
+        return true;
+    }
+    var changed = false;
+    for (var i = 0; i < n; i++) {
+        if (last[i] !== uniform_f32[at + i]) {
+            last[i] = uniform_f32[at + i];
+            changed = true;
+        }
+    }
+    return changed;
+}
+function setUniformFloats(location, ptr, n, send) {
+    if (!uniformChanged(location, ptr, n)) return;
+    if (is_webgl2) send(GL.uniforms[location], uniform_f32, ptr >> 2, n);
+    else send(GL.uniforms[location], getArray(ptr, Float32Array, n));
+}
+var uniform_int = [];
+var active_texture = -1;
+var active_texture_wanted = 0x84C0; // TEXTURE0
+function useActiveTexture() {
+    if (active_texture_wanted == active_texture) return;
+    active_texture = active_texture_wanted;
+    gl.activeTexture(active_texture);
+}
+var attrib_enabled = [];
+var attrib_divisor = [];
 
 function UTF8ToString(ptr, maxBytesToRead) {
     let u8Array = new Uint8Array(wasm_memory.buffer, ptr);
@@ -677,17 +721,22 @@ var importObject = {
             _glGenObject(n, textures, "createTexture", GL.textures, "glGenTextures")
         },
         glActiveTexture: function (texture) {
-            gl.activeTexture(texture)
+            // Sent when a texture call needs it: binding the same texture to
+            // its unit again (skipped above this) needs no unit at all.
+            active_texture_wanted = texture;
         },
         glBindTexture: function (target, texture) {
             GL.validateGLObjectID(GL.textures, texture, 'glBindTexture', 'texture');
+            useActiveTexture();
             gl.bindTexture(target, GL.textures[texture]);
         },
         glTexImage2D: function (target, level, internalFormat, width, height, border, format, type, pixels) {
+            useActiveTexture();
             gl.texImage2D(target, level, internalFormat, width, height, border, format, type,
                 pixels ? getArray(pixels, Uint8Array, texture_size(internalFormat, width, height)) : null);
         },
         glTexSubImage2D: function (target, level, xoffset, yoffset, width, height, format, type, pixels) {
+            useActiveTexture();
             gl.texSubImage2D(target, level, xoffset, yoffset, width, height, format, type,
                 pixels ? getArray(pixels, Uint8Array, texture_size(format, width, height)) : null);
         },
@@ -696,36 +745,34 @@ var importObject = {
             gl.readPixels(x, y, width, height, format, type, pixelData);
         },
         glTexParameteri: function (target, pname, param) {
+            useActiveTexture();
             gl.texParameteri(target, pname, param);
         },
         glUniform1fv: function (location, count, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform1fv', 'location');
             assert((value & 3) == 0, 'Pointer to float data passed to glUniform1fv must be aligned to four bytes!');
-            var view = getArray(value, Float32Array, 1 * count);
-            gl.uniform1fv(GL.uniforms[location], view);
+            setUniformFloats(location, value, 1 * count, function (l, d, o, c) { gl.uniform1fv(l, d, o, c); });
         },
         glUniform2fv: function (location, count, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform2fv', 'location');
             assert((value & 3) == 0, 'Pointer to float data passed to glUniform2fv must be aligned to four bytes!');
-            var view = getArray(value, Float32Array, 2 * count);
-            gl.uniform2fv(GL.uniforms[location], view);
+            setUniformFloats(location, value, 2 * count, function (l, d, o, c) { gl.uniform2fv(l, d, o, c); });
         },
         glUniform3fv: function (location, count, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform3fv', 'location');
             assert((value & 3) == 0, 'Pointer to float data passed to glUniform3fv must be aligned to four bytes!');
-            var view = getArray(value, Float32Array, 3 * count);
-            gl.uniform3fv(GL.uniforms[location], view);
+            setUniformFloats(location, value, 3 * count, function (l, d, o, c) { gl.uniform3fv(l, d, o, c); });
         },
         glUniform4fv: function (location, count, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform4fv', 'location');
             assert((value & 3) == 0, 'Pointer to float data passed to glUniform4fv must be aligned to four bytes!');
-            var view = getArray(value, Float32Array, 4 * count);
-            gl.uniform4fv(GL.uniforms[location], view);
+            setUniformFloats(location, value, 4 * count, function (l, d, o, c) { gl.uniform4fv(l, d, o, c); });
         },
         glUniform1iv: function (location, count, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform1fv', 'location');
             assert((value & 3) == 0, 'Pointer to i32 data passed to glUniform1iv must be aligned to four bytes!');
             var view = getArray(value, Int32Array, 1 * count);
+            uniform_int[location] = undefined;
             gl.uniform1iv(GL.uniforms[location], view);
         },
         glUniform2iv: function (location, count, value) {
@@ -767,15 +814,21 @@ var importObject = {
         },
         glUniform1i: function (location, v0) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniform1i', 'location');
+            if (uniform_int[location] === v0) return;
+            uniform_int[location] = v0;
             gl.uniform1i(GL.uniforms[location], v0);
         },
         glGetAttribLocation: function (program, name) {
             return gl.getAttribLocation(GL.programs[program], UTF8ToString(name));
         },
         glEnableVertexAttribArray: function (index) {
+            if (attrib_enabled[index] === true) return;
+            attrib_enabled[index] = true;
             gl.enableVertexAttribArray(index);
         },
         glDisableVertexAttribArray: function (index) {
+            if (attrib_enabled[index] === false) return;
+            attrib_enabled[index] = false;
             gl.disableVertexAttribArray(index);
         },
         glVertexAttribPointer: function (index, size, type, normalized, stride, ptr) {
@@ -805,8 +858,7 @@ var importObject = {
         glUniformMatrix4fv: function (location, count, transpose, value) {
             GL.validateGLObjectID(GL.uniforms, location, 'glUniformMatrix4fv', 'location');
             assert((value & 3) == 0, 'Pointer to float data passed to glUniformMatrix4fv must be aligned to four bytes!');
-            var view = getArray(value, Float32Array, 16);
-            gl.uniformMatrix4fv(GL.uniforms[location], !!transpose, view);
+            setUniformFloats(location, value, 16 * count, function (l, d, o, c) { gl.uniformMatrix4fv(l, !!transpose, d, o, c); });
         },
         glUseProgram: function (program) {
             GL.validateGLObjectID(GL.programs, program, 'glUseProgram', 'program');
@@ -822,6 +874,9 @@ var importObject = {
             _glGenObject(n, ids, 'createRenderbuffer', GL.renderbuffers, 'glGenRenderbuffers');
         },
         glBindVertexArray: function (vao) {
+            // (Which attributes are on, and their divisors, belong to the array.)
+            attrib_enabled = [];
+            attrib_divisor = [];
             gl.bindVertexArray(GL.vaos[vao]);
         },
         glBindFramebuffer: function (target, framebuffer) {
@@ -892,6 +947,8 @@ var importObject = {
             GL.validateGLObjectID(GL.programs, program, 'glLinkProgram', 'program');
             gl.linkProgram(GL.programs[program]);
             GL.populateUniformTable(program);
+            uniform_last = [];
+            uniform_int = [];
         },
         glPixelStorei: function (pname, param) {
             gl.pixelStorei(pname, param);
@@ -951,6 +1008,7 @@ var importObject = {
             gl.cullFace(mode);
         },
         glCopyTexImage2D: function (target, level, internalformat, x, y, width, height, border) {
+            useActiveTexture();
             gl.copyTexImage2D(target, level, internalformat, x, y, width, height, border);
         },
 
@@ -1041,6 +1099,8 @@ var importObject = {
             }
         },
         glVertexAttribDivisor: function (index, divisor) {
+            if (attrib_divisor[index] === divisor) return;
+            attrib_divisor[index] = divisor;
             gl.vertexAttribDivisor(index, divisor);
         },
         glDrawArraysInstanced: function (mode, first, count, primcount) {
@@ -1148,6 +1208,7 @@ var importObject = {
             heap[1] = (result - heap[0]) / 4294967296;
         },
         glGenerateMipmap: function (index) {
+            useActiveTexture();
             gl.generateMipmap(index);
         },
         glRenderbufferStorageMultisample: function(target, samples, internalformat, width, height) {
