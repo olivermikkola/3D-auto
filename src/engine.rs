@@ -556,7 +556,7 @@ impl Engine {
         for (t, on) in f.trees.iter().zip(f.standing.iter_mut()) {
             *on = t.hash < if t.street { street } else { park };
             if *on {
-                baked.push([t.x, ground(t.x, t.z), t.z, t.crown]);
+                baked.push([t.x, ground(t.x, t.z), t.z, t.crown, if t.street { 1.0 } else { 0.0 }]);
             }
         }
         self.set_forest(&baked, FOREST_CHUNK);
@@ -587,7 +587,7 @@ impl Engine {
     /// They are only drawn, cast no sun shadow; whatever should stop a car
     /// is the game's to add.
     /// Returns the chunks made.
-    pub fn set_forest(&mut self, trees: &[[f32; 4]], chunk: f32) -> usize {
+    pub fn set_forest(&mut self, trees: &[[f32; 5]], chunk: f32) -> usize {
         for id in std::mem::take(&mut self.forest_chunks) {
             self.despawn(id);
         }
@@ -606,7 +606,7 @@ impl Engine {
             for &i in &cells[&(ci, cj)] {
                 let t = trees[i];
                 let seed = (t[0] * 10.0) as i32 as u32 ^ ((t[2] * 10.0) as i32 as u32).rotate_left(16);
-                mesh::leafy_tree(&mut m, v3(t[0], t[1], t[2]), t[3], seed);
+                mesh::leafy_tree(&mut m, v3(t[0], t[1], t[2]), t[3], t[4] > 0.5, seed);
             }
             let name = format!("forest_{ci}_{cj}");
             // (to the GPU whatever its size: in the browser a city's small

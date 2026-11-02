@@ -1920,10 +1920,12 @@ def main():
             rnd = random_.Random(7)
             for n_, (x, z) in enumerate(cand):
                 full = sum(around[n_ * len(ring):(n_ + 1) * len(ring)].tolist()) / len(ring)
-                d = round(6 + 7 * full + rnd.uniform(-1, 1))  # crown 5-14 m across
+                d = round(6 + 7 * full + rnd.uniform(-2, 2))  # crown 4-15 m across
                 # A crown over a road or a path (a street's lindens lean over
                 # it) has its trunk beside it: the nearest clear spot round.
-                jx, jz = x + rnd.uniform(-2, 2), z + rnd.uniform(-2, 2)
+                # (Anywhere in most of its 9 m square: on the square's middle
+                # they stood in rows across a park.)
+                jx, jz = x + rnd.uniform(-3.5, 3.5), z + rnd.uniform(-3.5, 3.5)
                 at = None
                 for rr, k in [(0, 0)] + [(rr, k) for rr in (2, 4) for k in range(8)]:
                     a_ = k * math.pi / 4
