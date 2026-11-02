@@ -676,6 +676,13 @@ def wall_colour(t):
     return named_colour(t.get("building:colour", "")) or MATERIALS.get(t.get("building:material", "").strip().lower())
 
 
+def outlined(t, poly, A):
+    """Is a building drawn as its outline (outlines_of), not its boxes?"""
+    kind = "stand" if is_stand(t, poly) else building_kind(t, A)
+    return (A >= 150 and kind not in ("house", "terrace", "church", "shed", "stand")
+            and (len(boxes_of(poly)) >= 2 or bool(wall_colour(t))) and len(simplify(poly, 0.3)) >= 3)
+
+
 def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
@@ -691,18 +698,15 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
             poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
             if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
             A = area(poly)
-            if A < 150: continue
+            if not outlined(t, poly, A): continue
             kind = "stand" if is_stand(t, poly) else building_kind(t, A)
-            if kind in ("house", "terrace", "church", "shed", "stand"): continue
             wall = wall_colour(t)
-            if len(boxes_of(poly)) < 2 and not wall: continue
             pts = simplify(poly, 0.3)  # open: the closing side is implied
-            if len(pts) >= 3:
-                roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
-                h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)
-                if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
-                    h = pitch[0]  # to the eaves, as its boxes have it
-                out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly))))
+            roof = (roof_of and roof_of(pts)) or roof_colour(t)  # the photo's, as for boxes
+            h, year, pitch = (model_h and model_h(poly)) or (height_of(t, kind, A), None, None)
+            if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
+                h = pitch[0]  # to the eaves, as its boxes have it
+            out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly))))
     return out
 
 
@@ -1456,6 +1460,7 @@ def main():
     for ed in edges:
         for a, b in zip(ed["pts"], ed["pts"][1:]): road_grid.add((ed, a, b), a, b, pad=ed["width"])
     footprints, dropped, trimmed = [], 0, 0
+    in_outline = set()  # the boxes of a building drawn as its outline (no laser pitch: the outline's roof is flat)
     for el in els:
         t = el.get("tags", {})
         if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
@@ -1532,6 +1537,7 @@ def main():
                 # The photo's colour first: a roof:colour tag names a colour
                 # ("red", "green"), the photo has the weathered tile and copper.
                 roof = (aerial and aerial.roof_of_box(x, z, bw, bd, ang)) or roof_colour(t)
+                if outlined(t, poly, A): in_outline.add(len(footprints))
                 footprints.append((x, z, bw, bd, ang, h, kind, name, roof, year, roof_h, span))
                 name = None  # the label goes on one box
 
@@ -1541,8 +1547,9 @@ def main():
         import lidar
         if lidar.available():
             before = footprints
-            footprints, lid_lowered, lid_raised = lidar.check_heights(footprints)
-            print(f"lidar: {lid_lowered} buildings lowered and {lid_raised} raised to the laser scans' roofs", file=sys.stderr)
+            footprints, lid_lowered, lid_raised, lid_pitched = lidar.check_heights(footprints, flat=in_outline)
+            print(f"lidar: {lid_lowered} buildings lowered and {lid_raised} raised to the laser scans' roofs, "
+                  f"{lid_pitched} given the pitched roof they see", file=sys.stderr)
     outlines = outlines_of(els, P, inside, aerial and aerial.roof_of_outline, model_h,
                            lambda poly: road_under(poly, road_grid) >= SPAN_MIN)
     if before is not None:
