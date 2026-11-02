@@ -152,7 +152,10 @@ end
 
 -- Cars nobody is driving have the handbrake on: on a slope they'd roll
 -- away otherwise (they have no friction of their own; grip is M.drive's
--- doing). Slow ones are held, so a car knocked flying still flies.
+-- doing). On the ground they skid to a stop (a car knocked off the kerb
+-- at 5 m/s used to roll on down Hämeenkatu, gaining speed, into a
+-- junction), and slow ones are held; one in the air still flies.
+M.SKID = 6 -- m/s² an empty car slows by on its wheels or its roof
 function M.driven(id)
   if id == require("lib.state").vehicle then return true end
   local traffic, police = package.loaded["systems.traffic"], package.loaded["systems.police"]
@@ -160,12 +163,18 @@ function M.driven(id)
   return (traffic and traffic.cars[id] ~= nil) or (cop ~= nil and not cop.deployed)
 end
 
-engine.on("tick", function()
+engine.on("tick", function(dt)
   if not engine.terrain_height(0, 0) then return end -- flat maps don't need it
   for _, id in ipairs(engine.find("car")) do
     if not M.driven(id) and engine.grounded(id) then
       local vx, vy, vz = engine.vel(id)
-      if vx * vx + vz * vz < 9 then engine.set_vel(id, vx * 0.8, vy, vz * 0.8) end
+      local sp = math.sqrt(vx * vx + vz * vz)
+      if sp < 3 then
+        engine.set_vel(id, vx * 0.8, vy, vz * 0.8)
+      else
+        local k = math.max(0, sp - M.SKID * dt) / sp
+        engine.set_vel(id, vx * k, vy, vz * k)
+      end
     end
   end
 end)
