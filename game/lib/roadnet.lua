@@ -3618,6 +3618,17 @@ build = function(map, kit)
     end
   end
 
+  -- Is (x, z), just outside one of o's walls, inside another building
+  -- whose roof is no more than a metre below o's (a wall the two share)?
+  local function party_wall(o, x, z)
+    local top = (o.base or 0) + o.h
+    for _, oi in ipairs(out_grid[cell_key(math.floor(x / CELL), math.floor(z / CELL))] or {}) do
+      local n = OUT[oi]
+      if n ~= o and n.placed and (n.base or 0) + n.h > top - 1 and inside_poly(n.pts, x, z) then return true end
+    end
+    return false
+  end
+
   local FLATS = {{0.92, 0.90, 0.86}, {0.86, 0.55, 0.35}, {0.85, 0.85, 0.87}, {0.78, 0.82, 0.85}, {0.62, 0.32, 0.24}}
   -- One building's walls, trim, windows and balconies, each part handed to
   -- add(x, z, part).
@@ -3659,11 +3670,14 @@ build = function(map, kit)
             plinths = plinths + 1
             add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.06, base + 0.3, mz + nz * 0.06}, yaw = math.atan(dx, dz),
                                size = {0.12, 0.6, len + 0.12}, color = {color[1] * 0.7, color[2] * 0.7, color[3] * 0.7}, abs = true})
-          elseif facade and facade ~= GLASS_F then -- the parapet's coping, a lighter edge to the roof
+          elseif facade and facade ~= GLASS_F and not party_wall(o, mx + nx * 0.5, mz + nz * 0.5) then
+            -- the parapet's coping, a lighter edge to the roof (a shade:
+            -- brighter, it drew every roof outlined in white; and not on a
+            -- wall shared with a neighbour as tall, inside its roof)
             copings = copings + 1
+            local function lit(c) return math.min(c * 1.1 + 0.04, c + 0.1, 0.95) end
             add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
-                               size = {0.24, 0.4, len + 0.24}, color = {math.min(1, color[1] * 1.2 + 0.1), math.min(1, color[2] * 1.2 + 0.1),
-                               math.min(1, color[3] * 1.2 + 0.1)}, abs = true})
+                               size = {0.24, 0.4, len + 0.24}, color = {lit(color[1]), lit(color[2]), lit(color[3])}, abs = true})
           end
           if facade == FLATS_F and len > 6 and h >= 3 * kit.FLOOR and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
             balconies(add, mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
