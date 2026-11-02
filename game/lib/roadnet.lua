@@ -2755,6 +2755,22 @@ build = function(map, kit)
     for i = 2, #b do pts[#pts + 1] = b[i] end
     local total = 0
     for i = 2, #pts do total = total + math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2) end
+    -- Mostly along a road bridge's deck: it's that bridge's pavement (mapped
+    -- on its own), carried by the deck. Its ends, past the deck's, stood
+    -- alone, sloping into the river (Tuomiokirkkosilta).
+    local along, pieces = 0, 0
+    for i = 2, #pts do
+      local ax, az, bx, bz = pts[i - 1][1], pts[i - 1][2], pts[i][1], pts[i][2]
+      local seg = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+      local n = math.max(1, math.ceil(seg / 4))
+      for k = 0, n - 1 do
+        pieces = pieces + 1
+        if along_deck(ax + (bx - ax) * (k + 0.5) / n, az + (bz - az) * (k + 0.5) / n, math.atan(bx - ax, bz - az), width) then
+          along = along + 1
+        end
+      end
+    end
+    if along * 2 > pieces then goto next_bridge end
     local up = b.up or {}
     -- Heights from the ground at its ends (on a map with terrain the deck
     -- used to be measured from sea level: buried in the hills, floating by
@@ -2808,6 +2824,7 @@ build = function(map, kit)
       end
       sv = sv + seg
     end
+    ::next_bridge::
   end
 
   -- Raised decks for walking, at a footbridge's height, the 1970s way:
