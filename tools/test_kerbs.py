@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automated tests for rounded kerb corners, traffic islands, and road geometry."""
+"""Automated tests for traffic islands and road geometry."""
 import os
 from pathlib import Path
 import subprocess
@@ -10,7 +10,7 @@ BINARY = ROOT / "target" / "release" / ("auto.exe" if os.name == "nt" else "auto
 
 
 class KerbTests(unittest.TestCase):
-    def test_corner_fillets_and_islands_exist(self):
+    def test_islands_exist(self):
         env = os.environ.copy()
         env["MAP"] = "raisio"
         env["SEED"] = "1337"
