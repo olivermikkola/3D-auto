@@ -467,9 +467,10 @@ pub fn cylinder(sides: usize) -> Mesh {
 
 /// A leafy tree (a linden, a maple, a birch) standing at `base`, its crown
 /// `crown` metres across, added to `m`: a trunk and one lumpy crown, darker
-/// underneath, its shape and green varied by `seed`. 26 vertices: a city's
-/// hundred thousand trees bake into a few chunk meshes (Engine::set_forest).
-pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
+/// underneath, its shape and green varied by `seed`; by a `street`, its
+/// crown over a bus's roof. 26 vertices: a city's hundred thousand trees
+/// bake into a few chunk meshes (Engine::set_forest).
+pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, street: bool, seed: u32) {
     const SIDES: usize = 7;
     // A hash's next number, 0..1.
     let mut s = seed.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
@@ -480,10 +481,15 @@ pub fn leafy_tree(m: &mut Mesh, base: Vec3, crown: f32, seed: u32) {
         (s % 10_000) as f32 / 10_000.0
     };
     let r = crown / 2.0;
-    let height = 0.9 * crown + 3.0;
+    // Some tall for their width (a young linden, a birch), some broad and
+    // low (an old maple): not a city of one tree's copies.
+    // Its crown low on the trunk as a park's are, but over a car's roof
+    // (a bus's by a street: crowns reach out over it).
     let ry = r * (0.8 + 0.2 * rnd());
+    let height = ((0.6 + 0.4 * rnd()) * crown + 1.5 + rnd()).max(1.85 * ry + if street { 3.6 } else { 1.8 });
     let mid = base + v3(0.0, height - ry, 0.0);
-    let leaf = v3(0.2 + 0.08 * rnd(), 0.36 + 0.12 * rnd(), 0.13 + 0.07 * rnd());
+    // (Olive to deep green, as the photo's crowns are: not all one bright green.)
+    let leaf = v3(0.2 + 0.08 * rnd(), 0.31 + 0.11 * rnd(), 0.12 + 0.07 * rnd());
     let bark = v3(0.37, 0.34, 0.3); // (grey-brown: lindens' and birches' bark, lit by the sky too)
     let push = |m: &mut Mesh, p: Vec3, n: Vec3, c: Vec3| {
         m.verts.push(Vertex::new(p, n, c, 0.0));
@@ -703,16 +709,28 @@ mod tests {
     }
 
     #[test]
+    fn a_trees_crown_clears_a_car_and_by_a_street_a_bus() {
+        for seed in 0..200 {
+            for (street, clear) in [(false, 1.8), (true, 3.6)] {
+                let mut m = Mesh::default();
+                leafy_tree(&mut m, Vec3::ZERO, 4.0 + (seed % 12) as f32, street, seed);
+                let low = m.verts[10..].iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min);
+                assert!(low >= clear - 0.01, "seed {seed}: crown down to {low}");
+            }
+        }
+    }
+
+    #[test]
     fn a_leafy_tree_stands_on_its_base_its_crown_as_wide_as_asked_facing_out() {
         let mut m = Mesh::default();
-        leafy_tree(&mut m, v3(10.0, 2.0, -5.0), 10.0, 7);
+        leafy_tree(&mut m, v3(10.0, 2.0, -5.0), 10.0, false, 7);
         assert_eq!(m.verts.len(), 26, "small: a hundred thousand of them bake into chunks");
         let lo = m.verts.iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min);
         let (hi, wide) = m.verts.iter().fold((f32::NEG_INFINITY, 0f32), |(h, w), v| {
             (h.max(v.pos[1]), w.max(((v.pos[0] - 10.0).powi(2) + (v.pos[2] + 5.0).powi(2)).sqrt()))
         });
         assert!((lo - 2.0).abs() < 1e-4, "on the ground: {lo}");
-        assert!(hi > 2.0 + 10.0 && hi < 2.0 + 13.0, "about 12 m tall: {}", hi - 2.0);
+        assert!(hi > 2.0 + 9.0 && hi < 2.0 + 13.0, "9-13 m tall: {}", hi - 2.0);
         assert!(wide > 4.0 && wide < 6.0, "crown about 10 m across: {}", 2.0 * wide);
         // Every face of the crown faces away from the crown's middle (it's
         // drawn with back faces culled), and the trunk's from its axis.

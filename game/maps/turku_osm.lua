@@ -46810,7 +46810,7 @@ return {
     {"Vätti", -746.4, -1945.8, "suburb"},
     {"Ylioppilaskylä", 1265.6, -1350.1, "suburb"},
   },
-  -- the trees the aerial photo shows: 118194 in turku_trees.bin (engine.forest)
+  -- the trees the aerial photo shows: 117820 in turku_trees.bin (engine.forest)
   trees_file = "maps/turku_trees.bin",
   -- the ground's height every 10 m from (x0, z0), in turku_terrain.bin (Maanmittauslaitos
   -- elevation model, CC BY 4.0): i16 centimeters, then each point's cover class (0 land)
