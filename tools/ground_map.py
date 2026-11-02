@@ -22,6 +22,7 @@ import struct
 N = 32          # palette colours
 COPY = 255      # a run's index meaning "as the row above"
 SHADE_LAWN = (0.27, 0.42, 0.21)
+SHADE = 0.28    # the photo's brightness (0-1) under which a point is in shadow
 
 
 def _box(a, r):
@@ -55,18 +56,22 @@ def photo_tile(aerial, i, j, step):
         return None
     img = np.nan_to_num(img, nan=0.5).astype(np.float32)
     lum = img.mean(-1)
-    # Shade: much darker than the sunlit ground round about (the brighter
-    # half of a 21 m box); it takes that ground's colour.
-    lit = lum > _box(lum[..., None], 10)[..., 0] * 0.8
-    w_lit = _box(lit[..., None].astype(np.float32), 10)
-    lit_col = _box(img * lit[..., None], 10) / np.maximum(w_lit, 1e-3)
-    shade = (lum < 0.33) & ~lit & (w_lit[..., 0] > 0.15)
-    img = np.where(shade[..., None], lit_col, img)
-    # Crowns: green and lumpy over 7 m (aerial.canopy's test).
+    # Crowns: green and lumpy over 7 m (aerial.canopy's test), in the photo
+    # as it is (filling the shade below would take a dense crown's green).
     r, g, b = img[..., 0], img[..., 1], img[..., 2]
     green = ((g > r * 1.08) & (g > b * 1.05)).astype(np.float32)
     rough = np.sqrt(np.maximum(_box((lum ** 2)[..., None], 3)[..., 0] - _box(lum[..., None], 3)[..., 0] ** 2, 0))
     crown = (_box(green[..., None], 3)[..., 0] > 0.65) & (rough > 0.07)
+    # Shade: dark (a building's shadow, a dense crown's underside). It takes
+    # the colour of the sunlit ground nearest round it: within 6 m, else 15,
+    # else 40 (a tall block's shadow is 20 m and more; measured against the
+    # ground round about, as this did first, the middle of one counted as lit).
+    shade = lum < SHADE
+    for r in (6, 15, 40):
+        w = _box((~shade)[..., None].astype(np.float32), r)
+        near = (w[..., 0] > 0.05) & shade
+        img = np.where(near[..., None], _box(img * (~shade)[..., None], r) / np.maximum(w, 1e-3), img)
+        shade &= ~near
     s = int(round(step))
     h, w = img.shape[0] // s * s, img.shape[1] // s * s
     col = img[:h, :w].reshape(h // s, s, w // s, s, 3).mean((1, 3))
