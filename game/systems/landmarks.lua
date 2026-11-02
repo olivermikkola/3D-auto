@@ -7,6 +7,12 @@
 --    kirkko, Carlo Bassi, 1846): a yellow neoclassical hall, a portico of
 --    six white columns under a pediment toward the square, and a green dome
 --    on a drum with a lantern and a gilded cross.
+--  - Turun taidemuseo on Puolalanmäki (Gustaf Nyström, 1904): brick faced
+--    with red Skanssi granite. Its shape from the laser scans (tools/lidar.py):
+--    a 21 x 37 m hall under a pitched sheet-metal roof (eaves ~12 m, ridge
+--    ~17 m), a raised middle on its east side to ~20 m under glass (the
+--    galleries are lit from above), and a lower wing to the west, where the
+--    hill falls away. Its roofs' colours from the aerial photo.
 local U = require "lib.util"
 
 local L = {}
@@ -102,12 +108,69 @@ local function church_mesh()
   return p
 end
 
+-- The museum, in the frame of its walls (local x across the hall, z along
+-- it), from its OpenStreetMap outline.
+L.MUSEUM = {x = -449, z = -285, yaw = -0.965}
+
+local function museum_mesh()
+  local granite, plinth = {0.74, 0.62, 0.57}, {0.55, 0.47, 0.44}
+  local metal, glass, copper = {0.56, 0.59, 0.63}, {0.42, 0.5, 0.58}, {0.32, 0.42, 0.4}
+  local dark = {0.14, 0.15, 0.17}
+  local x0, x1, z0, z1, eave, ridge = -10.4, 10.8, -18.4, 18.8, 12, 17.5
+  local xm, zm = (x0 + x1) / 2, (z0 + z1) / 2
+  local p = {
+    -- The hall, down past the hill's fall to the west.
+    {mesh = "cube", pos = {xm, (eave - 4) / 2, zm}, size = {x1 - x0, eave + 4, z1 - z0}, color = granite},
+    {mesh = "cube", pos = {xm, -1.2, zm}, size = {x1 - x0 + 0.6, 2.4 + 4, z1 - z0 + 0.6}, color = plinth},
+    {mesh = "cube", pos = {xm, eave - 0.3, zm}, size = {x1 - x0 + 0.8, 0.6, z1 - z0 + 0.8}, color = plinth}, -- the eaves' band
+    -- Its roof: two slopes along it, the ridge a little east of the middle.
+    {mesh = "wedge", pos = {(x0 + 0.2) / 2, eave + (ridge - eave) / 2, zm}, yaw = math.pi / 2,
+     size = {z1 - z0 + 0.6, ridge - eave, 0.2 - x0 + 0.4}, color = metal},
+    {mesh = "wedge", pos = {(0.2 + x1) / 2, eave + (ridge - eave) / 2, zm}, yaw = -math.pi / 2,
+     size = {z1 - z0 + 0.6, ridge - eave, x1 - 0.2 + 0.4}, color = metal},
+    -- The raised middle on the east side, under a glass roof.
+    {mesh = "cube", pos = {8.6, (18.6 - 4) / 2, 0}, size = {10.2, 18.6 + 4, 20.4}, color = granite},
+    {mesh = "cube", pos = {8.6, 18.3, 0}, size = {10.8, 0.6, 21}, color = plinth},
+    {mesh = "wedge", pos = {6.1, 19.4, 0}, yaw = math.pi / 2, size = {19.4, 1.6, 4.8}, color = glass},
+    {mesh = "wedge", pos = {11.1, 19.4, 0}, yaw = -math.pi / 2, size = {19.4, 1.6, 4.8}, color = glass},
+    -- The west wing, flat-roofed, its roof gone green.
+    {mesh = "cube", pos = {-14.7, (11.2 - 5) / 2, 0.4}, size = {8.4, 11.2 + 5, 18.2}, color = granite},
+    {mesh = "cube", pos = {-14.7, -1.6, 0.4}, size = {9, 2.4 + 4, 18.8}, color = plinth},
+    {mesh = "cube", pos = {-14.7, 11.4, 0.4}, size = {8.8, 0.4, 18.6}, color = copper},
+    -- Its door: an arch's dark opening up a few steps.
+    {mesh = "cube", pos = {-18.95, 2.6, 0.4}, size = {0.1, 4.2, 3}, color = dark},
+    {mesh = "cube", pos = {-20.2, -0.4, 0.4}, size = {2.4, 1.2, 6}, color = plinth},
+  }
+  -- Windows: tall ones down the hall's sides on the lower floor (the upper
+  -- galleries are lit from the roof), and on the wing.
+  for k = -5, 5 do
+    local z = zm + k * 3.2
+    for _, x in ipairs{x0 - 0.04, x1 + 0.04} do
+      if not (x > 0 and math.abs(z) < 10.5) then
+        p[#p + 1] = {mesh = "cube", pos = {x, 3.6, z}, size = {0.08, 3.6, 1.5}, color = dark}
+      end
+    end
+  end
+  for k = -2, 2 do
+    p[#p + 1] = {mesh = "cube", pos = {13.74, 4, k * 3.6}, size = {0.08, 4.4, 1.6}, color = dark}
+    p[#p + 1] = {mesh = "cube", pos = {13.74, 10.5, k * 3.6}, size = {0.08, 3.4, 1.6}, color = dark}
+    for _, z in ipairs{z0 - 0.04, z1 + 0.04} do
+      p[#p + 1] = {mesh = "cube", pos = {xm + k * 3.6, 3.6, z}, size = {1.5, 3.6, 0.08}, color = dark}
+    end
+    if k ~= 0 then
+      p[#p + 1] = {mesh = "cube", pos = {-18.95, 6.5, 0.4 + k * 3.6}, size = {0.08, 3, 1.4}, color = dark}
+    end
+  end
+  return p
+end
+
 local made = false
 function L.build(map)
   if not map or map.id ~= "turku" then return end
   if not made then
     engine.mesh("ikituuri", ikituuri_mesh())
     engine.mesh("orthodox_church", church_mesh())
+    engine.mesh("taidemuseo", museum_mesh())
     made = true
   end
   local T = L.IKITUURI
@@ -132,6 +195,20 @@ function L.build(map)
                visible = false, body = "static", tag = "building"}
   engine.spawn{mesh = "cube", pos = {C.x - fx * (C.d / 2 - 3), cy + 6, C.z - fz * (C.d / 2 - 3)}, yaw = C.yaw, size = {16, 12, 6},
                visible = false, body = "static", tag = "building"}
+
+  local M = L.MUSEUM
+  local my = U.ground(M.x, M.z)
+  L.museum_id = engine.spawn{mesh = "taidemuseo", pos = {M.x, my, M.z}, yaw = M.yaw, tag = "building"}
+  -- What you drive into: the hall with its raised middle, and the wing.
+  local function solid(u, v, w, h, d)
+    local ux, uz = math.cos(M.yaw), -math.sin(M.yaw) -- local +x
+    local vx, vz = math.sin(M.yaw), math.cos(M.yaw)  -- local +z
+    engine.spawn{mesh = "cube", pos = {M.x + ux * u + vx * v, my + h / 2 - 4, M.z + uz * u + vz * v}, yaw = M.yaw,
+                 size = {w, h + 4, d}, visible = false, body = "static", tag = "building"}
+  end
+  solid(0.2, 0.2, 21.2, 17, 37.2)
+  solid(8.6, 0, 10.2, 19, 20.4)
+  solid(-14.7, 0.4, 8.4, 11.2, 18.2)
 end
 
 return L

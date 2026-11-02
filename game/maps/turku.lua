@@ -10,20 +10,24 @@ local osm = require "maps.turku_osm"
 local function in_ikituuri(x, z) return x > 850 and x < 905 and z > -1026 and z < -984 end
 -- The Orthodox church on Kauppatori (systems/landmarks.lua)
 local function in_church(x, z) return x > -236 and x < -204 and z > -103 and z < -72 end
+-- Turun taidemuseo on Puolalanmäki (systems/landmarks.lua)
+local function in_museum(x, z) return x > -472 and x < -426 and z > -310 and z < -260 end
 local filtered_footprints = {}
 for _, f in ipairs(osm.footprints or {}) do
   local x, z = f[1], f[2]
   local in_tuomio = (x > 418 and x < 513 and z > -133 and z < -76) -- the cathedral (systems/suurtori.lua)
   local in_suurtori_plaza = (x > 245 and x < 325 and z > 70 and z < 125)
   local in_linna = (x > -2340 and x < -2185 and z > 1745 and z < 1825) -- Turun linna (systems/harbor.lua)
-  if not in_tuomio and not in_suurtori_plaza and not in_linna and not in_ikituuri(x, z) and not in_church(x, z) then
+  if not in_tuomio and not in_suurtori_plaza and not in_linna and not in_ikituuri(x, z) and not in_church(x, z)
+     and not in_museum(x, z) then
     filtered_footprints[#filtered_footprints + 1] = f
   end
 end
 -- (and the outlines of the ones made by hand)
 local filtered_outlines = {}
 for _, o in ipairs(osm.outlines or {}) do
-  if not in_ikituuri(o[4][1], o[4][2]) and not in_church(o[4][1], o[4][2]) then filtered_outlines[#filtered_outlines + 1] = o end
+  local x, z = o[4][1], o[4][2]
+  if not in_ikituuri(x, z) and not in_church(x, z) and not in_museum(x, z) then filtered_outlines[#filtered_outlines + 1] = o end
 end
 
 return {
@@ -137,8 +141,6 @@ return {
   looks = {
     -- Mikaelinkirkko (St. Michael's Church, Portsa): red brick Gothic revival
     {-1185, 218, 50, {color = {0.70, 0.25, 0.18}, floors = 7}},
-    -- Turun taidemuseo (Puolalanmäki): granite palace
-    {-640, -150, 45, {color = {0.75, 0.73, 0.70}, floors = 4}},
     -- Vicklund & Hamburger Börs (Kauppatori commercial core)
     {-160, 70, 45, {style = "glass", color = {0.88, 0.90, 0.92}, floors = 5}},
     {-60, 20, 45, {style = "balconies", color = {0.95, 0.92, 0.88}, floors = 6}},

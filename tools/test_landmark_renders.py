@@ -56,6 +56,8 @@ SHOTS = {
     # the ground round it used to be a grey-green near enough to count too),
     # its yellow walls in shade.
     "ortodoksinen_kirkko": ((-190, 30, -40), (-220, 14, -87), [((72, 107, 92), 20, 0.02), ((72, 66, 51), 12, 0.09)]),
+    # Turun taidemuseo on Puolalanmäki (systems/landmarks.lua): its red granite in the sun.
+    "taidemuseo": ((-500, 58, -240), (-449, 44, -285), [((146, 114, 98), 14, 0.08)]),
     # Raisio's centre: the orange-red panels of the flats on Raisiontie.
     "raisio_center": ((870, 45, -1680), (850, 5, -1760), [((116, 52, 28), 14, 0.018)], "raisio"),
 }
