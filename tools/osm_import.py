@@ -99,7 +99,8 @@ POIS_QUERY = """[out:json][timeout:120][bbox:{s},{w},{n},{e}];
  nwr["historic"]["name"];nwr["leisure"="pitch"];);
 out center tags;"""
 # The tags a POI keeps: what it is, and what missions ask about it.
-POI_TAGS = ("name", "shop", "amenity", "leisure", "tourism", "historic", "brand", "sport", "cuisine", "religion")
+# (wikidata: the place is known beyond its street; it gets its name up, systems/shopsigns.)
+POI_TAGS = ("name", "shop", "amenity", "leisure", "tourism", "historic", "brand", "sport", "cuisine", "religion", "wikidata")
 
 # Drivable classes: the game's kind, and width (two-way, one-way).
 ROADS = {

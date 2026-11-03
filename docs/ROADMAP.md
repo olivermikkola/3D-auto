@@ -153,6 +153,17 @@ street), with the line and destination on its boards (`lib/buslines.lua`). Re-ru
 after importing Turku again: `tools/test_buslines.py` fails if a line names a junction the map
 no longer has. Nothing is fetched while playing.
 
+### Places by name (November 2026)
+
+Shops' signs say what they are (KAHVILA, PARTURI); a place the town knows by its own name has
+that up instead: about 390 in Turku, its bars, pubs, restaurants and cafés that aren't a
+chain's, its schools, colleges, theatres, cinemas, museums and hotels, and the places known
+beyond their street (a Wikidata entry in OSM: Forum Marinum, Proffan kellari, Uusi Apteekki).
+A long name goes on two lines, and slides along its own building for a wall that faces the
+street and has room. `game/test/shopsigns_probe.lua` keeps a list of the places Oliver asked
+for by name (Luostarivuoren lyseon lukio, EduCity...); add to it. Balconies are on homes only
+now (not schools or police stations), and signs keep clear of them.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
