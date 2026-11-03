@@ -120,12 +120,34 @@ pub struct Light {
     pub layer: u8,
 }
 
+impl Env {
+    /// Underground (`Engine::view_layer` not 0): no sky or sun, a dim
+    /// ambient, the lamps and lit strips on, and a short view.
+    pub fn indoors(&self) -> Env {
+        Env {
+            sky: [0.015, 0.015, 0.018],
+            sky_top: [0.015, 0.015, 0.018],
+            sun_color: [0.0; 3],
+            ambient: [0.2, 0.2, 0.21],
+            ground: [0.1, 0.1, 0.1],
+            glow: 1.0,
+            shadows: false,
+            wet: 0.0,
+            snow: 0.0,
+            fog_start: 40.0,
+            fog_end: 160.0,
+            ..self.clone()
+        }
+    }
+}
+
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
     pub fov: f32,
 }
 
+#[derive(Clone)]
 pub struct Env {
     /// Horizon color; also the fog color.
     pub sky: [f32; 3],

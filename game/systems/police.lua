@@ -362,6 +362,7 @@ end
 local function sees_player(id)
   local target = G.vehicle or G.player
   if not target or G.hiding then return false end -- inside a hideout (systems/hideouts)
+  if engine.layer(id) ~= engine.layer(target) then return false end -- one of you underground (systems/louhi)
   local x, y, z = engine.pos(id)
   local px, py, pz = engine.pos(target)
   local dx, dy, dz = px - x, py + 0.4 - (y + 1), pz - z
@@ -424,6 +425,16 @@ local function drive_cop(c, dt)
   local direct = (P.direct_pursuit(c.sees, dist) or dash) and now >= (c.roads_until or 0)
   local lx, lz = wanted.center[1], wanted.center[2]
   local last = U.dist2d(x, z, lx, lz)
+  -- Underground after them, or down to them (systems/louhi): its own way,
+  -- not the roads.
+  local under, how, ux, uy, uz = package.loaded["systems.louhi"], nil, nil, nil, nil
+  if under and under.built then
+    how, ux, uy, uz = under.chase(id, c.sees, px, pz)
+    if how == "steer" then
+      tx, tz, want = ux, uy, uz
+      goto steer
+    end
+  end
   if direct and not c.sees then
     -- Off the road after them, to where they were last seen (unhurried:
     -- across a park, a yard, round a block's corner).
@@ -456,6 +467,7 @@ local function drive_cop(c, dt)
     local at = city.nearest(x, z, y)
     local gx, gy, gz = wanted.seen and px or wanted.center[1], wanted.seen and py or wanted.center[3],
                        wanted.seen and pz or wanted.center[2]
+    if how == "goal" then gx, gy, gz = ux, uy, uz end -- (to Louhi's portal, after them underground)
     local goal = city.nearest(gx, gz, gy)
     -- Off the road: head for the stretch of road nearest them, not just the
     -- nearest junction (which may be a block away), and on it, for the spot
@@ -550,6 +562,7 @@ local function drive_cop(c, dt)
     if hit and tag ~= "player" and d < 8 then want = math.min(want, 8) end
   end
 
+  ::steer::
   local diff = U.angle_diff(yaw, math.atan(tx - x, tz - z))
   local throttle = speed < want and 1 or (speed > want + 3 and -1 or 0)
   if math.abs(diff) > 1.1 and speed > 12 then throttle = -1 end
@@ -604,7 +617,8 @@ local function deploy(c)
   local rx, _, rz = engine.right(c.id)
   for _, side in ipairs{-1, 1} do
     local id = engine.spawn{mesh = "officer", pos = {x + rx * side * 2.2, y + 0.4, z + rz * side * 2.2}, size = {0.7, 1.8, 0.7},
-                            body = "dynamic", mass = 85, friction = 0, step = 0.45, lock_rotation = true, tag = "officer"}
+                            body = "dynamic", mass = 85, friction = 0, step = 0.45, lock_rotation = true, tag = "officer",
+                            layer = engine.layer(c.id)}
     H.set(id, 60)
     P.officers[id] = {car = c.id, cool = 0.6 + math.random()}
   end
@@ -639,6 +653,15 @@ local function officer_shoot(id, o)
   end
 end
 
+-- How far a cop is from the player: on the map, or as good as far off
+-- with one of them underground (systems/louhi) and the other not: a cop
+-- on Kauppatori isn't next to you in Louhi under it.
+local function apart(id, x, z, px, pz)
+  local you = G.vehicle or G.player
+  if you and engine.layer(id) ~= engine.layer(you) then return math.huge end
+  return U.dist2d(x, z, px, pz)
+end
+
 local function run_officers(dt, px, pz)
   local seen, close = false, false
   for id, o in pairs(P.officers) do
@@ -646,7 +669,7 @@ local function run_officers(dt, px, pz)
       P.officers[id] = nil
     else
       local x, _, z = engine.pos(id)
-      local d = U.dist2d(x, z, px, pz)
+      local d = apart(id, x, z, px, pz)
       local sees = sees_player(id)
       seen = seen or sees
       local _, vy = engine.vel(id)
@@ -817,7 +840,7 @@ local function blocks()
 end
 
 local function roadblocks(px, py, pz)
-  if wanted.stars() < BLOCK_STARS or not G.vehicle or engine.time() < next_block or blocks() > 0 then return end
+  if wanted.stars() < BLOCK_STARS or not G.vehicle or engine.layer(G.vehicle) ~= 0 or engine.time() < next_block or blocks() > 0 then return end
   local v = vehicle.speed(G.vehicle)
   if v < 8 then return end
   next_block = engine.time() + BLOCK_EVERY
@@ -882,8 +905,12 @@ engine.on("tick", function(dt)
     local wrecked = not engine.exists(id) or vehicle.upside_down(id)
     c.wrecked_for = wrecked and (c.wrecked_for or 0) + dt or 0
     c.launch = c.launch and c.launch > 0 and c.launch - dt or nil
-    -- (Not while its crew is out of it: see below.)
-    if not x or (c.wrecked_for > 3 and not c.deployed) or (U.dist2d(x, z, px, pz) > 170 and not c.launch) then
+    -- (Not while its crew is out of it: see below.) After you underground
+    -- from up top, how far it is from the way in (systems/louhi).
+    local tx, tz = px, pz
+    local under = package.loaded["systems.louhi"]
+    if x and under and under.down() and engine.layer(id) == 0 then tx, tz = under.portal() end
+    if not x or (c.wrecked_for > 3 and not c.deployed) or (U.dist2d(x, z, tx, tz) > 170 and not c.launch) then
       remove(id)
       if x then engine.despawn(id) end
       -- Left behind (or wrecked): a breather before the next one turns up,
@@ -934,7 +961,7 @@ engine.on("tick", function(dt)
     c.sees = sees_player(id)
     seen = seen or c.sees
     local x, _, z = engine.pos(id)
-    local d = U.dist2d(x, z, px, pz)
+    local d = apart(id, x, z, px, pz)
     if c.deployed then
       vehicle.drive(id, dt, {throttle = 0, handbrake = true})
       local crew = false

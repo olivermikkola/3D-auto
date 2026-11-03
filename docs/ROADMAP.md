@@ -204,7 +204,21 @@ only see one layer, and only the camera's layer (`engine.view_layer`) is drawn. 
 `spawn{layer = 1}`, `light{layer = 1}`, `engine.set_layer(id, l)`, `engine.layer(id)`,
 `engine.view_layer([l])`, and `engine.raycast(..., ignore, layer)` (by default the ignored
 entity's layer, or 0; -1 for every layer). `LAYERS_TEST=1` (`tools/test_layers.py`).
-Nothing uses it yet; Louhi drivable is next.
+Louhi uses it (below).
+
+### Louhi, drivable (November 2026)
+
+Piece 2 of docs/UNDERGROUND.md: drive through the portal on Ajurinkatu and you're in Louhi
+(`systems/louhi.lua`, layer 1): the 363 m tunnel where OpenStreetMap has it, down at 2.5 % to
+the hall under Kauppatori's west end (195 x 35 m, level -2, its floor at y 2), with rows of
+bays, a third of them with parked cars, pillars, lit strips and lamps. Underground the sky
+goes dark (`Env::indoors`). Back out through the portal, you're up in the street again.
+Wanted, it's GTA's tunnels: cops up top make for the portal and follow you down, keep to the
+tunnel and then the hall; the helicopter can't see you; a cop on Kauppatori over your head
+isn't "next to you". `LOUHI_TEST=1` (`tools/test_louhi.py`): in, round the hall, out of the
+car and back, out; then at two stars a cop follows you down, and at four the helicopter comes
+over and never sees you. Polish left: 2.4 m like the real one (4 m now, for the camera), the
+second level, Toriparkki, the foot exits (pieces 3-5).
 
 ## Next (agreed with Oliver, 27 October 2026)
 

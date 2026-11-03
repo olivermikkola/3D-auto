@@ -955,7 +955,13 @@ impl Renderer {
     pub fn draw(&mut self, eng: &Engine) {
         self.sync(eng);
         let (w, h) = eng.screen;
-        let env = &eng.env;
+        let indoors;
+        let env = if eng.view_layer != 0 {
+            indoors = eng.env.indoors();
+            &indoors
+        } else {
+            &eng.env
+        };
         let cam = &eng.camera;
         let aspect = w / h.max(1.0);
         // The camera keeps 0.4 m off walls, so a 0.25 m near plane clips

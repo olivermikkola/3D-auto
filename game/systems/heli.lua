@@ -53,6 +53,10 @@ function Hc.sees()
   if not heli or leaving then return false end
   local px, py, pz = U.player_pos()
   if not px then return false end
+  -- Underground (systems/louhi): out of sight. (The ray up from under the
+  -- hill would meet nothing: the ground has no underside.)
+  local you = G.vehicle or G.player
+  if you and engine.layer(you) ~= 0 then return false end
   local x, _, z = engine.pos(heli)
   return U.dist2d(x, z, px, pz) < Hc.SIGHT and open_above(px, py, pz)
 end
