@@ -361,7 +361,7 @@ end
 
 local function sees_player(id)
   local target = G.vehicle or G.player
-  if not target then return false end
+  if not target or G.hiding then return false end -- inside a hideout (systems/hideouts)
   local x, y, z = engine.pos(id)
   local px, py, pz = engine.pos(target)
   local dx, dy, dz = px - x, py + 0.4 - (y + 1), pz - z
@@ -974,7 +974,7 @@ engine.on("tick", function(dt)
 
   -- The helicopter keeps you in sight wherever the sky is open over you.
   local heli = package.loaded["systems.heli"]
-  if heli and heli.sees() then seen = true end
+  if heli and heli.sees() and not G.hiding then seen = true end
 
   -- Evasion: out of sight and outside the search circle for a while, longer
   -- the more stars (see wanted.escape_time).
@@ -987,7 +987,7 @@ engine.on("tick", function(dt)
 
   -- Busted: stopped (or on foot) right next to a cop.
   local slow = G.player ~= nil or math.abs(vehicle.speed(G.vehicle)) < 2
-  busted_for = (close and slow) and busted_for + dt or 0
+  busted_for = (close and slow and not G.hiding) and busted_for + dt or 0
   if busted_for > 1.5 then busted() end
 end)
 

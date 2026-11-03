@@ -173,7 +173,9 @@ from the ground at one end to the ground at the other, with handrails where mapp
 unseen ramp under them so running up is smooth. 389 of Turku's 948 are built; the rest are on
 ground the 10 m terrain sees as level (a door's few steps). `STAIRS_TEST=1`
 (`tools/test_stairs.py`) runs up and down Puolalanportaat and the tallest flights. Still to
-do for the route: Louhi's entrance, somewhere in Logomo to hide.
+do for the route: somewhere in Logomo to hide. Louhi's entrance is there now
+(`systems/landmarks.lua`): a concrete portal in a granite face at the foot of the stairs,
+LOUHI over it, the 2.2 m height bar and a blue P; not open (the hill is solid ground).
 
 ### Logomonsilta (November 2026)
 
@@ -184,6 +186,14 @@ black-roofed stairs down from both ends and to the three platforms
 footbridge and the two tower boxes). You can run over it: `LOGOMONSILTA_TEST=1`
 (`tools/test_logomonsilta.py`) crosses both ways and goes down to a platform.
 
+### Hiding in Logomo (November 2026)
+
+The end of Oliver's chase on foot: wanted, walk in through Logomo's door (just past the foot of
+Logomonsilta's stairs, `systems/hideouts.lua`) and you're inside, where the cops and the
+helicopter can't see you and they can't bust you. Gone in unseen, they lose you as if you'd
+left their search area (`wanted.escape_time`, 3-25 s); if a cop saw you go in (in the last
+1.5 s), they wait you out (`wanted.give_up_time`, 30-70 s). Move to come back out by the door.
+`HIDEOUT_TEST=1` (`tools/test_hideouts.py`). Other hideouts: add a {name, from, to} to SPOTS.
 ### Courtyards (November 2026)
 
 A building mapped with courtyards (a multipolygon's inner rings over 40 m²) has them open:
