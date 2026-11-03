@@ -204,6 +204,17 @@ solid blocks. Not yet: the passages through to them (`tunnel=building_passage`, 
 the yards are seen but can't be walked into; Aitiopaikka's lower block inside its yard isn't
 in OpenStreetMap.
 
+### Layers, for underground places (November 2026)
+
+The first piece of docs/UNDERGROUND.md (Louhi, Hansa's lower floor): every entity and light
+has a `layer`, 0 the street. Bodies only meet bodies in their own layer, the terrain is only
+in layer 0 (so a cave can sit under the hill without the ground pushing its cars up), rays
+only see one layer, and only the camera's layer (`engine.view_layer`) is drawn. From Lua:
+`spawn{layer = 1}`, `light{layer = 1}`, `engine.set_layer(id, l)`, `engine.layer(id)`,
+`engine.view_layer([l])`, and `engine.raycast(..., ignore, layer)` (by default the ignored
+entity's layer, or 0; -1 for every layer). `LAYERS_TEST=1` (`tools/test_layers.py`).
+Nothing uses it yet; Louhi drivable is next.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

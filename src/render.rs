@@ -973,7 +973,7 @@ impl Renderer {
         let (light_vp, focus) = Self::shadow_matrix(eng);
         let shadows = env.shadows && env.sun.y > 0.05;
         for e in eng.ents.iter().flatten() {
-            let (Some(mi), true) = (e.mesh, e.visible) else { continue };
+            let (Some(mi), true) = (e.mesh, e.visible && e.layer == eng.view_layer) else { continue };
             let Some(Some(g)) = self.meshes.get(mi) else { continue };
             let (center, r) = world_bounds(g.center, g.radius, e.pos, e.rot, e.scale);
             let to = center - cam.eye;
@@ -1089,7 +1089,7 @@ impl Renderer {
                 .lights
                 .iter()
                 .flatten()
-                .filter(|l| l.intensity > 0.0)
+                .filter(|l| l.intensity > 0.0 && eng.light_layer(l) == Some(eng.view_layer))
                 .filter_map(|l| eng.light_world(l).map(|(p, d)| ((p - cam.eye).len() - l.radius, p, d, l)))
                 .filter(|(score, ..)| *score < env.fog_end)
                 .collect();

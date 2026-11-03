@@ -585,7 +585,7 @@ pub fn step(
         let bi = moving[&i];
         broad.near(bi, &movers, &mut near);
         for &j in &near {
-            if i == j {
+            if i == j || ents[i].as_ref().unwrap().layer != ents[j].as_ref().map_or(0, |e| e.layer) {
                 continue;
             }
             let ((ca, ha), (cb, hb)) = (bi, bounds(j));
@@ -667,6 +667,7 @@ pub fn step(
 
     // 2b. Terrain: each corner of a moving box that's below the surface
     // pushes off it along the surface's normal there, one contact each.
+    // (Only in layer 0: underground, a body is under it by right.)
     if let Some(t) = terrain
         && ents.get(t.id).is_some_and(|e| e.is_some())
     {
@@ -674,7 +675,7 @@ pub fn step(
         for &i in &dynamic {
             let (ea, ba) = body(ents, i);
             let (eb, bb) = body(ents, t.id);
-            if ba.sensor || ea.pos.y - ba.half.len() > t.top {
+            if ba.sensor || ea.layer != 0 || ea.pos.y - ba.half.len() > t.top {
                 continue;
             }
             let mut closing: f32 = 0.0;
@@ -912,11 +913,12 @@ pub struct RayHit {
     pub normal: Vec3,
 }
 
-/// Slab test in each box's local frame. `dir` must be normalized.
-pub fn raycast(ents: &[Option<Entity>], o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>) -> Option<RayHit> {
+/// Slab test in each box's local frame. `dir` must be normalized. Only
+/// bodies in `layer`, given one.
+pub fn raycast(ents: &[Option<Entity>], o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>, layer: Option<u8>) -> Option<RayHit> {
     let mut best = None;
     for i in 0..ents.len() {
-        ray_test(ents, i, o, dir, max, ignore, &mut best);
+        ray_test(ents, i, o, dir, max, ignore, layer, &mut best);
     }
     best
 }
@@ -926,6 +928,7 @@ pub fn raycast(ents: &[Option<Entity>], o: Vec3, dir: Vec3, max: f32, ignore: Op
 /// the bodies that were moving at the last step, slots added since, and
 /// `touched` (statics moved since). Before the first step, or with too much
 /// changed, it tests everything.
+#[allow(clippy::too_many_arguments)]
 pub fn raycast_near(
     ents: &[Option<Entity>],
     broad: &Broad,
@@ -934,20 +937,21 @@ pub fn raycast_near(
     dir: Vec3,
     max: f32,
     ignore: Option<u32>,
+    layer: Option<u8>,
 ) -> Option<RayHit> {
     let since = broad.len.min(ents.len());
     if broad.len == 0 || touched.len() > 256 || ents.len() - since > 256 {
-        return raycast(ents, o, dir, max, ignore);
+        return raycast(ents, o, dir, max, ignore, layer);
     }
     let mut best = None;
     for &i in broad.big.iter().chain(&broad.movers) {
-        ray_test(ents, i, o, dir, max, ignore, &mut best);
+        ray_test(ents, i, o, dir, max, ignore, layer, &mut best);
     }
     for i in since..ents.len() {
-        ray_test(ents, i, o, dir, max, ignore, &mut best);
+        ray_test(ents, i, o, dir, max, ignore, layer, &mut best);
     }
     for &i in touched {
-        ray_test(ents, i as usize, o, dir, max, ignore, &mut best);
+        ray_test(ents, i as usize, o, dir, max, ignore, layer, &mut best);
     }
     // Walk the cells under the ray in x, z (a 2D DDA).
     let c = Broad::CELL;
@@ -961,7 +965,7 @@ pub fn raycast_near(
     loop {
         if let Some(v) = broad.cells.get(&(cx, cz)) {
             for &i in v {
-                ray_test(ents, i, o, dir, max, ignore, &mut best);
+                ray_test(ents, i, o, dir, max, ignore, layer, &mut best);
             }
         }
         // A static hit is in a cell it covers: nothing in a cell entered
@@ -982,10 +986,20 @@ pub fn raycast_near(
     best
 }
 
-fn ray_test(ents: &[Option<Entity>], i: usize, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>, best: &mut Option<RayHit>) {
+#[allow(clippy::too_many_arguments)]
+fn ray_test(
+    ents: &[Option<Entity>],
+    i: usize,
+    o: Vec3,
+    dir: Vec3,
+    max: f32,
+    ignore: Option<u32>,
+    layer: Option<u8>,
+    best: &mut Option<RayHit>,
+) {
     let Some(Some(e)) = ents.get(i) else { return };
     let Some(b) = &e.body else { return };
-    if b.sensor || Some(i as u32) == ignore {
+    if b.sensor || Some(i as u32) == ignore || layer.is_some_and(|l| l != e.layer) {
         return;
     }
     // Bounding-sphere reject before the exact test; rejects nearly everything.
@@ -1234,8 +1248,8 @@ mod tests {
             let a = k as f32 * 0.37;
             let o = v3(rnd() * 200. - 100., 0.5 + rnd() * 5., rnd() * 200. - 100.);
             let dir = v3(a.cos(), (rnd() - 0.6) * 0.3, a.sin()).norm();
-            let all = raycast(&w, o, dir, 250., None);
-            let near = raycast_near(&w, &broad, &touched, o, dir, 250., None);
+            let all = raycast(&w, o, dir, 250., None, None);
+            let near = raycast_near(&w, &broad, &touched, o, dir, 250., None, None);
             assert_eq!(all.as_ref().map(|h| h.id), near.as_ref().map(|h| h.id), "ray {k}");
             checked += all.is_some() as usize;
         }
@@ -1441,16 +1455,43 @@ mod tests {
     }
 
     #[test]
+    fn layers_keep_to_themselves() {
+        // Underground (layer 1), a box 3 m under the hill rests on its own
+        // floor there; the terrain doesn't push it up, nor does a box in
+        // layer 0 meet it.
+        let mut w = vec![holder(), ent(v3(0., 2., 0.), Kind::Dynamic, v3(1., 0.5, 1.)), ent(v3(0., 0., 0.), Kind::Static, v3(5., 0.5, 5.))];
+        w.push(ent(v3(0., 2., 0.), Kind::Dynamic, v3(1., 0.5, 1.))); // layer 0, in the same place
+        for i in [1, 2] {
+            w[i].as_mut().unwrap().layer = 1;
+        }
+        let t = ramp_terrain(0.0, 0); // level at 5 m
+        let (mut warm, mut broad) = (WarmCache::new(), Broad::default());
+        for _ in 0..120 {
+            step(&mut w, 1.0 / 60.0, -20.0, &mut warm, &mut broad, Some(&t));
+        }
+        let (under, over) = (get(&w, 1), get(&w, 3));
+        assert!((under.pos.y - 1.0).abs() < 0.1, "layer 1 box at y {}, not on its floor", under.pos.y);
+        assert!(under.pos.x.abs() < 0.1 && under.pos.z.abs() < 0.1, "pushed sideways to {:?}", under.pos);
+        assert!((over.pos.y - 5.5).abs() < 0.1, "layer 0 box at y {}, not on the terrain", over.pos.y);
+        // Rays see one layer, or all with None.
+        let down = v3(0., -1., 0.);
+        assert_eq!(raycast(&w, v3(0., 3., 0.), down, 10., None, Some(1)).map(|h| h.id), Some(1));
+        assert_eq!(raycast(&w, v3(0., 0.8, 0.), down, 10., Some(1), Some(1)).map(|h| h.id), Some(2));
+        assert!(raycast(&w, v3(0., 0.8, 0.), down, 10., None, Some(0)).is_none());
+        assert_eq!(raycast(&w, v3(0., 0.8, 0.), down, 10., Some(1), None).map(|h| h.id), Some(2));
+    }
+
+    #[test]
     fn ray_hits_nearest_and_respects_rotation() {
         let mut w = vec![ent(v3(10., 0., 0.), Kind::Static, Vec3::ONE), ent(v3(5., 0., 0.), Kind::Static, Vec3::ONE)];
-        let h = raycast(&w, Vec3::ZERO, v3(1., 0., 0.), 100.0, None).unwrap();
+        let h = raycast(&w, Vec3::ZERO, v3(1., 0., 0.), 100.0, None, None).unwrap();
         assert_eq!(h.id, 1);
         assert!((h.dist - 4.0).abs() < 1e-5);
         assert!((h.normal - v3(-1., 0., 0.)).len() < 1e-5);
-        assert!(raycast(&w, Vec3::ZERO, v3(0., 1., 0.), 100.0, None).is_none());
+        assert!(raycast(&w, Vec3::ZERO, v3(0., 1., 0.), 100.0, None, None).is_none());
         // Rotated 45 degrees, the near corner is sqrt(2) from the center.
         w[1].as_mut().unwrap().rot = Quat::axis_angle(Vec3::UP, std::f32::consts::FRAC_PI_4);
-        let h = raycast(&w, Vec3::ZERO, v3(1., 0., 0.), 100.0, None).unwrap();
+        let h = raycast(&w, Vec3::ZERO, v3(1., 0., 0.), 100.0, None, None).unwrap();
         assert!((h.dist - (5.0 - 2f32.sqrt())).abs() < 1e-4, "{}", h.dist);
     }
 }

@@ -347,6 +347,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         ent.tag = t.get::<Option<String>>("tag")?.unwrap_or_default();
         ent.visible = t.get::<Option<bool>>("visible")?.unwrap_or(true);
         ent.glow = t.get::<Option<f32>>("glow")?.unwrap_or(0.0);
+        ent.layer = t.get::<Option<u8>>("layer")?.unwrap_or(0);
         if let Some(kind) = t.get::<Option<String>>("body")? {
             let k = match kind.as_str() {
                 "static" => Kind::Static,
@@ -451,6 +452,21 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(())
     });
+    // Layers (engine::Entity::layer): which world an entity is in, 0 the
+    // street; and the one drawn, the camera's.
+    f!("set_layer", |e, _lua, (id, l): (u32, u8)| {
+        if let Some(en) = e.get_mut(id) {
+            en.layer = l;
+        }
+        Ok(())
+    });
+    f!("layer", |e, _lua, id: u32| Ok(e.get(id).map(|x| x.layer)));
+    f!("view_layer", |e, _lua, l: Option<u8>| {
+        if let Some(l) = l {
+            e.view_layer = l;
+        }
+        Ok(e.view_layer)
+    });
     f!("set_visible", |e, _lua, (id, v): (u32, bool)| {
         if let Some(en) = e.get_mut(id) {
             en.visible = v;
@@ -481,13 +497,22 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
     f!("nearest", |e, lua, (x, y, z, r, tag, ignore): (f32, f32, f32, f32, Option<String>, Option<u32>)| {
         multi(lua, e.nearest(v3(x, y, z), r, tag.as_deref(), ignore))
     });
-    f!("raycast", |e, lua, (ox, oy, oz, dx, dy, dz, max, ignore): (f32, f32, f32, f32, f32, f32, Option<f32>, Option<u32>)| {
-        let dir = v3(dx, dy, dz).norm();
-        match e.raycast(v3(ox, oy, oz), dir, max.unwrap_or(1000.0), ignore) {
-            Some(h) => (h.id, h.dist, h.point.x, h.point.y, h.point.z, h.normal.x, h.normal.y, h.normal.z).into_lua_multi(lua),
-            None => Ok(MultiValue::new()),
+    // In `layer` (-1: every layer); by default the ignored entity's, or 0.
+    f!(
+        "raycast",
+        |e, lua, (ox, oy, oz, dx, dy, dz, max, ignore, layer): (f32, f32, f32, f32, f32, f32, Option<f32>, Option<u32>, Option<i32>)| {
+            let dir = v3(dx, dy, dz).norm();
+            let layer = match layer {
+                Some(l) if l < 0 => None,
+                Some(l) => Some(l as u8),
+                None => Some(ignore.and_then(|i| e.get(i)).map_or(0, |x| x.layer)),
+            };
+            match e.raycast(v3(ox, oy, oz), dir, max.unwrap_or(1000.0), ignore, layer) {
+                Some(h) => (h.id, h.dist, h.point.x, h.point.y, h.point.z, h.normal.x, h.normal.y, h.normal.z).into_lua_multi(lua),
+                None => Ok(MultiValue::new()),
+            }
         }
-    });
+    );
 
     // The ground as a heightfield: {x0, z0, step, w, d, heights = {w * d
     // numbers, row by row toward +z}, colors = {r, g, b per height}?,
@@ -824,6 +849,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         if let Some(f) = t.get::<Option<u32>>("follow")? {
             l.follow = Some(f);
         }
+        l.layer = t.get::<Option<u8>>("layer")?.unwrap_or(l.layer);
         Ok(())
     }
     f!("light", |e, _lua, t: Table| {
@@ -835,6 +861,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             radius: 12.0,
             cone: -1.0,
             follow: None,
+            layer: 0,
         };
         apply_light(&mut l, &t)?;
         e.lights.push(Some(l));
