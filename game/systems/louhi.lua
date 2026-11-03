@@ -115,6 +115,7 @@ local function build_tunnel()
     local p = {mesh = "cube", pos = {ux, cy, uz}, yaw = T.yaw, pitch = -pitch, size = {w, h, len}, color = color, emissive = emissive}
     parts[#parts + 1] = p
     if solid then solids[#solids + 1] = p end
+    return p
   end
   local slope_end = T.u_end - FLAT_IN
   -- The floor in three: outside the mouth (where you come down), the
@@ -122,7 +123,7 @@ local function build_tunnel()
   local runs = {{-14, 0}, {0, slope_end}, {slope_end, T.u_end + 1}}
   for _, r in ipairs(runs) do
     local y0, y1 = M.floor_at(r[1]), M.floor_at(r[2])
-    slab(r[1], r[2], y0, y1, 0, M.W + 1, 1, ASPHALT, true)
+    slab(r[1], r[2], y0, y1, 0, M.W + 1, 1, ASPHALT, true).floor = true
     -- walls, the roof, the lit strip down its middle, the middle line
     for _, side in ipairs{-1, 1} do
       slab(r[1], r[2], y0 + M.H, y1 + M.H, side * (M.W / 2 + 0.25), 0.5, M.H, side < 0 and CONC or CONC2, true)
@@ -153,7 +154,7 @@ local function build_hall()
     return p
   end
   local L2, W2 = H.len / 2, H.wid / 2
-  box(0, 0, y - 0.5, H.len + 1, H.wid + 1, 1, ASPHALT, true)                -- floor
+  box(0, 0, y - 0.5, H.len + 1, H.wid + 1, 1, ASPHALT, true).floor = true   -- floor
   box(0, 0, y + M.H + 0.25, H.len + 1, H.wid + 1, 0.5, CONC2, true)          -- ceiling
   -- The far wall and the ends, with the doors on foot in them (M.GAPS):
   -- 2.6 m high, a lintel over.
@@ -525,11 +526,13 @@ function M.street_door(d, sign, p)
 end
 
 -- Parts in one mesh at `o`, and their solids as invisible statics, all in layer 1.
+-- The floors are "ground", the rest "wall": driving onto a floor (in at the
+-- portal the car meets it all at once) isn't a crash.
 local function place(name, parts, solids, o)
   local baked = {}
   for k, p in ipairs(parts) do
     local q = {}
-    for key, val in pairs(p) do q[key] = val end
+    for key, val in pairs(p) do if key ~= "floor" then q[key] = val end end
     q.pos = {p.pos[1] - o[1], p.pos[2] - o[2], p.pos[3] - o[3]}
     baked[k] = q
   end
@@ -537,7 +540,7 @@ local function place(name, parts, solids, o)
   engine.spawn{mesh = name, pos = o, layer = M.LAYER, tag = "building"}
   for _, p in ipairs(solids) do
     engine.spawn{mesh = "cube", pos = p.pos, yaw = p.yaw, pitch = p.pitch, size = p.size, visible = false, body = "static",
-                 tag = "wall", layer = M.LAYER}
+                 tag = p.floor and "ground" or "wall", layer = M.LAYER}
   end
 end
 
