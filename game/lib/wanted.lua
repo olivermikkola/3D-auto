@@ -66,6 +66,10 @@ function W.unseen(dt, px, pz)
   W.unseen_for = W.unseen_for + dt
   -- Hiding where no cop saw you go in (systems/hideouts) is as good as away.
   local outside = W.hiding or U.dist2d(px, pz, W.center[1], W.center[2]) > W.radius()
+  -- Underground (systems/louhi) they know you're down there: no getting
+  -- outside the search, only their giving up (or out another way).
+  local under = package.loaded["systems.louhi"]
+  if under and under.built and under.down() and not W.hiding then outside = false end
   if (outside and W.unseen_for > W.escape_time()) or W.unseen_for > W.give_up_time() then
     W.clear()
     return true
