@@ -327,13 +327,14 @@ class Grid:
 
 # ---- reading ---------------------------------------------------------------------------
 
-def rings(e):
-    """Closed outlines of a way or a multipolygon's outer members, as lists of
-    {lat, lon}. Open member ways are joined end to end."""
+def rings(e, role="outer"):
+    """Closed outlines of a way or a multipolygon's outer members (or `role`'s:
+    "inner", its holes), as lists of {lat, lon}. Open member ways are joined
+    end to end."""
     if e["type"] == "way":
         g = e.get("geometry") or []
-        return [g] if len(g) >= 4 and g[0] == g[-1] else []
-    parts = [m["geometry"] for m in e.get("members", []) if m.get("role") == "outer" and m.get("geometry")]
+        return [g] if role == "outer" and len(g) >= 4 and g[0] == g[-1] else []
+    parts = [m["geometry"] for m in e.get("members", []) if m.get("role") == role and m.get("geometry")]
     out, open_ = [], []
     for g in parts:
         (out if g[0] == g[-1] else open_).append(list(g))
@@ -684,6 +685,37 @@ def outlined(t, poly, A):
             and (len(boxes_of(poly)) >= 2 or bool(wall_colour(t))) and len(simplify(poly, 0.3)) >= 3)
 
 
+COURTYARD_MIN = 40  # m²: a smaller inner ring is a light well, left roofed
+
+
+def with_yards(el, P):
+    """A building's outlines in x, z (open), each with the courtyards inside it
+    (a multipolygon's inner rings, Ylioppilaskylä's Aitiopaikka and Tyyssija)
+    cut in: a slit from the outline's nearest point to the yard's, round the
+    yard the other way and back out (a keyhole). Drawn, its roof has the
+    holes; cut into boxes, the yards get none. Same as `rings` but for that."""
+    outs = [[P(p["lat"], p["lon"]) for p in ring[:-1]] for ring in rings(el)]
+    if el["type"] != "relation":
+        return outs
+    yards = []
+    for g in rings(el, "inner"):
+        hole = [P(p["lat"], p["lon"]) for p in g[:-1]]
+        if len(hole) >= 3 and area(hole) >= COURTYARD_MIN: yards.append(hole)
+    def signed(poly):
+        return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(poly, poly[1:] + poly[:1]))
+    result = []
+    for poly in outs:
+        mine = [h for h in yards if inside_poly(poly, *h[0])]
+        for hole in sorted(mine, key=lambda h: -area(h)):
+            # The other way round from the outline.
+            if (signed(hole) > 0) == (signed(poly) > 0): hole = hole[::-1]
+            i, j = min(((i, j) for i in range(len(poly)) for j in range(len(hole))),
+                       key=lambda ij: math.dist(poly[ij[0]], hole[ij[1]]))
+            poly = poly[:i + 1] + hole[j:] + hole[:j + 1] + poly[i:]
+        result.append(poly)
+    return result
+
+
 def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
@@ -696,8 +728,7 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     for el in els:
         t = el.get("tags", {})
         if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
-        for ring in rings(el):
-            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+        for poly in with_yards(el, P):
             if len(poly) < 3 or not all(inside(*p, pad=5) for p in poly): continue
             A = area(poly)
             if not outlined(t, poly, A): continue
@@ -1475,8 +1506,7 @@ def main():
     for el in els:
         t = el.get("tags", {})
         if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
-        for ring in rings(el):
-            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+        for poly in with_yards(el, P):
             if not all(inside(*p, pad=5) for p in poly): continue
             A = area(poly)
             if A < 15: continue

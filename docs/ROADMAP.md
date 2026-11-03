@@ -184,6 +184,16 @@ black-roofed stairs down from both ends and to the three platforms
 footbridge and the two tower boxes). You can run over it: `LOGOMONSILTA_TEST=1`
 (`tools/test_logomonsilta.py`) crosses both ways and goes down to a platform.
 
+### Courtyards (November 2026)
+
+A building mapped with courtyards (a multipolygon's inner rings over 40 m²) has them open:
+`tools/osm_import.py` cuts each into its outline as a keyhole (round the outside, a slit in,
+round the yard the other way, back out), so its roof has the hole and its boxes leave the yard
+clear. Ylioppilaskylä's Tyyssija (the zigzag by Ikituuri) and Aitiopaikka (the oval) were
+solid blocks. Not yet: the passages through to them (`tunnel=building_passage`, mapped), so
+the yards are seen but can't be walked into; Aitiopaikka's lower block inside its yard isn't
+in OpenStreetMap.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
