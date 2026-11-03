@@ -12,6 +12,8 @@ local function in_ikituuri(x, z) return x > 850 and x < 905 and z > -1026 and z 
 local function in_church(x, z) return x > -236 and x < -204 and z > -103 and z < -72 end
 -- Turun taidemuseo on Puolalanmäki (systems/landmarks.lua)
 local function in_museum(x, z) return x > -472 and x < -426 and z > -310 and z < -260 end
+-- Logomonsilta over the railway yard, its towers and stairs (systems/landmarks.lua)
+local function in_logomonsilta(x, z) return x > -632 and x < -548 and z > -598 and z < -455 end
 local filtered_footprints = {}
 for _, f in ipairs(osm.footprints or {}) do
   local x, z = f[1], f[2]
@@ -19,11 +21,17 @@ for _, f in ipairs(osm.footprints or {}) do
   local in_suurtori_plaza = (x > 245 and x < 325 and z > 70 and z < 125)
   local in_linna = (x > -2340 and x < -2185 and z > 1745 and z < 1825) -- Turun linna (systems/harbor.lua)
   if not in_tuomio and not in_suurtori_plaza and not in_linna and not in_ikituuri(x, z) and not in_church(x, z)
-     and not in_museum(x, z) then
+     and not in_museum(x, z) and not (in_logomonsilta(x, z) and f[6] == 15) then
     filtered_footprints[#filtered_footprints + 1] = f
   end
 end
 -- (and the outlines of the ones made by hand)
+local filtered_footbridges = {}
+for _, b in ipairs(osm.footbridges or {}) do
+  local inside = true
+  for i = 2, #b do inside = inside and in_logomonsilta(b[i][1], b[i][2]) end
+  if not inside then filtered_footbridges[#filtered_footbridges + 1] = b end
+end
 local filtered_outlines = {}
 for _, o in ipairs(osm.outlines or {}) do
   local x, z = o[4][1], o[4][2]
@@ -44,7 +52,7 @@ return {
   terrain = osm.terrain, -- real 2m LiDAR heights (MML), roads graded in
   pitches = osm.pitches,
   pools = osm.pools,
-  footbridges = osm.footbridges,
+  footbridges = filtered_footbridges,
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,
   quays = osm.quays, -- the Aurajoki's stone quays

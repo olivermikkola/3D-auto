@@ -154,6 +154,15 @@ street and has room. `game/test/shopsigns_probe.lua` keeps a list of the places 
 for by name (Luostarivuoren lyseon lukio, EduCity...); add to it. Balconies are on homes only
 now (not schools or police stations), and signs keep clear of them.
 
+### Logomonsilta (November 2026)
+
+The footbridge from the station to Logomo as it is (Oliver's photo): a glass tube on a dark
+frame over the railway yard, black stair and lift towers, a glass box at the station end, and
+black-roofed stairs down from both ends and to the three platforms
+(`systems/landmarks.lua`, from OpenStreetMap's ways; `maps/turku.lua` leaves out the generic
+footbridge and the two tower boxes). You can run over it: `LOGOMONSILTA_TEST=1`
+(`tools/test_logomonsilta.py`) crosses both ways and goes down to a platform.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
