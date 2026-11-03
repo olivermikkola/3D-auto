@@ -230,6 +230,17 @@ car and back, out; then at two stars a cop follows you down, and at four the hel
 over and never sees you. Polish left: 2.4 m like the real one (4 m now, for the camera), the
 second level, Toriparkki, the foot exits (pieces 3-5).
 
+### Louhi on foot, up to Kauppatori (November 2026)
+
+Piece 3 of docs/UNDERGROUND.md: Louhi's stair house on Kauppatori's west end (OpenStreetMap
+way 1034479364) has its door where OSM has it, on the west side, LOUHI and the blue P over it.
+Walk through it and you're on a landing at street height, stairs down beside the hall's far
+wall to a door into the hall, KAUPPATORI over it; back up the same way and out onto the square.
+Wanted, officers on foot follow you through the door and down the stairs (or back up). Cop cars
+still come the long way, through the portal on Ajurinkatu. `LOUHI_FOOT_TEST=1`
+(`tools/test_louhi_foot.py`): down from the square into the hall and back out, never through
+the stairs; at two stars an officer on the square follows you down.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

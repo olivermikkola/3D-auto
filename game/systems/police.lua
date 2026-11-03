@@ -679,6 +679,10 @@ local function run_officers(dt, px, pz)
       seen = seen or sees
       local _, vy = engine.vel(id)
       local dx, dz = px - x, pz - z
+      -- After you down Louhi's stairs (or up them): by the stair house's door.
+      local under, wx, wz = package.loaded["systems.louhi"], nil, nil
+      if under and under.built then wx, wz = under.walk(id, px, pz) end
+      if wx then dx, dz = wx - x, wz - z end
       engine.set_yaw(id, math.atan(dx, dz))
       -- Below two stars they've only come to arrest you: no shooting.
       if sees and d < SHOOT_RANGE and d > 6 and wanted.stars() >= DEPLOY_STARS then
@@ -694,8 +698,9 @@ local function run_officers(dt, px, pz)
         engine.set_vel(id, 0, vy, 0)
       else
         -- Close in (or come around the corner).
-        local s = d > 2 and 5 or 0
-        engine.set_vel(id, dx / (d + 1e-3) * s, vy, dz / (d + 1e-3) * s)
+        local s = (wx or (d > 2 and d < math.huge)) and 5 or 0 -- (not after you in another layer)
+        local len = math.sqrt(dx * dx + dz * dz) + 1e-3
+        engine.set_vel(id, dx / len * s, vy, dz / len * s)
       end
       if d < 2.5 then close = true end
     end
