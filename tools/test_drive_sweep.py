@@ -33,6 +33,8 @@ class DriveSweepTests(unittest.TestCase):
 
     def sweep(self, limits, extra):
         for name, most in limits.items():
+            if os.environ.get("SWEEP_MAPS") and name not in os.environ["SWEEP_MAPS"].split(","):
+                continue  # (CI: one map per job)
             with self.subTest(map=name):
                 env = dict(os.environ, MAP=name, SEED="1337", DRIVE_SWEEP="1", DRIVE_SWEEP_EVERY="4", **extra)
                 with tempfile.TemporaryDirectory() as d:
