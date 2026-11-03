@@ -19,12 +19,13 @@ local log = {}
 local function check(ok, what)
   print(string.format("LOUHI: %s %s", ok and "ok" or "FAIL", what))
   log[#log + 1] = ok
+  if not ok then log.bad = (log.bad and log.bad .. "; " or "") .. what end
 end
 local function finish()
   local bad = 0
   for _, ok in ipairs(log) do if not ok then bad = bad + 1 end end
   print(string.format("LOUHI: %d checks, %d failed", #log, bad))
-  assert(bad == 0, "Louhi isn't drivable")
+  if bad > 0 then engine.quit(); error("Louhi isn't drivable: " .. log.bad, 0) end
   print("ALL LOUHI CHECKS PASSED")
   engine.quit()
 end
@@ -130,9 +131,10 @@ engine.on("tick", function(dt)
   elseif step == 4 then
     -- Wait for a car of them to come up behind before going in.
     local near = false
+    local mx, _, mz = engine.pos(car)
     for id in pairs(police.cops) do
       local x, _, z = engine.pos(id)
-      if x and U.dist2d(x, z, engine.pos(car)) < 90 then near = true end
+      if x and U.dist2d(x, z, mx, mz) < 90 then near = true end
     end
     if not (near or t > 40) then
       engine.set_vel(car, 0, 0, 0)
