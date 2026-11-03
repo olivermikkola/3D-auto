@@ -53,6 +53,7 @@ return {
   pitches = osm.pitches,
   pools = osm.pools,
   footbridges = filtered_footbridges,
+  stairs = osm.stairs,
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,
   quays = osm.quays, -- the Aurajoki's stone quays

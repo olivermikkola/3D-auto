@@ -143,6 +143,16 @@ street shapes match within a metre. What it found:
   up and into a wall. The push out of an overlap is now capped at 4 m/s (`MAX_PUSH`).
 - Turun taidemuseo is a `flats` box: it should be a landmark of its own.
 
+### Föli's real lines (November 2026)
+
+Traffic's buses used to wander like any car. `tools/foli_lines.py` takes Föli's timetable
+data (GTFS, CC BY 4.0) and matches each line's busiest route onto the map's own streets
+(162 of 164 line directions in Turku), into `maps/turku_bus.lua`: the junctions in order. A
+bus now drives the rest of the line whose street it's put on (or is moved to the nearest line
+street), with the line and destination on its boards (`lib/buslines.lua`). Re-run the tool
+after importing Turku again: `tools/test_buslines.py` fails if a line names a junction the map
+no longer has. Nothing is fetched while playing.
+
 ### Places by name (November 2026)
 
 Shops' signs say what they are (KAHVILA, PARTURI); a place the town knows by its own name has
@@ -153,6 +163,17 @@ A long name goes on two lines, and slides along its own building for a wall that
 street and has room. `game/test/shopsigns_probe.lua` keeps a list of the places Oliver asked
 for by name (Luostarivuoren lyseon lukio, EduCity...); add to it. Balconies are on homes only
 now (not schools or police stations), and signs keep clear of them.
+
+### Stairs (November 2026)
+
+Oliver's chase on foot: from Kauppatori through Puolalanpuisto, down the stairs to Louhi's
+entrance, over Logomonsilta and into Logomo to lose the cops. The first piece: OpenStreetMap's
+outdoor stairs (not indoors, roofed, on a bridge or inside a building) are built as steps
+from the ground at one end to the ground at the other, with handrails where mapped, and an
+unseen ramp under them so running up is smooth. 389 of Turku's 948 are built; the rest are on
+ground the 10 m terrain sees as level (a door's few steps). `STAIRS_TEST=1`
+(`tools/test_stairs.py`) runs up and down Puolalanportaat and the tallest flights. Still to
+do for the route: Louhi's entrance, somewhere in Logomo to hide.
 
 ### Logomonsilta (November 2026)
 
@@ -205,6 +226,7 @@ then give the player something to work towards. In order:
 | Terrain | Maanmittauslaitos elevation model, 10 m (2 m available) | CC BY 4.0. Key in `~/.config/3d-auto/mml-key`. |
 | Building heights and roofs | Turku's 3D city model (LOD1 everywhere, LOD2 in the centre) | CC BY 4.0. Used. |
 | Roof and ground colour | Turku's 2022 true orthophoto (city WMS) | CC BY 4.0. Used. |
+| Bus lines | Föli's GTFS timetable data (data.foli.fi) | CC BY 4.0. `tools/foli_lines.py`, cached in `tools/osm_cache/foli_gtfs.zip`. |
 | Helsinki | City of Helsinki's open 3D city model | Not used yet. |
 | Manhattan | NYC Open Data building footprints with heights | Not used yet. |
 | Google Earth 3D | — | **Off limits:** its terms don't allow pulling its models into a game. |

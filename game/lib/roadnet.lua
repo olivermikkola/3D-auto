@@ -2831,6 +2831,79 @@ build = function(map, kit)
     ::next_bridge::
   end
 
+  -- Outdoor stairs (Puolalanportaat down Puolalanmäki to Louhi): steps
+  -- from the ground at one end to the ground at the other, each a block
+  -- down into the hill so none floats, baked a chunk at a time; handrails
+  -- where mapped. Underfoot, an unseen ramp along the noses of the steps, so
+  -- running up them is smooth. Where the ground hardly rises along them (a
+  -- door's few steps the 10 m ground can't see) there's nothing to build.
+  if map.stairs then
+    local ch, STONE, RAIL = chunked(), {0.58, 0.57, 0.55}, {0.22, 0.23, 0.24}
+    local built = 0
+    for _, s in ipairs(map.stairs) do
+      local width, pts = s[1], {}
+      for i = 2, #s do pts[#pts + 1] = s[i] end
+      local lens, total = {}, 0
+      for i = 2, #pts do
+        lens[i] = math.sqrt((pts[i][1] - pts[i - 1][1]) ^ 2 + (pts[i][2] - pts[i - 1][2]) ^ 2)
+        total = total + lens[i]
+      end
+      local h0 = GROUND and GROUND(pts[1][1], pts[1][2]) or 0
+      local h1 = GROUND and GROUND(pts[#pts][1], pts[#pts][2]) or 0
+      local rise = math.abs(h1 - h0)
+      if rise >= 0.5 and total > 0 then
+        local n = s.steps
+        if not n or rise / n < 0.1 or rise / n > 0.22 then n = math.max(2, math.floor(rise / 0.16 + 0.5)) end
+        -- The point and heading `sv` metres along, and its height on the
+        -- stairs' slope (steps or not).
+        local function at(sv)
+          local i, left = 2, sv
+          while i < #pts and left > lens[i] do left, i = left - lens[i], i + 1 end
+          local a, b = pts[i - 1], pts[i]
+          local f = math.min(1, left / math.max(lens[i], 1e-3))
+          return a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, math.atan(b[1] - a[1], b[2] - a[2])
+        end
+        local run = total / n
+        for k = 0, n - 1 do
+          local x, z, yaw = at((k + 0.5) * run)
+          -- Counted up from the low end.
+          local up = h1 >= h0 and k + 1 or n - k
+          local top = math.min(h0, h1) + up * rise / n
+          local foot = math.min(top - 0.2, (GROUND and GROUND(x, z) or top) - 0.3)
+          ch.add(x, z, {mesh = "cube", pos = {x, (top + foot) / 2, z}, yaw = yaw, size = {width, top - foot, run * 1.04},
+                        color = STONE, abs = true})
+        end
+        local sv = 0
+        for i = 2, #pts do
+          local a, b = pts[i - 1], pts[i]
+          local ya = h0 + (h1 - h0) * sv / total
+          local yb = h0 + (h1 - h0) * (sv + lens[i]) / total
+          local x, z, yaw = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, math.atan(b[1] - a[1], b[2] - a[2])
+          local pitch = -math.atan(yb - ya, lens[i])
+          local slant = math.sqrt(lens[i] ^ 2 + (yb - ya) ^ 2)
+          kit.static{mesh = "cube", pos = {x, (ya + yb) / 2 - 0.25 * math.cos(pitch), z}, yaw = yaw, pitch = pitch,
+                     size = {width, 0.5, slant}, visible = false, tag = "sidewalk", abs = true}
+          if s.rail then
+            local rx, rz = math.cos(yaw), -math.sin(yaw)
+            for _, side in ipairs{-1, 1} do
+              local px, pz = x + rx * side * (width / 2 - 0.08), z + rz * side * (width / 2 - 0.08)
+              ch.add(px, pz, {mesh = "cube", pos = {px, (ya + yb) / 2 + 0.9, pz}, yaw = yaw, pitch = pitch,
+                              size = {0.06, 0.06, slant}, color = RAIL, abs = true})
+              for _, f in ipairs{0.1, 0.9} do
+                local qx, qz = a[1] + (b[1] - a[1]) * f + rx * side * (width / 2 - 0.08), a[2] + (b[2] - a[2]) * f + rz * side * (width / 2 - 0.08)
+                ch.add(qx, qz, {mesh = "cube", pos = {qx, ya + (yb - ya) * f + 0.45, qz}, size = {0.05, 0.9, 0.05}, color = RAIL, abs = true})
+              end
+            end
+          end
+          sv = sv + lens[i]
+        end
+        built = built + 1
+      end
+    end
+    ch.bake("stairs", "sidewalk")
+    print(string.format("stairs: %d of %d built (the rest on ground too level to see them)", built, #map.stairs))
+  end
+
   -- Raised decks for walking, at a footbridge's height, the 1970s way:
   -- {x0, z0, x1, z1, open = "nswe" sides without a parapet}, a slab on
   -- round columns. Paved squares: {x0, z0, x1, z1}. Market stalls:

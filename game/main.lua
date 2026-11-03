@@ -175,9 +175,11 @@ if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
+if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end
 if os.getenv("ARCH_TEST") then require "test.arch_probe" end
 if os.getenv("PASI_TEST") then require "test.pasi_probe" end
 if os.getenv("FOLI_TEST") then require "test.foli_probe" end
+if os.getenv("BUSLINES_TEST") then require "test.buslines_probe" end
 if os.getenv("AMBIENCE_TEST") then require "test.ambience_probe" end
 if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
