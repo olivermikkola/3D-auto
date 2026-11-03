@@ -241,6 +241,17 @@ still come the long way, through the portal on Ajurinkatu. `LOUHI_FOOT_TEST=1`
 (`tools/test_louhi_foot.py`): down from the square into the hall and back out, never through
 the stairs; at two stars an officer on the square follows you down.
 
+### Hansa's lower floor (November 2026)
+
+Piece 4 of docs/UNDERGROUND.md (`systems/hansa.lua`): out of Louhi's hall at its west end
+on foot, a corridor to Hansa's level -1, along it past the shops (Stadium, Partioaitta and the
+lifts where OpenStreetMap has them along it; the rest unnamed), up the stairs where OSM has
+them to the ground floor and out the door on Aurakatu (Hansa Aurakatu 12a), HANSA over it.
+Back in the same way. Louhi's doors, floors and ways on foot are now lists (`louhi.DOORS`,
+`AREAS`, `ROUTES`) that Hansa adds to; officers follow any route through its door and along
+it. `HANSA_TEST=1` (`tools/test_hansa.py`): from the hall out onto Aurakatu and back down,
+never through a floor; at two stars an officer on Aurakatu follows you in and down to Louhi.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

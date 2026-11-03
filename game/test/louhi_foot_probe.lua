@@ -62,7 +62,7 @@ engine.on("tick", function(dt)
   local x, y, z = engine.pos(G.player)
   local layer = engine.layer(G.player)
   -- Never through the stairs' floor.
-  local f = layer == 1 and Lh.stairs_floor(x, z)
+  local f = layer == 1 and Lh.area_floor(x, z, 0)
   if f then sunk = math.max(sunk, f - y) end
   if step == 0 then
     S = Lh.STAIRS

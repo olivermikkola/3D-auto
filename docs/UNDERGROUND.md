@@ -70,6 +70,7 @@ Gameplay to decide (Oliver):
    Built (November 2026): through the stair house's door, see ROADMAP.
 4. **Hansa's lower floor**: from Louhi's Hansa exit along OSM's level -1 corridors, its shops
    with their names, the lifts, up and out the Aurakatu door. More floors later if it's fun.
+   Built (November 2026), see ROADMAP; the corridors are the game's, the lifts don't go.
 5. **Toriparkki**, joined to Louhi.
 
 Piece 1 is the only risky one (engine); 2 is the most fun on its own. Roughly a day each for
