@@ -173,7 +173,9 @@ from the ground at one end to the ground at the other, with handrails where mapp
 unseen ramp under them so running up is smooth. 389 of Turku's 948 are built; the rest are on
 ground the 10 m terrain sees as level (a door's few steps). `STAIRS_TEST=1`
 (`tools/test_stairs.py`) runs up and down Puolalanportaat and the tallest flights. Still to
-do for the route: Louhi's entrance, somewhere in Logomo to hide.
+do for the route: somewhere in Logomo to hide. Louhi's entrance is there now
+(`systems/landmarks.lua`): a concrete portal in a granite face at the foot of the stairs,
+LOUHI over it, the 2.2 m height bar and a blue P; not open (the hill is solid ground).
 
 ### Logomonsilta (November 2026)
 

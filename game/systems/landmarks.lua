@@ -368,6 +368,88 @@ local function logomonsilta()
   print(string.format("logomonsilta: %.0f m long, deck %.1f-%.1f m up, %d parts, %d solid", total, y1, y2, #out + #glass, #out.solid))
 end
 
+-- ---- Louhi --------------------------------------------------------------------
+-- The way into Louhi, the car park in the rock under Puolalanmäki and
+-- Kauppatori, at the foot of Puolalanportaat: a concrete portal in a face
+-- of granite, LOUHI over it, the 2.2 m height bar hung across the drive and
+-- a blue P by it. (OpenStreetMap node 26706967; the tunnel runs 400 m on
+-- to Kauppatori, toward `to`.) Not open: the hill is solid ground here.
+L.LOUHI = {x = -511, z = -369, to = {-302, -75}}
+
+local function louhi()
+  local T = L.LOUHI
+  local fx, fz = T.to[1] - T.x, T.to[2] - T.z
+  local l = math.sqrt(fx * fx + fz * fz)
+  fx, fz = fx / l, fz / l -- into the hill
+  local rx, rz = fz, -fx   -- across
+  local yaw = math.atan(fx, fz)
+  -- The face 2 m out from the node, where the hill starts to rise; the
+  -- drive's level in front of it.
+  local cx, cz = T.x - fx * 2, T.z - fz * 2
+  local floor = U.ground(T.x - fx * 6, T.z - fz * 6)
+  local function at(u, v) return cx + fx * u + rx * v, cz + fz * u + rz * v end
+  local ROCK, ROCK2, CONC, DARK = {0.5, 0.46, 0.44}, {0.44, 0.41, 0.4}, {0.66, 0.65, 0.62}, {0.03, 0.03, 0.035}
+  local W, H = 6.2, 3.2 -- the opening
+  local parts, solid = {}, {}
+  local function box(u, v, y, w, h, d, color, extra)
+    local x, z = at(u, v)
+    local p = {mesh = "cube", pos = {x, y, z}, yaw = yaw, size = {w, h, d}, color = color}
+    for k, val in pairs(extra or {}) do p[k] = val end
+    parts[#parts + 1] = p
+    return p
+  end
+  -- The rock it's cut into, standing out of the slope (and what you bump);
+  -- no wider than the frame: Puolalanportaat come down either side of it.
+  box(5, 0, floor + 3.6, W + 1.6, 7.2, 10, ROCK)
+  solid[#solid + 1] = parts[#parts]
+  -- its top broken, as a blasted face is
+  box(4, -1.6, floor + 7.4, 4.2, 1.4, 7, ROCK2, {roll = 0.12, pitch = 0.1})
+  box(6, 1.8, floor + 7.2, 4, 1.2, 6, ROCK2, {roll = -0.15})
+  -- The concrete frame round the opening, and the dark way in.
+  box(-0.15, 0, floor + H + 0.6, W + 1.6, 1.2, 0.5, CONC)          -- lintel
+  box(-0.15, -(W / 2 + 0.4), floor + H / 2, 0.8, H, 0.5, CONC)     -- sides
+  box(-0.15, W / 2 + 0.4, floor + H / 2, 0.8, H, 0.5, CONC)
+  box(0.1, 0, floor + H / 2, W, H, 0.3, DARK)
+  box(0.05, 0, floor + H - 0.2, W - 0.6, 0.08, 0.1, {1, 0.92, 0.75}, {emissive = 0.8}) -- lights inside
+  box(0.05, 0, floor + 0.04, W, 0.1, 0.35, {0.3, 0.3, 0.31})       -- the ramp going down
+  -- Wing walls either side, out to the drive.
+  for _, side in ipairs{-1, 1} do
+    box(-2.5, side * (W / 2 + 0.6), floor + 0.9, 0.4, 1.8, 5, CONC)
+  end
+  -- LOUHI over the opening, white on a dark band, lit at night.
+  box(-0.42, 0, floor + H + 0.6, 4.2, 0.95, 0.06, {0.12, 0.13, 0.15})
+  local lx, lz = at(-0.45, 0)
+  parts[#parts + 1] = {text = "LOUHI", pos = {lx - fx * 0.05, floor + H + 0.6, lz - fz * 0.05}, yaw = yaw + math.pi, height = 0.75, depth = 0.08,
+                       color = {0.95, 0.95, 0.92}, emissive = 0.6}
+  -- The height bar on two posts across the drive, striped yellow and black,
+  -- 2.2 m clear.
+  for k = -3, 3 do
+    box(-6, k * 0.9, floor + 2.35, 0.9, 0.3, 0.3, k % 2 == 0 and {0.95, 0.8, 0.1} or {0.08, 0.08, 0.08})
+  end
+  for _, side in ipairs{-1, 1} do box(-6, side * 3.4, floor + 1.25, 0.2, 2.5, 0.2, {0.3, 0.3, 0.32}) end
+  local hx, hz = at(-6.2, 0)
+  parts[#parts + 1] = {text = "2,2 m", pos = {hx, floor + 2.35, hz}, yaw = yaw + math.pi, height = 0.2, depth = 0.04,
+                       color = {0.08, 0.08, 0.08}}
+  -- The blue P on a post by the drive.
+  box(-9, 3.2, floor + 1.4, 0.1, 2.8, 0.1, {0.4, 0.4, 0.42})
+  box(-9.06, 3.2, floor + 2.6, 0.75, 0.75, 0.05, {0.1, 0.3, 0.75})
+  local px, pz = at(-9.12, 3.2)
+  parts[#parts + 1] = {text = "P", pos = {px, floor + 2.6, pz}, yaw = yaw + math.pi, height = 0.55, depth = 0.03,
+                       color = {1, 1, 1}}
+  -- Baked round the face's middle.
+  for _, p in ipairs(parts) do p.pos = {p.pos[1] - cx, p.pos[2] - floor, p.pos[3] - cz} end
+  engine.mesh("louhi", parts)
+  L.louhi_id = engine.spawn{mesh = "louhi", pos = {cx, floor, cz}, tag = "building"}
+  for _, p in ipairs(solid) do
+    engine.spawn{mesh = "cube", pos = {p.pos[1] + cx, p.pos[2] + floor, p.pos[3] + cz}, yaw = yaw, size = p.size, visible = false,
+                 body = "static", tag = "building"}
+  end
+  -- The frame's front, so you stop at the opening, not inside the rock.
+  local fx2, fz2 = at(-0.2, 0)
+  engine.spawn{mesh = "cube", pos = {fx2, floor + 2.4, fz2}, yaw = yaw, size = {W + 1.6, 4.8, 0.6}, visible = false, body = "static",
+               tag = "building"}
+end
+
 local made = false
 function L.build(map)
   if not map or map.id ~= "turku" then return end
@@ -403,6 +485,7 @@ function L.build(map)
   local M = L.MUSEUM
   local my = U.ground(M.x, M.z)
   logomonsilta()
+  louhi()
 
   L.museum_id = engine.spawn{mesh = "taidemuseo", pos = {M.x, my, M.z}, yaw = M.yaw, tag = "building"}
   -- What you drive into: the hall with its raised middle, and the wing.
