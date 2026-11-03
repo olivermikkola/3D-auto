@@ -1646,6 +1646,36 @@ def main():
             footbridges.append((float(t.get("width", "3").split()[0]) if t.get("width", "3").replace(".", "", 1).isdigit() else 3, pts,
                                 not over))
 
+    # ---- outdoor stairs (Puolalanportaat down Puolalanmäki) ----
+    # Not indoors, under a roof, on a bridge or inside a building (a
+    # building's own stairwell, its door steps).
+    houses = Grid(50)
+    for el in els:
+        t = el.get("tags", {})
+        if not t.get("building") or t.get("building") in NOT_BUILDINGS: continue
+        for ring in rings(el):
+            poly = [P(p["lat"], p["lon"]) for p in ring[:-1]]
+            if len(poly) >= 3:
+                xs, zs = [p[0] for p in poly], [p[1] for p in poly]
+                houses.add(poly, (min(xs), min(zs)), (max(xs), max(zs)))
+    stairs = []
+    for el in els:
+        t = el.get("tags", {})
+        if (t.get("highway") != "steps" or t.get("indoor") not in (None, "no") or t.get("covered") not in (None, "no")
+                or t.get("bridge") not in (None, "no") or t.get("tunnel") not in (None, "no") or t.get("layer", "0") != "0"):
+            continue
+        pts = simplify([P(p["lat"], p["lon"]) for p in el.get("geometry") or []], 0.3)
+        if len(pts) < 2 or not all(inside(*p) for p in pts): continue
+        if sum(math.dist(a, b) for a, b in zip(pts, pts[1:])) < 2: continue
+        mx, mz = (pts[0][0] + pts[-1][0]) / 2, (pts[0][1] + pts[-1][1]) / 2
+        if any(inside_poly(poly, mx, mz) for poly in houses.near(mx, mz, mx, mz)): continue
+        try:
+            wd = min(6.0, max(1.2, float(t.get("width", "").split()[0])))
+        except (ValueError, IndexError):
+            wd = 2.0
+        n = int(t["step_count"]) if t.get("step_count", "").isdigit() else 0
+        stairs.append((wd, pts, n, t.get("handrail") == "yes" or "handrail:left" in t or "handrail:right" in t))
+
     # ---- towers, gantry cranes, piers, ships ----
     towers, cranes, piers, ships = [], [], [], []
     for el in els:
@@ -2047,6 +2077,12 @@ def main():
     for wd, pts, low in footbridges:
         L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + (", low = true" if low else "") + "},")
     L.append("  },")
+    L.append("  -- outdoor stairs: {width, points..., steps = how many (if mapped), rail = handrails?}")
+    L.append("  stairs = {")
+    for wd, pts, n, rail in stairs:
+        L.append(f"    {{{f(wd)}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts)
+                 + (f", steps = {n}" if n else "") + (", rail = true" if rail else "") + "},")
+    L.append("  },")
     L.extend(railway_lines(railways, platforms, f, rail_bridges, rail_hs))
     if quay_runs:
         L.append("  -- the river's walled banks: {level, x, z, top, width, ...}, the land on the right")
@@ -2136,7 +2172,7 @@ def main():
           f"{len(paved)} paved ways, {len(footprints)} building boxes ({trimmed} trimmed and {dropped} left out clear of the roads, "
           f"{sum(1 for fp in footprints if fp[-1])} over a road on a deck), "
           + ", ".join(f"{k} {len(v)}" for k, v in strips.items())
-          + f", {len(pitches)} pitches, {len(railways)} railway tracks, {len(platforms)} platforms, {len(footbridges)} footbridges, {len(towers)} towers, {len(cranes)} cranes,"
+          + f", {len(pitches)} pitches, {len(railways)} railway tracks, {len(platforms)} platforms, {len(footbridges)} footbridges, {len(stairs)} stairs, {len(towers)} towers, {len(cranes)} cranes,"
           f" {len(piers)} piers, {len(areas)} areas; {dest.stat().st_size // 1024} KB")
 
 

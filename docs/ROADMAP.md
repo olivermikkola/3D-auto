@@ -154,6 +154,18 @@ street and has room. `game/test/shopsigns_probe.lua` keeps a list of the places 
 for by name (Luostarivuoren lyseon lukio, EduCity...); add to it. Balconies are on homes only
 now (not schools or police stations), and signs keep clear of them.
 
+### Stairs (November 2026)
+
+Oliver's chase on foot: from Kauppatori through Puolalanpuisto, down the stairs to Louhi's
+entrance, over Logomonsilta and into Logomo to lose the cops. The first piece: OpenStreetMap's
+outdoor stairs (not indoors, roofed, on a bridge or inside a building) are built as steps
+from the ground at one end to the ground at the other, with handrails where mapped, and an
+unseen ramp under them so running up is smooth. 389 of Turku's 948 are built; the rest are on
+ground the 10 m terrain sees as level (a door's few steps). `STAIRS_TEST=1`
+(`tools/test_stairs.py`) runs up and down Puolalanportaat and the tallest flights. Still to
+do for the route: Louhi's entrance, Logomonsilta as it is (a glass tube on a dark frame, stair
+and lift towers), somewhere in Logomo to hide.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
