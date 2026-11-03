@@ -82,6 +82,7 @@ engine.on("init", function()
   require("systems.suurtori").build(city.map())
   require("systems.landmarks").build(city.map())
   require("systems.hideouts").build(city.map())
+  require("systems.louhi").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -176,6 +177,7 @@ if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
+if os.getenv("LOUHI_TEST") then require "test.louhi_probe" end
 if os.getenv("LAYERS_TEST") then require "test.layers_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
 if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end

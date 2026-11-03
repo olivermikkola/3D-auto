@@ -400,8 +400,15 @@ local function louhi()
   end
   -- The rock it's cut into, standing out of the slope (and what you bump);
   -- no wider than the frame: Puolalanportaat come down either side of it.
+  -- What you bump starts 3 m in: through the opening you're in Louhi
+  -- (systems/louhi) before you reach it; either side, the frame.
   box(5, 0, floor + 3.6, W + 1.6, 7.2, 10, ROCK)
-  solid[#solid + 1] = parts[#parts]
+  solid[#solid + 1] = {pos = {at(6.5, 0)}, size = {W + 1.6, 7.2, 7}}
+  solid[#solid].pos = {solid[#solid].pos[1], floor + 3.6, solid[#solid].pos[2]}
+  for _, side in ipairs{-1, 1} do
+    local x, z = at(1.25, side * (W / 2 + 0.4))
+    solid[#solid + 1] = {pos = {x, floor + 3.6, z}, size = {0.8, 7.2, 3.5}}
+  end
   -- its top broken, as a blasted face is
   box(4, -1.6, floor + 7.4, 4.2, 1.4, 7, ROCK2, {roll = 0.12, pitch = 0.1})
   box(6, 1.8, floor + 7.2, 4, 1.2, 6, ROCK2, {roll = -0.15})
@@ -441,13 +448,8 @@ local function louhi()
   engine.mesh("louhi", parts)
   L.louhi_id = engine.spawn{mesh = "louhi", pos = {cx, floor, cz}, tag = "building"}
   for _, p in ipairs(solid) do
-    engine.spawn{mesh = "cube", pos = {p.pos[1] + cx, p.pos[2] + floor, p.pos[3] + cz}, yaw = yaw, size = p.size, visible = false,
-                 body = "static", tag = "building"}
+    engine.spawn{mesh = "cube", pos = p.pos, yaw = yaw, size = p.size, visible = false, body = "static", tag = "building"}
   end
-  -- The frame's front, so you stop at the opening, not inside the rock.
-  local fx2, fz2 = at(-0.2, 0)
-  engine.spawn{mesh = "cube", pos = {fx2, floor + 2.4, fz2}, yaw = yaw, size = {W + 1.6, 4.8, 0.6}, visible = false, body = "static",
-               tag = "building"}
 end
 
 local made = false

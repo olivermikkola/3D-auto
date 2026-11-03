@@ -63,12 +63,14 @@ function M.exit()
     if not engine.raycast(x, y, z, rx * side, 0, rz * side, 2.4, car) then
       G.vehicle = nil
       M.spawn(px, y + 0.3, pz, yaw)
+      engine.set_layer(G.player, engine.layer(car) or 0) -- (underground: still underground)
       engine.emit("vehicle_exit", car)
       return
     end
   end
   G.vehicle = nil
   M.spawn(x, y + 2.2, z, yaw)
+  engine.set_layer(G.player, engine.layer(car) or 0)
   engine.emit("vehicle_exit", car)
 end
 
