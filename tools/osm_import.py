@@ -716,6 +716,91 @@ def with_yards(el, P):
     return result
 
 
+def passages_of(els, P):
+    """Ways through a building (tunnel=building_passage): (points, width,
+    height). A foot or cycle way 3 m wide unless mapped, a drive 3.5; 3 m
+    high, or its maxheight."""
+    out = []
+    for el in els:
+        t = el.get("tags", {})
+        if el["type"] != "way" or t.get("tunnel") != "building_passage" or not t.get("highway"): continue
+        pts = [P(p["lat"], p["lon"]) for p in el.get("geometry") or []]
+        if len(pts) < 2: continue
+        def num(k, d):
+            try: return float(t.get(k, "").split()[0])
+            except (ValueError, IndexError): return d
+        drive = t["highway"] not in ("footway", "cycleway", "path", "pedestrian", "steps", "corridor")
+        out.append((pts, min(6.0, max(2.0, num("width", 3.5 if drive else 3.0))), min(4.5, max(2.4, num("maxheight", 3.5 if drive else 3.0)))))
+    return out
+
+
+def doors_of(poly, passages):
+    """Where passages cross the outline's walls: (x, z, width, height), and the
+    ways through it, door to door: (x0, z0, x1, z1, width, height), each a
+    passage's stretch between two crossings in a row with the building
+    (not its yard) between them."""
+    out, ways = [], []
+    for pts, w, h in passages:
+        hits = []  # (distance along the passage, x, z)
+        run = 0.0
+        for a, b in zip(pts, pts[1:]):
+            for c, d in zip(poly, poly[1:] + poly[:1]):
+                rx, rz, sx, sz = b[0] - a[0], b[1] - a[1], d[0] - c[0], d[1] - c[1]
+                den = rx * sz - rz * sx
+                if abs(den) < 1e-9: continue
+                t = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / den
+                u = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / den
+                if -0.05 <= t <= 1.05 and 0 <= u <= 1:
+                    hits.append((run + t * math.hypot(rx, rz), a[0] + rx * t, a[1] + rz * t))
+            run += math.hypot(b[0] - a[0], b[1] - a[1])
+        hits.sort()
+        uniq = []
+        for hit in hits:
+            if not uniq or math.dist(hit[1:], uniq[-1][1:]) > 0.5: uniq.append(hit)
+        out.extend((x, z, w, h) for _, x, z in uniq)
+        for p0, p1 in zip(uniq, uniq[1:]):
+            mx, mz = (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2
+            if inside_poly(poly, mx, mz):
+                ways.append((p0[1], p0[2], p1[1], p1[2], w, h))
+    return out, ways
+
+
+def cut_passages(parts, passages):
+    """Boxes (x, z, w, d, angle of w) with the passages through them left
+    clear: a box a passage crosses is split either side of it, across
+    whichever of its sides the passage runs nearer along."""
+    out = list(parts)
+    for pts, pw, _ in passages:
+        for a, b in zip(pts, pts[1:]):
+            nxt = []
+            for (x, z, w, d, ang) in out:
+                c, s = math.cos(ang), math.sin(ang)
+                loc = lambda p: ((p[0] - x) * c + (p[1] - z) * s, -(p[0] - x) * s + (p[1] - z) * c)
+                (au, av), (bu, bv) = loc(a), loc(b)
+                if max(au, bu) < -w / 2 - pw or min(au, bu) > w / 2 + pw or max(av, bv) < -d / 2 - pw or min(av, bv) > d / 2 + pw:
+                    nxt.append((x, z, w, d, ang)); continue
+                along_v = abs(bv - av) >= abs(bu - au)
+                # where it crosses the box's middle line, across the other way
+                if along_v:
+                    if abs(bv - av) < 1e-6: nxt.append((x, z, w, d, ang)); continue
+                    k = (0 - av) / (bv - av); m, half, span = au + (bu - au) * k, w / 2, w
+                    lo, hi = min(av, bv), max(av, bv)
+                    if hi < -d / 2 or lo > d / 2 or not (-half - pw / 2 < m < half + pw / 2): nxt.append((x, z, w, d, ang)); continue
+                else:
+                    if abs(bu - au) < 1e-6: nxt.append((x, z, w, d, ang)); continue
+                    k = (0 - au) / (bu - au); m, half, span = av + (bv - av) * k, d / 2, d
+                    lo, hi = min(au, bu), max(au, bu)
+                    if hi < -w / 2 or lo > w / 2 or not (-half - pw / 2 < m < half + pw / 2): nxt.append((x, z, w, d, ang)); continue
+                g0, g1 = m - pw / 2 - 0.2, m + pw / 2 + 0.2
+                for p0, p1 in ((-half, g0), (g1, half)):
+                    if p1 - p0 < 0.5: continue
+                    mid = (p0 + p1) / 2
+                    if along_v: nxt.append((x + mid * c, z + mid * s, p1 - p0, d, ang))
+                    else: nxt.append((x - mid * s, z + mid * c, w, p1 - p0, ang))
+            out = nxt
+    return out
+
+
 def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     """Footprints that boxes fit badly (an L, a U, a block round a yard), or
     whose walls have a mapped colour, as their own outlines:
@@ -723,8 +808,10 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
     built or None, over a road, a pitched roof's rise over the eaves or
     None). The
     game draws these as they are and keeps the boxes only to collide with.
-    `roof_of(points)` gives an untagged roof its colour (the aerial photo)."""
+    `roof_of(points)` gives an untagged roof its colour (the aerial photo).
+    Last, its doors: where passages through it cross its walls."""
     out = []
+    passages = passages_of(els, P)
     for el in els:
         t = el.get("tags", {})
         if "building" not in t or t.get("building") in NOT_BUILDINGS: continue
@@ -740,7 +827,7 @@ def outlines_of(els, P, inside, roof_of=None, model_h=None, over_road=None):
             rise = None
             if pitch and 2.5 <= pitch[0] and 1.2 <= pitch[1] - pitch[0] <= 9:
                 h, rise = pitch[0], round(pitch[1] - pitch[0], 1)  # to the eaves, as its boxes have it, and the roof over them
-            out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly)), rise))
+            out.append((h, kind, wall, pts, roof, year, bool(over_road and raised(t) and over_road(poly)), rise) + doors_of(pts, passages))
     return out
 
 
@@ -778,12 +865,16 @@ def one_height(outlines, before, after):
 
 def outline_lines(outlines, f):
     L = ["  -- footprints drawn as they are: {height (to the eaves), kind, wall colour or false, points..., roof = colour,",
-         "  -- year = built, pitch = a pitched roof's rise over the eaves}",
+         "  -- year = built, pitch = a pitched roof's rise over the eaves, doors = {x, z, width, height, ...} passages through,",
+         "  -- ways = {x0, z0, x1, z1, width, height, ...} each passage door to door}",
          "  outlines = {"]
-    for h, kind, wall, pts, roof, year, span, *rise in outlines:
+    for h, kind, wall, pts, roof, year, span, *rest in outlines:
+        rise, doors, ways = rest[:1], (rest[1] if len(rest) > 1 else []), (rest[2] if len(rest) > 2 else [])
         w = "{" + ", ".join(f"{c:.2f}" for c in wall) + "}" if wall else "false"
         r = (", roof = {" + ", ".join(f"{c:.2f}" for c in roof) + "}" if roof else "") + (f", year = {year}" if year else "") + (", span = true" if span else "")
         r += f", pitch = {f(rise[0])}" if rise and rise[0] else ""
+        r += (", doors = {" + ", ".join(f"{f(x)}, {f(z)}, {f(dw)}, {f(dh)}" for x, z, dw, dh in doors) + "}") if doors else ""
+        r += (", ways = {" + ", ".join(", ".join(f(v) for v in wy) for wy in ways) + "}") if ways else ""
         L.append(f"    {{{f(h)}, \"{kind}\", {w}, " + ", ".join(f"{{{f(p[0])}, {f(p[1])}}}" for p in pts) + r + "},")
     L.append("  },")
     return L
@@ -1502,6 +1593,10 @@ def main():
     for ed in edges:
         for a, b in zip(ed["pts"], ed["pts"][1:]): road_grid.add((ed, a, b), a, b, pad=ed["width"])
     footprints, dropped, trimmed = [], 0, 0
+    passages = passages_of(els, P)
+    passage_grid = Grid(50)
+    for ps in passages:
+        for a, b in zip(ps[0], ps[0][1:]): passage_grid.add(ps, a, b)
     in_outline = set()  # the boxes of a building drawn as its outline (no laser pitch: the outline's roof is flat)
     for el in els:
         t = el.get("tags", {})
@@ -1536,6 +1631,12 @@ def main():
             elif kind == "church":
                 ang, (cx, cz), bw, bd = min_rect(poly)
                 parts = [(cx, cz, bw, bd, ang) if bw >= bd else (cx, cz, bd, bw, ang + math.pi / 2)]
+            # Passages through it (to a courtyard) left clear of its boxes,
+            # where it's drawn as its outline (with doorways in its walls;
+            # boxes drawn as boxes would open a slot to the sky).
+            xs, zs = [p[0] for p in poly], [p[1] for p in poly]
+            through = [ps for ps in passage_grid.near(min(xs), min(zs), max(xs), max(zs))]
+            if through and outlined(t, poly, A): parts = cut_passages(parts, through)
             # Mapped a level up and a road runs under it: it's on a deck
             # over the road (all its boxes kept, none trimmed; the game
             # lifts the ones over the road).

@@ -636,7 +636,9 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
                     (Some(rise), Some(insets)) => mesh::hip_roof(&pts, rise, &insets, Vec3::ONE),
                     _ => None,
                 };
-                let src = pitched.unwrap_or_else(|| mesh::prism(&pts, 0.0, h, Vec3::ONE, floor));
+                // Doorways through its walls: doors = {x, z, width, height, ...} (part-local).
+                let doors: Vec<[f32; 4]> = p.get::<Option<Vec<f32>>>("doors")?.unwrap_or_default().as_chunks::<4>().0.to_vec();
+                let src = pitched.unwrap_or_else(|| mesh::prism_doors(&pts, 0.0, h, Vec3::ONE, floor, &doors));
                 let yaw = p.get::<Option<f32>>("yaw")?.unwrap_or(0.0);
                 let glow = p.get::<Option<f32>>("emissive")?.unwrap_or(0.0);
                 let from = out.verts.len();

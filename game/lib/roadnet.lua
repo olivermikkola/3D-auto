@@ -3215,7 +3215,7 @@ build = function(map, kit)
     end
     if clear or o.span then
       OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1,
-                 span = o.span, pitch = o.pitch}
+                 span = o.span, pitch = o.pitch, doors = o.doors, ways = o.ways}
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -3655,7 +3655,35 @@ build = function(map, kit)
       end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
-      add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade, floor = o.floor})
+      -- Passages through it (to its courtyard): gaps in its walls, and a
+      -- dark lining between each pair of them (the way through the block).
+      local doors
+      if o.doors and not o.podium then
+        doors = {}
+        local ds = o.doors
+        for k = 1, #ds, 4 do
+          doors[#doors + 1] = ds[k] - cx; doors[#doors + 1] = ds[k + 1] - cz
+          doors[#doors + 1] = ds[k + 2]; doors[#doors + 1] = ds[k + 3] + (GROUND and GROUND(ds[k], ds[k + 1]) or base) - base
+        end
+        local ws = o.ways or {}
+        for k = 1, #ws, 6 do
+          local ax, az, bx, bz, w, ph = ws[k], ws[k + 1], ws[k + 2], ws[k + 3], ws[k + 4], ws[k + 5]
+          local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+          if len > 0.5 then
+            local mx, mz, yaw = (ax + bx) / 2, (az + bz) / 2, math.atan(bx - ax, bz - az)
+            local rx, rz = math.cos(yaw), -math.sin(yaw)
+            local g = GROUND and math.min(GROUND(ax, az), GROUND(bx, bz)) or base
+            local LINING = {0.32, 0.31, 0.3}
+            add(mx, mz, {mesh = "cube", pos = {mx, g + ph + 0.1, mz}, yaw = yaw, size = {w + 0.4, 0.2, len}, color = LINING, abs = true})
+            for _, side in ipairs{-1, 1} do
+              add(mx, mz, {mesh = "cube", pos = {mx + rx * side * (w / 2 + 0.1), g + ph / 2, mz + rz * side * (w / 2 + 0.1)}, yaw = yaw,
+                           size = {0.2, ph + 0.2, len}, color = LINING, abs = true})
+            end
+          end
+        end
+      end
+      add(cx, cz, {outline = flat, height = h, pos = {cx, base, cz}, color = color, abs = true, facade = facade, floor = o.floor,
+                   doors = doors})
       for _, pd in ipairs(o.podium or {}) do -- the part on the ground, up to the deck
         local pf = {}
         for _, p in ipairs(pd.pts) do pf[#pf + 1] = p[1] - cx; pf[#pf + 1] = p[2] - cz end

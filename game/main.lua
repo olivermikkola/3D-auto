@@ -175,6 +175,7 @@ if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
+if os.getenv("PASSAGE_TEST") then require "test.passage_probe" end
 if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
 if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end
