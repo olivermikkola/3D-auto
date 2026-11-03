@@ -77,6 +77,11 @@ pub struct Entity {
     /// Pose before the last tick, so frames between ticks can be drawn in
     /// between. None until the first tick, and after a teleport.
     pub prev: Option<(Vec3, Quat)>,
+    /// Which world it's in: 0 the street, others underground (a parking
+    /// cave, a shopping level). Bodies only meet bodies in their own layer,
+    /// the terrain is only in layer 0, rays only see one layer, and only
+    /// the camera's layer (`Engine::view_layer`) is drawn.
+    pub layer: u8,
 }
 
 impl Entity {
@@ -93,6 +98,7 @@ impl Entity {
             shadow: true,
             glow: 0.0,
             prev: None,
+            layer: 0,
         }
     }
 }
@@ -109,6 +115,9 @@ pub struct Light {
     /// Cosine of the spot half-angle; -1 makes it a point light.
     pub cone: f32,
     pub follow: Option<u32>,
+    /// Its layer (see `Entity::layer`); a light that follows an entity is
+    /// in that entity's.
+    pub layer: u8,
 }
 
 pub struct Camera {
@@ -199,6 +208,8 @@ pub struct Engine {
     pub saves: crate::save::Store,
     /// While paused there are no ticks: physics, the clock and game sounds stop.
     pub paused: bool,
+    /// The layer drawn (see `Entity::layer`): the camera's, underground or not.
+    pub view_layer: u8,
     pub fullscreen: bool,
     /// Run with --headless: no window, nobody at the controls.
     pub headless: bool,
@@ -304,6 +315,7 @@ impl Engine {
             follow: Vec::new(),
             saves: Default::default(),
             paused: false,
+            view_layer: 0,
             fullscreen: false,
             headless: false,
             cursor: (0.0, 0.0),
@@ -417,10 +429,11 @@ impl Engine {
         Some(en)
     }
 
-    /// The nearest body or terrain a ray hits; see physics::raycast_near.
-    pub fn raycast(&self, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>) -> Option<physics::RayHit> {
-        let hit = physics::raycast_near(&self.ents, &self.broad, &self.touched, o, dir, max, ignore);
-        let Some(t) = self.terrain.as_ref().filter(|t| Some(t.id as u32) != ignore) else { return hit };
+    /// The nearest body or terrain a ray hits in `layer` (any layer with
+    /// None); see physics::raycast_near. The terrain is in layer 0.
+    pub fn raycast(&self, o: Vec3, dir: Vec3, max: f32, ignore: Option<u32>, layer: Option<u8>) -> Option<physics::RayHit> {
+        let hit = physics::raycast_near(&self.ents, &self.broad, &self.touched, o, dir, max, ignore, layer);
+        let Some(t) = self.terrain.as_ref().filter(|t| Some(t.id as u32) != ignore && layer.is_none_or(|l| l == 0)) else { return hit };
         let reach = hit.as_ref().map_or(max, |h| h.dist);
         match t.ray(o, dir, reach) {
             Some((dist, normal)) => Some(physics::RayHit { id: t.id as u32, dist, point: o + dir * dist, normal }),
@@ -628,6 +641,14 @@ impl Engine {
     }
 
     /// World-space position and direction of a light, if its anchor exists.
+    /// A light's layer: its own, or that of the entity it follows.
+    pub fn light_layer(&self, l: &Light) -> Option<u8> {
+        match l.follow {
+            None => Some(l.layer),
+            Some(id) => self.get(id).map(|e| e.layer),
+        }
+    }
+
     pub fn light_world(&self, l: &Light) -> Option<(Vec3, Vec3)> {
         match l.follow {
             None => Some((l.pos, l.dir)),
