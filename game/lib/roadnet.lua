@@ -3216,6 +3216,11 @@ build = function(map, kit)
     if clear or o.span then
       OUT[oi] = {h = o[1], kind = o[2], wall = o[3] or nil, roof = o.roof, year = o.year, pts = pts, x0 = x0, z0 = z0, x1 = x1, z1 = z1,
                  span = o.span, pitch = o.pitch, doors = o.doors, ways = o.ways}
+      -- Its own look, if the map gives one (map.outline_looks: a point inside it,
+      -- and what's different about it, from photos).
+      for _, look in ipairs(map.outline_looks or {}) do
+        if inside_poly(pts, look.at[1], look.at[2]) then OUT[oi].look = look end
+      end
       for ci = math.floor(x0 / CELL), math.floor(x1 / CELL) do
         for cj = math.floor(z0 / CELL), math.floor(z1 / CELL) do
           local k = cell_key(ci, cj)
@@ -3626,6 +3631,46 @@ build = function(map, kit)
     end
   end
 
+  -- Loggias (map.outline_looks, balconies = "loggias"): balconies set into the
+  -- wall all round, glazed, behind white bar railings, two bays of every
+  -- three (Tyyssija, Ylioppilaskylä, as photographed from Pispalantie).
+  -- Not over a passage's door.
+  local function loggias(add, mx, mz, fx, fz, nx, nz, len, base, h, o)
+    if quality.tier() == 1 then return end
+    local nb = math.max(1, math.floor(len / 2.7 + 0.5))
+    local bay = len / nb
+    local yaw = math.atan(fx, fz)
+    local floors = math.floor(h / kit.FLOOR + 0.5)
+    local GLAZE, WHITE = {0.62, 0.7, 0.74}, {0.96, 0.96, 0.95}
+    local ds = o.doors or {}
+    for k = 0, nb - 1 do
+      if k % 3 ~= 2 then
+        local u = (k + 0.5) * bay - len / 2
+        local bx, bz = mx + fx * u + nx * 0.07, mz + fz * u + nz * 0.07
+        local over_door = false
+        for d = 1, #ds, 4 do
+          if U.dist2d(bx, bz, ds[d], ds[d + 1]) < ds[d + 2] / 2 + bay then over_door = true end
+        end
+        local w = bay * 0.86
+        for f = over_door and 1 or 0, floors - 1 do
+          local y = base + f * kit.FLOOR
+          -- the glazing, floor to ceiling, and the railing in front of it:
+          -- a top rail, a bottom rail, and bars between
+          add(bx, bz, {mesh = "cube", pos = {bx, y + 1.55, bz}, yaw = yaw, size = {0.04, 2.5, w}, color = GLAZE, abs = true})
+          local rx, rz = bx + nx * 0.06, bz + nz * 0.06
+          for _, ry in ipairs{0.15, 1.05} do
+            add(bx, bz, {mesh = "cube", pos = {rx, y + ry, rz}, yaw = yaw, size = {0.06, 0.07, w}, color = WHITE, abs = true})
+          end
+          for b = 1, math.floor(w / 0.4) do
+            local bu = -w / 2 + b * w / (math.floor(w / 0.4) + 1)
+            add(bx, bz, {mesh = "cube", pos = {rx + fx * bu, y + 0.6, rz + fz * bu}, yaw = yaw, size = {0.04, 0.9, 0.04},
+                         color = WHITE, abs = true})
+          end
+        end
+      end
+    end
+  end
+
   -- Is (x, z), just outside one of o's walls, inside another building
   -- whose roof is no more than a metre below o's (a wall the two share)?
   local function party_wall(o, x, z)
@@ -3673,7 +3718,7 @@ build = function(map, kit)
             local mx, mz, yaw = (ax + bx) / 2, (az + bz) / 2, math.atan(bx - ax, bz - az)
             local rx, rz = math.cos(yaw), -math.sin(yaw)
             local g = GROUND and math.min(GROUND(ax, az), GROUND(bx, bz)) or base
-            local LINING = {0.32, 0.31, 0.3}
+            local LINING = o.look and o.look.passage or {0.32, 0.31, 0.3}
             add(mx, mz, {mesh = "cube", pos = {mx, g + ph + 0.1, mz}, yaw = yaw, size = {w + 0.4, 0.2, len}, color = LINING, abs = true})
             for _, side in ipairs{-1, 1} do
               add(mx, mz, {mesh = "cube", pos = {mx + rx * side * (w / 2 + 0.1), g + ph / 2, mz + rz * side * (w / 2 + 0.1)}, yaw = yaw,
@@ -3740,7 +3785,12 @@ build = function(map, kit)
           end
           -- (Homes only: flats, and flats over shops; not a school or a police
           -- station of the flats' era.)
-          if facade == FLATS_F and (o.kind == "flats" or o.kind == "shop") and len > 6 and h >= 3 * kit.FLOOR
+          if o.look and o.look.balconies == "loggias" then
+            if len > 6 and not party_wall(o, mx + nx * 0.5, mz + nz * 0.5) then
+              o.balconies = true
+              loggias(add, mx, mz, dx / len, dz / len, nx, nz, len, base, h, o)
+            end
+          elseif facade == FLATS_F and (o.kind == "flats" or o.kind == "shop") and len > 6 and h >= 3 * kit.FLOOR
              and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
             o.balconies = true
             balconies(add, mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
