@@ -320,6 +320,8 @@ function P.build()
   -- around its middle, the bus rode a metre above the road.
   for _, part in ipairs(bus_parts) do part.pos[2] = part.pos[2] - 1.075 end
   engine.mesh("bus", bus_parts)
+  -- (A line's own bus, its number and destination on the boards: lib/buslines.)
+  P.BUS_PARTS, P.BUS_BOARD = bus_parts, 6
 
   -- The Föri: Turku's famous historic city cable ferry (bright orange hull)
   local fori_orange, fori_deck, fori_barrier = {0.96, 0.45, 0.05}, {0.35, 0.35, 0.38}, {0.9, 0.88, 0.15}
