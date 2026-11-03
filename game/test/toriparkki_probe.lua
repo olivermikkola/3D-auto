@@ -41,6 +41,7 @@ local function route(pts)
 end
 
 local step, t, car, worst, hurt = 0, 0, nil, 0, false
+local taken -- a parked car down here, got into (made a car like any other)
 local cop_down, closest, busted = false, math.huge, false
 local mid = 37.45
 engine.on("damaged", function(id) if id == car then hurt = true end end)
@@ -57,6 +58,8 @@ engine.on("tick", function(dt)
   if step == 0 then
     check(Lh.built and Tp.portal ~= nil, "Toriparkki is built")
     check(Tp.ys and Tp.ys > 4 and Tp.ys < 14, string.format("its ramp comes up to the street at %.1f m", Tp.ys or 0))
+    check(#Tp.cars > 30 and engine.tag(Tp.cars[1]) == "parked", string.format("%d cars parked, standing still till taken", #Tp.cars))
+    taken = require("systems.parking").release(Tp.cars[1])
     -- A car in Louhi's hall, by its east end, facing the way through.
     local sx, sz = Lh.hall_xz(80, 6.5)
     local ex, ez = Lh.hall_xz(81, 6.5)
@@ -81,6 +84,9 @@ engine.on("tick", function(dt)
       check(math.abs(y - 0.75 - U.ground(x, z)) < 1.2, string.format("on the street (y %.1f, it at %.1f)", y, U.ground(x, z)))
       check(worst < 0.8, string.format("on the floor all the way down there (worst %.2f m off)", worst))
       check(not hurt, "not a scratch")
+      local tx, ty, tz = engine.pos(taken)
+      check(engine.layer(taken) == 1 and math.abs(ty - 0.75 - Lh.area_floor(tx, tz, 0)) < 0.3,
+            string.format("a parked one taken is a car down here, on the floor (y %.2f)", ty))
       -- Back in: turn round and down.
       engine.set_vel(car, 0, 0, 0)
       local px, pz = Lh.hall_xz(224, mid)

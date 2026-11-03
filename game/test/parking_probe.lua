@@ -23,7 +23,7 @@ local function wait(pred, timeout, what)
     coroutine.yield()
   end
 end
-local function count() local n = 0 for _ in pairs(P.list) do n = n + 1 end return n end
+local function count(l) local n = 0 for _ in pairs(l or P.list) do n = n + 1 end return n end
 
 local function script()
   local map = city.map().id or "?"
@@ -31,7 +31,7 @@ local function script()
   local n = count()
   print(string.format("PARKING_PROBE %s: %d parked", map, n))
   check(n > 150, "cars by the kerb")
-  check(#engine.find("parked") == n, "each one there")
+  check(#engine.find("parked") == n + count(P.under), "each one there (and those underground, systems/toriparkki)")
 
   -- Clear of the lanes: every car's middle at least a car's width and a
   -- little from the middle of the nearest lane on its side of its street.
@@ -106,7 +106,7 @@ local function script()
   engine.despawn(ram)
 
   settings.set("quality", 1)
-  check(count() == 0 and #engine.find("parked") == 0, "none on low quality")
+  check(count() == 0 and #engine.find("parked") == count(P.under), "none by the kerb on low quality")
   settings.set("quality", 3)
   wait(function() return P.pending == false and count() > n end, 3, "more on high")
   print(string.format("PARKING_PROBE %s: %d on high", map, count()))

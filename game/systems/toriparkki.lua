@@ -246,8 +246,10 @@ function M.build(Lh)
     lamp(a, mid, f + H - 0.3)
   end
 
-  -- Parked cars in a tenth of the bays, the same ones every time.
-  local vehicle = require "lib.vehicle"
+  -- Parked cars in a tenth of the bays, the same ones every time. Static
+  -- until you get in one or shove it (systems/parking): dozens of resting
+  -- car bodies slowed the whole game down by a sixth.
+  local parking = require "systems.parking"
   local s = 11
   M.cars = {}
   local bx, bz = Lh.hall_xz(0, 1)
@@ -257,10 +259,7 @@ function M.build(Lh)
     s = (s * 1103515245 + 12345) % 2147483648
     if s % 10 == 0 then
       local x, z = Lh.hall_xz(b.along, b.across)
-      local id = vehicle.spawn(x, z, math.atan(bx * b.nose, bz * b.nose), 1 + s % 8, nil, nil, Y)
-      engine.set_layer(id, Lh.LAYER)
-      M.cars[#M.cars + 1] = id
-      Lh.took[id] = true
+      M.cars[#M.cars + 1] = parking.park_at(x, Y, z, math.atan(bx * b.nose, bz * b.nose), 1 + s % 8, Lh.LAYER)
     end
   end
   M.bays = bays

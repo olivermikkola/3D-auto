@@ -14,7 +14,7 @@ local quality = require "lib.quality"
 local vehicle = require "lib.vehicle"
 local prefabs = require "lib.prefabs"
 
-local P = {list = {}} -- list: id -> {x, z, yaw, mesh}
+local P = {list = {}, under = {}} -- list: id -> {x, z, yaw, mesh}; under: the same, see P.park_at
 
 local SLOT = 6.2          -- kerb length per car (m)
 local FILL = {0, 55, 80}  -- per cent of the slots taken, by quality tier
@@ -136,16 +136,34 @@ end
 
 -- A parked one becomes a car like any other: driven off, or shoved.
 local function release(id)
-  local p = P.list[id]
+  local p = P.list[id] or P.under[id]
   if not p or not engine.exists(id) then return end
   local kind = prefabs.car_kind(p.mesh) or "car"
   local n = tonumber(p.mesh:match("%d+$")) or 1
   local x, _, z = engine.pos(id)
   engine.despawn(id)
-  P.list[id] = nil
-  return vehicle.spawn(x, z, p.yaw, n, kind ~= "car" and kind or nil)
+  P.list[id], P.under[id] = nil, nil
+  local car = vehicle.spawn(x, z, p.yaw, n, kind ~= "car" and kind or nil, nil, p.y)
+  if p.layer then
+    engine.set_layer(car, p.layer)
+    local under = package.loaded["systems.louhi"]
+    if under then under.took[car] = true end
+  end
+  return car
 end
 P.release = release
+
+-- A car parked where the game builds its own bays (systems/toriparkki,
+-- underground: floor height y, in that layer), static the same way. Not
+-- in P.list (the kerb's): kept when the quality changes.
+function P.park_at(x, y, z, yaw, n, layer)
+  local k = prefabs.CAR_KINDS.car
+  local mesh = "car" .. n
+  local id = engine.spawn{mesh = mesh, pos = {x, y + k.lift, z}, yaw = yaw, size = k.size, body = "static", tag = "parked",
+                          breaks_at = BREAKS_AT, layer = layer}
+  P.under[id] = {x = x, z = z, yaw = yaw, mesh = mesh, y = y, layer = layer}
+  return id
+end
 
 -- Clear the kerb round (x, z) for a vehicle the game puts there.
 function P.clear(x, z, r)
@@ -190,8 +208,9 @@ end
 engine.on("contact", function(a, b, _, broke)
   if not broke then return end
   local car, hit = a, b
-  if not P.list[car] then car, hit = b, a end
-  if not P.list[car] or not engine.exists(hit) then return end
+  local function ours(id) return P.list[id] or P.under[id] end
+  if not ours(car) then car, hit = b, a end
+  if not ours(car) or not engine.exists(hit) then return end
   local vx, vy, vz = engine.vel(hit)
   local id = release(car)
   if id then
