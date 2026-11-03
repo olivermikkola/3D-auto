@@ -291,7 +291,7 @@ function M.build(Lh)
     local x, z = Lh.hall_xz(a, c)
     solid[#solid + 1] = {pos = {x, cy, z}, yaw = math.atan(Lh.HALL.a[1], Lh.HALL.a[2]), size = {ww, h, l}}
   end
-  s_box((RAMP.a0 + MOUTH - 6) / 2, mid, ys + 1.5, MOUTH - 6 - RAMP.a0, w + 2, 5)
+  s_box((RAMP.a0 + MOUTH - 6) / 2, mid, ys + 1.5, MOUTH - 6 - RAMP.a0, w, 5) -- (as wide as the ramp under it, no more)
   for _, c in ipairs{RAMP.c0 - 0.5, RAMP.c1 + 0.5} do s_box(MOUTH - 3, c, ys + 1.8, 6.5, 1, 3.6) end
   local px, pz = Lh.hall_xz(MOUTH, mid)
   local tp = {parts = t.parts, solids = {}}
