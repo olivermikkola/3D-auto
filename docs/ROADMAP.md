@@ -200,9 +200,10 @@ A building mapped with courtyards (a multipolygon's inner rings over 40 m²) has
 `tools/osm_import.py` cuts each into its outline as a keyhole (round the outside, a slit in,
 round the yard the other way, back out), so its roof has the hole and its boxes leave the yard
 clear. Ylioppilaskylä's Tyyssija (the zigzag by Ikituuri) and Aitiopaikka (the oval) were
-solid blocks. Not yet: the passages through to them (`tunnel=building_passage`, mapped), so
-the yards are seen but can't be walked into; Aitiopaikka's lower block inside its yard isn't
-in OpenStreetMap.
+solid blocks. Passages through to them (`tunnel=building_passage`) are doorways in the walls
+(`mesh::prism_doors`), a dark lining door to door, and the building's boxes split either side,
+for buildings drawn as their outline (152 in Turku); `PASSAGE_TEST=1` walks Tyyssija's and
+Aitiopaikka's. Aitiopaikka's lower block inside its yard isn't in OpenStreetMap.
 
 ### Layers, for underground places (November 2026)
 

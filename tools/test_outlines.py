@@ -30,7 +30,7 @@ class OutlineTests(unittest.TestCase):
     def test_an_l_is_an_outline(self):
         out = osm_import.outlines_of([building({}, *L)], P, inside)
         self.assertEqual(len(out), 1)
-        h, kind, wall, pts, roof, year, span, rise = out[0]
+        h, kind, wall, pts, roof, year, span, rise, doors, ways = out[0]
         self.assertEqual((kind, wall, roof, year, span), ("flats", None, None, None, False))
         self.assertEqual(len(pts), 6)
         self.assertAlmostEqual(osm_import.area(pts), 40 * 12 + 12 * 28, delta=5)
@@ -73,6 +73,52 @@ class OutlineTests(unittest.TestCase):
         for b in ("house", "shed", "church"):
             with self.subTest(building=b):
                 self.assertEqual(osm_import.outlines_of([building({"building": b}, *L)], P, inside), [])
+
+
+def ring(*xz):
+    return [{"lat": 60.45 - z * M, "lon": 22.27 + x / P.kx} for x, z in list(xz) + [xz[0]]]
+
+
+# A 60 x 60 block round a 30 x 30 yard (as Tyyssija and Aitiopaikka are mapped:
+# a multipolygon, the yard its inner ring), and a passage from the street
+# (z < 0) through its south side into the yard.
+YARD_BLOCK = {"type": "relation", "tags": {"building": "apartments"},
+              "members": [{"role": "outer", "geometry": ring((0, 0), (60, 0), (60, 60), (0, 60))},
+                          {"role": "inner", "geometry": ring((15, 15), (45, 15), (45, 45), (15, 45))}]}
+PASSAGE = {"type": "way", "tags": {"highway": "footway", "tunnel": "building_passage"},
+           "geometry": [{"lat": 60.45 - z * M, "lon": 22.27 + x / P.kx} for x, z in ((30, -2), (30, 20))]}
+
+
+class YardTests(unittest.TestCase):
+    def test_a_yard_is_cut_out(self):
+        (poly,) = osm_import.with_yards(YARD_BLOCK, P)
+        self.assertAlmostEqual(osm_import.area(poly), 60 * 60 - 30 * 30, delta=5)
+        self.assertFalse(osm_import.inside_poly(poly, 30, 30))  # the yard
+        self.assertTrue(osm_import.inside_poly(poly, 7, 30))    # the block
+        # Its boxes leave the yard clear.
+        for x, z, w, d, ang in osm_import.boxes_of(poly):
+            self.assertFalse(abs(x - 30) + w / 2 < 15 and abs(z - 30) + d / 2 < 15, (x, z, w, d))
+
+    def test_a_small_inner_ring_stays_roofed(self):
+        well = dict(YARD_BLOCK, members=[YARD_BLOCK["members"][0], {"role": "inner", "geometry": ring((28, 28), (32, 28), (32, 32), (28, 32))}])
+        (poly,) = osm_import.with_yards(well, P)
+        self.assertTrue(osm_import.inside_poly(poly, 30, 30))
+
+    def test_a_passage_makes_a_door_each_side_and_a_way_through(self):
+        (poly,) = osm_import.with_yards(YARD_BLOCK, P)
+        passages = osm_import.passages_of([PASSAGE], P)
+        doors, ways = osm_import.doors_of(poly, passages)
+        self.assertEqual(sorted(round(z) for _, z, _, _ in doors), [0, 15])
+        self.assertEqual(len(ways), 1)
+        x0, z0, x1, z1, w, h = ways[0]
+        self.assertEqual((round(z0), round(z1), w, h), (0, 15, 3.0, 3.0))
+
+    def test_boxes_leave_the_passage_clear(self):
+        passages = osm_import.passages_of([PASSAGE], P)
+        cut = osm_import.cut_passages([(30, 7.5, 60, 15, 0)], passages)  # the south side, one box
+        self.assertEqual(len(cut), 2)
+        for x, z, w, d, ang in cut:
+            self.assertGreater(abs(x - 30) - w / 2, 1.4)  # 1.5 m either side of the way stays open
 
 
 if __name__ == "__main__":

@@ -176,6 +176,7 @@ if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
+if os.getenv("PASSAGE_TEST") then require "test.passage_probe" end
 if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
 if os.getenv("LOUHI_TEST") then require "test.louhi_probe" end
 if os.getenv("LAYERS_TEST") then require "test.layers_probe" end

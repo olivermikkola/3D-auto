@@ -350,7 +350,16 @@ pub fn ribbon_sloped(pts: &[Vec3], width: &dyn Fn(usize) -> f32, drop: &dyn Fn(u
 /// either way round, not closed) from `bottom` to `top`, and a flat roof cut
 /// into triangles by ear clipping. No floor unless `floor` (for a building
 /// up on a deck, seen from the road under it). Faces point out, flat shaded.
+#[cfg(test)]
 pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bool) -> Mesh {
+    prism_doors(outline, bottom, top, col, floor, &[])
+}
+
+/// A prism with doorways: each door (x, z, width, height) on a wall (its
+/// point within half a metre of the wall's line) leaves a gap that wide,
+/// from the bottom up to its height, in that wall (a passage through to a
+/// courtyard).
+pub fn prism_doors(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bool, doors: &[[f32; 4]]) -> Mesh {
     let mut m = Mesh::default();
     let pts = clockwise(outline);
     if pts.len() < 3 {
@@ -359,7 +368,36 @@ pub fn prism(outline: &[(f32, f32)], bottom: f32, top: f32, col: Vec3, floor: bo
     let at = |p: (f32, f32), y: f32| v3(p.0, y, p.1);
     for i in 0..pts.len() {
         let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
-        m.quad(at(a, bottom), at(b, bottom), at(b, top), at(a, top), col);
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dz * dz).sqrt();
+        // The gaps along this wall, as (from, to, height) metres along it.
+        let mut gaps: Vec<(f32, f32, f32)> = Vec::new();
+        if len > 1e-3 {
+            for d in doors {
+                let (px, pz) = (d[0] - a.0, d[1] - a.1);
+                let t = (px * dx + pz * dz) / len;
+                let off = (px * dz - pz * dx).abs() / len;
+                if off < 0.5 && t > 0.0 && t < len {
+                    gaps.push(((t - d[2] / 2.0).max(0.0), (t + d[2] / 2.0).min(len), d[3].min(top - bottom)));
+                }
+            }
+        }
+        gaps.sort_by(|p, q| p.0.total_cmp(&q.0));
+        let along = |t: f32| (a.0 + dx * t / len.max(1e-6), a.1 + dz * t / len.max(1e-6));
+        let mut from = 0.0;
+        for (g0, g1, gh) in gaps {
+            if g0 > from {
+                m.quad(at(along(from), bottom), at(along(g0), bottom), at(along(g0), top), at(along(from), top), col);
+            }
+            // Over the doorway.
+            m.quad(at(along(g0), bottom + gh), at(along(g1), bottom + gh), at(along(g1), top), at(along(g0), top), col);
+            from = from.max(g1);
+        }
+        if from == 0.0 {
+            m.quad(at(a, bottom), at(b, bottom), at(b, top), at(a, top), col);
+        } else if from < len {
+            m.quad(at(along(from), bottom), at(b, bottom), at(b, top), at(along(from), top), col);
+        }
     }
     for [a, b, c] in ear_clip(&pts) {
         m.tri(at(pts[a], top), at(pts[b], top), at(pts[c], top), col);
@@ -972,6 +1010,11 @@ mod tests {
     fn prism_skips_repeated_and_closing_points() {
         let sq = [(0.0, 0.0), (0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)];
         assert_eq!(prism(&sq, 0.0, 3.0, Vec3::ONE, false).tri_count(), 4 * 2 + 2);
+        // A door in one wall: that wall is three pieces (left, over, right).
+        let d = prism_doors(&sq, 0.0, 3.0, Vec3::ONE, false, &[[0.5, 0.0, 0.3, 2.0]]);
+        assert_eq!(d.tri_count(), 6 * 2 + 2);
+        // Off every wall: no gap.
+        assert_eq!(prism_doors(&sq, 0.0, 3.0, Vec3::ONE, false, &[[0.5, 0.5, 0.3, 2.0]]).tri_count(), 4 * 2 + 2);
         assert_eq!(prism(&[(0.0, 0.0), (1.0, 0.0)], 0.0, 1.0, Vec3::ONE, false).tri_count(), 0);
         // With a floor: the roof's two triangles again underneath.
         let f = prism(&sq, 0.0, 3.0, Vec3::ONE, true);
