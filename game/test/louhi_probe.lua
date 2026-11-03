@@ -130,9 +130,10 @@ engine.on("tick", function(dt)
   elseif step == 4 then
     -- Wait for a car of them to come up behind before going in.
     local near = false
+    local mx, _, mz = engine.pos(car)
     for id in pairs(police.cops) do
       local x, _, z = engine.pos(id)
-      if x and U.dist2d(x, z, engine.pos(car)) < 90 then near = true end
+      if x and U.dist2d(x, z, mx, mz) < 90 then near = true end
     end
     if not (near or t > 40) then
       engine.set_vel(car, 0, 0, 0)
