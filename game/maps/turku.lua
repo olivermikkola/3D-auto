@@ -54,6 +54,12 @@ return {
   pools = osm.pools,
   footbridges = filtered_footbridges,
   stairs = osm.stairs,
+  -- Outlined buildings with a look of their own, from photos (a point
+  -- inside each). Tyyssija, Inspehtorinkatu 3 (Ylioppilaskylä): its
+  -- passages painted yellow, its balconies glazed loggias with white bars.
+  outline_looks = {
+    {at = {930, -1040}, passage = {0.93, 0.72, 0.2}, balconies = "loggias"},
+  },
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,
   quays = osm.quays, -- the Aurajoki's stone quays
