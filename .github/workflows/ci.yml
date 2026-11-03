@@ -13,7 +13,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Build, lint and play the game headlessly on every platform we ship.
+  # The test files, split four ways on Linux machines side by side (a free
+  # public repo gets up to 20 at once): all of them on every pull request in
+  # about a quarter of the time (they were 15-20 minutes on one machine).
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    name: tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/run_tests.py --skip "test_*_sweep.py" --shard ${{ matrix.shard }}/4
+
+  # Build, lint and play the game headlessly on every platform we ship. On a
+  # pull request Windows and macOS build, lint, run the Rust tests and the
+  # headless smoke test (the test files above are the same game on Linux;
+  # macOS machines are often queued for many minutes); on main they run
+  # every test file too, so a platform's own trouble still shows within the
+  # hour.
   test:
     strategy:
       fail-fast: false
@@ -37,9 +62,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Side by side, one process per test file (25-33 min one at a time).
-      # The map sweeps run in their own job below.
-      - run: python tools/run_tests.py --skip "test_*_sweep.py"
+      # Side by side, one process per test file. (Linux: the shards above.)
+      - if: github.event_name != 'pull_request' && runner.os != 'Linux'
+        run: python tools/run_tests.py --skip "test_*_sweep.py"
       # Render Turku's landmarks and check the pixels: a landmark that is
       # black, buried or somewhere else fails here, before it is merged.
       - name: Landmark render checks (software GL)
@@ -81,10 +106,15 @@ jobs:
           path: headless-results
           if-no-files-found: ignore
 
-  # The sweeps drive every map's roads (12-14 min each): map data and the
-  # game's own physics, the same on every OS, so Linux only and beside the
-  # rest instead of after it.
+  # The sweeps drive every map's roads: map data and the game's own
+  # physics, the same on every OS, so Linux only, one map per machine
+  # (both maps on one took 12-21 minutes).
   sweeps:
+    strategy:
+      fail-fast: false
+      matrix:
+        map: [turku, raisio]
+    name: sweeps (${{ matrix.map }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,3 +125,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: python tools/run_tests.py --only "test_*_sweep.py"
+        env:
+          SWEEP_MAPS: ${{ matrix.map }}

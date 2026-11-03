@@ -29,6 +29,8 @@ TROUBLE_MAX = {"turku": 6, "raisio": 5}
 class PedSweepTests(unittest.TestCase):
     def test_maps(self):
         for name, most in TROUBLE_MAX.items():
+            if os.environ.get("SWEEP_MAPS") and name not in os.environ["SWEEP_MAPS"].split(","):
+                continue  # (CI: one map per job)
             with self.subTest(map=name):
                 env = dict(os.environ, MAP=name, SEED="1337", PED_SWEEP="1", PED_SWEEP_EVERY="4")
                 with tempfile.TemporaryDirectory() as d:
