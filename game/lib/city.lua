@@ -378,7 +378,14 @@ function C.network() return NET ~= nil end
 function C.path(a, b)
   local g = graph()
   if a == b then return {g.pos[a], g.pos[a]} end
-  if NET then return roadnet.path(a, b) end
+  if NET then
+    local fwd = roadnet.path(a, b)
+    if fwd then return fwd end
+    -- Against a one-way street (a cop on a chase): its way, backwards.
+    local back, out = roadnet.path(b, a), {}
+    for i = #back, 1, -1 do out[#out + 1] = back[i] end
+    return out
+  end
   return {g.pos[a], g.pos[b]}
 end
 
@@ -412,16 +419,19 @@ end
 -- The first junction on a shortest route from `from` to `to` (breadth
 -- first, so a route may start out away from the goal, round water or a
 -- park). `from` itself if it's already there or `to` can't be reached.
-function C.step_toward(from, to)
+-- `any_way`: up one-way streets the wrong way too (a cop on a chase).
+function C.step_toward(from, to, any_way)
   local queue, first, i = {from}, {[from] = false}, 1
   while i <= #queue do
     local n = queue[i]
     i = i + 1
     if n == to then return first[n] or from end
-    for _, nb in ipairs(C.links(n)) do
-      if first[nb] == nil then
-        first[nb] = first[n] or nb
-        queue[#queue + 1] = nb
+    for _, links in ipairs{C.links(n), any_way and C.links_in(n) or {}} do
+      for _, nb in ipairs(links) do
+        if first[nb] == nil then
+          first[nb] = first[n] or nb
+          queue[#queue + 1] = nb
+        end
       end
     end
   end

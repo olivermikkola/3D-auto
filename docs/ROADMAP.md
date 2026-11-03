@@ -194,6 +194,15 @@ helicopter can't see you and they can't bust you. Gone in unseen, they lose you 
 left their search area (`wanted.escape_time`, 3-25 s); if a cop saw you go in (in the last
 1.5 s), they wait you out (`wanted.give_up_time`, 30-70 s). Move to come back out by the door.
 `HIDEOUT_TEST=1` (`tools/test_hideouts.py`). Other hideouts: add a {name, from, to} to SPOTS.
+### Courtyards (November 2026)
+
+A building mapped with courtyards (a multipolygon's inner rings over 40 m²) has them open:
+`tools/osm_import.py` cuts each into its outline as a keyhole (round the outside, a slit in,
+round the yard the other way, back out), so its roof has the hole and its boxes leave the yard
+clear. Ylioppilaskylä's Tyyssija (the zigzag by Ikituuri) and Aitiopaikka (the oval) were
+solid blocks. Not yet: the passages through to them (`tunnel=building_passage`, mapped), so
+the yards are seen but can't be walked into; Aitiopaikka's lower block inside its yard isn't
+in OpenStreetMap.
 
 ## Next (agreed with Oliver, 27 October 2026)
 
