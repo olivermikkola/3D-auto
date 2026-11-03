@@ -84,12 +84,17 @@ function M.inside(x, z, margin)
   local dx, dz = x - H.c[1], z - H.c[2]
   local along = dx * H.a[1] + dz * H.a[2]
   local across = dx * T.bx + dz * T.bz
-  return math.abs(along) < H.len / 2 + margin and math.abs(across) < H.wid / 2 + margin
+  if math.abs(along) < H.len / 2 + margin and math.abs(across) < H.wid / 2 + margin then return true end
+  local S = M.STAIRS
+  return S ~= nil and along > S.door - margin and along < S.foot + S.bottom + margin
+         and math.abs(across - S.mid) < S.w / 2 + 0.5 + margin
 end
 
 -- The floor's height at (x, z) down here, or nil outside.
 function M.ground(x, z)
   if not M.inside(x, z, 1) then return nil end
+  local sy = M.stairs_floor(x, z)
+  if sy then return sy end
   local u, v = local_uv(x, z)
   if math.abs(v) < M.W / 2 + 1 and u < T.u_end then return M.floor_at(u) end
   return M.HALL_Y
@@ -153,7 +158,14 @@ local function build_hall()
   local L2, W2 = H.len / 2, H.wid / 2
   box(0, 0, y - 0.5, H.len + 1, H.wid + 1, 1, ASPHALT, true).floor = true   -- floor
   box(0, 0, y + M.H + 0.25, H.len + 1, H.wid + 1, 0.5, CONC2, true)          -- ceiling
-  box(0, W2 + 0.25, y + M.H / 2, H.len + 1, 0.5, M.H, CONC, true)            -- the far wall
+  -- The far wall, with the door to the stairs up to Kauppatori in it.
+  do
+    local S = M.STAIRS
+    local d0, d1 = S.foot, S.foot + S.bottom
+    box((-L2 - 0.5 + d0) / 2, W2 + 0.25, y + M.H / 2, d0 + L2 + 0.5, 0.5, M.H, CONC, true)
+    box((d1 + L2 + 0.5) / 2, W2 + 0.25, y + M.H / 2, L2 + 0.5 - d1, 0.5, M.H, CONC, true)
+    box((d0 + d1) / 2, W2 + 0.25, y + 2.6 + (M.H - 2.6) / 2, d1 - d0, 0.5, M.H - 2.6, CONC, true)
+  end
   for _, s in ipairs{-1, 1} do box(s * (L2 + 0.25), 0, y + M.H / 2, 0.5, H.wid + 1, M.H, CONC2, true) end -- the ends
   -- The near wall, with the tunnel's mouth in it (along it, where the
   -- tunnel's middle line meets it).
@@ -177,7 +189,9 @@ local function build_hall()
   local function open(along, across)
     if math.abs(along) > L2 - 10 then return true end
     if math.abs(along - M.mouth_along) < M.W / 2 + 2 and across < W2 / 2 then return true end -- the tunnel's way in
-    return math.abs(along - M.mouth_along) < 6 and math.abs(across) < W2 / 2                   -- the way across
+    if math.abs(along - M.mouth_along) < 6 and math.abs(across) < W2 / 2 then return true end -- the way across
+    local S = M.STAIRS                                                                          -- the stairs' door
+    return across > W2 / 2 and along > S.foot - 3 and along < S.foot + S.bottom + 3
   end
   for along = -L2 + 4, L2 - 4, 2.5 do
     for _, r in ipairs(rows) do
@@ -196,6 +210,191 @@ local function build_hall()
   end
   M.hall_at, M.hall_yaw = hall_at, yaw
   return parts, solids, bays
+end
+
+-- ---- on foot, up to Kauppatori (docs/UNDERGROUND.md, piece 3) ----------------
+-- Louhi's stair house on Kauppatori's west end (OSM way 1034479364, its
+-- door on the west side, node on way 1193257272) stands just past the
+-- hall's far wall. Down here: from the hall's far wall a door, then up a
+-- flight of stairs alongside the wall to a landing at street height behind
+-- that door. Through it (on foot) you're up on the square, and back.
+-- All of it in the hall's frame: along its long axis, across it (+ away
+-- from the tunnel).
+local function hall_xz(along, across)
+  local H = M.HALL
+  return H.c[1] + H.a[1] * along + T.bx * across, H.c[2] + H.a[2] * along + T.bz * across
+end
+local function hall_ab(x, z)
+  local H = M.HALL
+  local dx, dz = x - H.c[1], z - H.c[2]
+  return dx * H.a[1] + dz * H.a[2], dx * T.bx + dz * T.bz
+end
+M.hall_xz, M.hall_ab = hall_xz, hall_ab
+
+local function stairs_frame()
+  -- The door (OSM): in the stair house's west wall, 19.3 m along, 20.1 across.
+  local door, dc = 19.27, 20.1
+  local ys = U.ground(hall_xz(door - 0.8, dc))
+  local w = 2.9
+  local mid = M.HALL.wid / 2 + 0.5 + w / 2 -- (the hall's far wall is the stairs' inner one)
+  local rise = ys - M.HALL_Y
+  local n = math.max(2, math.ceil(rise / 0.17))
+  local top = door + 2.3                  -- the landing behind the door
+  local foot = top + n * 0.29             -- the flight, 0.29 m treads
+  M.STAIRS = {door = door, dc = dc, ys = ys, w = w, mid = mid, n = n, top = top, foot = foot, bottom = 3}
+  return M.STAIRS
+end
+
+-- The stairs' floor at (x, z), or nil off them.
+function M.stairs_floor(x, z)
+  local S = M.STAIRS
+  if not S then return nil end
+  local along, across = hall_ab(x, z)
+  if math.abs(across - S.mid) > S.w / 2 + 0.3 or along < S.door - 0.1 or along > S.foot + S.bottom then return nil end
+  if along <= S.top then return S.ys end
+  if along >= S.foot then return M.HALL_Y end
+  return S.ys + (M.HALL_Y - S.ys) * (along - S.top) / (S.foot - S.top)
+end
+
+local function build_stairs()
+  local S = M.STAIRS
+  local H = M.HALL
+  local yaw = math.atan(H.a[1], H.a[2])
+  local parts, solids = {}, {}
+  local function box(along, across, cy, l, w, h, color, solid, emissive, pitch)
+    local x, z = hall_xz(along, across)
+    local p = {mesh = "cube", pos = {x, cy, z}, yaw = yaw, pitch = pitch, size = {w, h, l}, color = color, emissive = emissive}
+    parts[#parts + 1] = p
+    if solid then solids[#solids + 1] = p end
+  end
+  -- A slab from (a0, y0) to (a1, y1) along, its top on that line.
+  local function slab(a0, a1, y0, y1, across, w, h, color, solid, emissive)
+    local da, dy = a1 - a0, y1 - y0
+    local len = math.sqrt(da * da + dy * dy)
+    local pitch = math.atan(dy, da)
+    local cy = (y0 + y1) / 2 - h / 2 * math.cos(pitch)
+    box((a0 + a1) / 2, across, cy, len, w, h, color, solid, emissive, -pitch)
+  end
+  local ys, y, mid, w, top, foot, far = S.ys, M.HALL_Y, S.mid, S.w, S.top, S.foot, S.foot + S.bottom
+  local TILE, STEP = {0.62, 0.6, 0.57}, {0.5, 0.49, 0.47}
+  local CEIL = 3.0
+  -- the landing, the bottom, and the flight between: steps to see, a ramp
+  -- along their noses underfoot (as the outdoor stairs, roadnet)
+  slab(S.door - 0.5, top, ys, ys, mid, w + 0.6, 0.6, TILE, true)
+  slab(foot, far + 0.5, y, y, mid, w + 0.6, 0.6, TILE, true)
+  local rise = (ys - y) / S.n
+  for k = 0, S.n - 1 do
+    local t = ys - k * rise
+    box(top + (k + 0.5) * 0.29, mid, t - 0.3, 0.3, w, 0.6, k % 2 == 0 and STEP or TILE)
+  end
+  slab(top, foot, ys, y, mid, w, 0.4, STEP, true)
+  -- walls: the outer one, the inner one above the hall's, the two ends
+  local wall_top = ys + CEIL
+  box((S.door + far) / 2, mid + w / 2 + 0.25, (y + wall_top) / 2, far - S.door + 1, 0.5, wall_top - y + 0.6, CONC2, true)
+  box((S.door + far) / 2, mid - w / 2 - 0.25, (y + M.H + wall_top) / 2, far - S.door + 1, 0.5, wall_top - y - M.H + 0.6, CONC, true)
+  box(S.door - 0.25, mid, (ys + wall_top) / 2, 0.5, w + 1, wall_top - ys + 1.2, CONC, true)
+  box(far + 0.25, mid, (y + y + CEIL) / 2, 0.5, w + 1, CEIL + 0.6, CONC, true)
+  -- the ceiling, following the stairs down, and its lit strip
+  slab(S.door - 0.5, top, ys + CEIL + 0.3, ys + CEIL + 0.3, mid, w + 1, 0.3, CONC2, true)
+  slab(top, foot, ys + CEIL + 0.3, y + CEIL + 0.3, mid, w + 1, 0.3, CONC2, true)
+  slab(foot, far + 0.5, y + CEIL + 0.3, y + CEIL + 0.3, mid, w + 1, 0.3, CONC2, true)
+  slab(S.door, top, ys + CEIL - 0.02, ys + CEIL - 0.02, mid, 0.25, 0.04, STRIP, false, 1)
+  slab(top, foot, ys + CEIL - 0.02, y + CEIL - 0.02, mid, 0.25, 0.04, STRIP, false, 1)
+  -- handrail on the outer wall
+  slab(top, foot, ys + 0.9, y + 0.9, mid + w / 2 - 0.08, 0.06, 0.06, {0.25, 0.26, 0.28})
+  -- the way out: daylight in the door's glass
+  box(S.door + 0.02, S.dc, ys + 1.1, 0.04, 1.4, 2.2, {0.85, 0.88, 0.9}, false, 1)
+  -- in the hall, over the door: the way to the square
+  local sx, sz = hall_xz((foot + far) / 2, H.wid / 2 - 0.05)
+  local sign_yaw = math.atan(-T.bx, -T.bz)
+  box((foot + far) / 2, H.wid / 2 - 0.02, y + 3.1, S.bottom, 0.04, 0.5, {0.1, 0.3, 0.75})
+  parts[#parts + 1] = {text = "KAUPPATORI", pos = {sx - T.bx * 0.03, y + 3.1, sz - T.bz * 0.03}, yaw = sign_yaw, height = 0.32,
+                       depth = 0.02, color = {1, 1, 1}, emissive = 0.4}
+  return parts, solids
+end
+
+-- Up top: the stair house's door, dark glass in a light frame, LOUHI and
+-- the blue P over it.
+local function build_stair_door()
+  local S = M.STAIRS
+  local H = M.HALL
+  local ax, az = H.a[1], H.a[2]
+  local yaw = math.atan(ax, az)
+  local face = math.atan(-ax, -az)
+  local parts = {}
+  local function box(along, across, cy, l, w, h, color, emissive)
+    local x, z = hall_xz(along, across)
+    parts[#parts + 1] = {mesh = "cube", pos = {x, cy, z}, yaw = yaw, size = {w, h, l}, color = color, emissive = emissive}
+  end
+  local d, dc, ys = S.door - 0.04, S.dc, S.ys
+  box(d, dc, ys + 1.15, 0.1, 1.7, 2.45, {0.85, 0.85, 0.82})  -- frame
+  box(d - 0.03, dc, ys + 1.1, 0.06, 1.4, 2.2, {0.1, 0.12, 0.14}) -- glass
+  box(d - 0.03, dc, ys + 2.75, 0.06, 2.6, 0.5, {0.12, 0.13, 0.15})
+  local tx, tz = hall_xz(d - 0.08, dc - 0.35)
+  parts[#parts + 1] = {text = "LOUHI", pos = {tx, ys + 2.75, tz}, yaw = face, height = 0.35, depth = 0.03, color = {0.95, 0.95, 0.92},
+                       emissive = 0.6}
+  box(d - 0.05, dc + 0.95, ys + 2.75, 0.06, 0.42, 0.42, {0.1, 0.3, 0.75})
+  local px, pz = hall_xz(d - 0.09, dc + 0.95)
+  parts[#parts + 1] = {text = "P", pos = {px, ys + 2.75, pz}, yaw = face, height = 0.32, depth = 0.02, color = {1, 1, 1}}
+  local o = {hall_xz(S.door, dc)}
+  for _, p in ipairs(parts) do p.pos = {p.pos[1] - o[1], p.pos[2] - ys, p.pos[3] - o[2]} end
+  engine.mesh("louhi_stair_door", parts)
+  engine.spawn{mesh = "louhi_stair_door", pos = {o[1], ys, o[2]}, tag = "building"}
+end
+
+-- Through the stair house's door on foot: where `id` goes (layer, x, z),
+-- or nil.
+function M.door_crossing(id)
+  local S = M.STAIRS
+  if not S then return nil end
+  local x, y, z = engine.pos(id)
+  local along, across = hall_ab(x, z)
+  local layer = engine.layer(id)
+  if layer == 0 and along > S.door - 0.75 and along < S.door + 0.2 and math.abs(across - S.dc) < 0.9 and math.abs(y - S.ys) < 2.5 then
+    local nx, nz = hall_xz(S.door + 1.0, across)
+    return M.LAYER, nx, nz
+  end
+  if layer == M.LAYER and M.took[id] and along < S.door + 0.6 and math.abs(across - S.mid) < S.w / 2 + 0.3 and y > S.ys - 1.5 then
+    local nx, nz = hall_xz(S.door - 1.1, S.dc)
+    return 0, nx, nz
+  end
+  return nil
+end
+
+-- For police officers on foot (systems/police): where `id` walks instead of
+-- straight at you, or nil. Through the door and down the stairs after you,
+-- or back up.
+local function zone(x, z, layer)
+  if layer == 0 then return "top" end
+  local S = M.STAIRS
+  local along, across = hall_ab(x, z)
+  if along > S.door - 0.5 and math.abs(across - S.mid) < S.w / 2 + 0.3 then return "stairs", along end
+  return "down", along
+end
+function M.walk(id, px, pz)
+  local S = M.STAIRS
+  local you = G.vehicle or G.player
+  if not S or not you then return nil end
+  local x, _, z = engine.pos(id)
+  local mine, along = zone(x, z, engine.layer(id) or 0)
+  local theirs = zone(px, pz, engine.layer(you) or 0)
+  if mine == theirs then return nil end
+  local bottom = S.foot + S.bottom / 2
+  if mine == "top" then
+    local ox, oz = hall_xz(S.door - 1.5, S.dc)
+    if U.dist2d(x, z, ox, oz) > 120 then return nil end
+    if U.dist2d(x, z, ox, oz) > 1.0 then return ox, oz end
+    return hall_xz(S.door + 0.3, S.dc)
+  end
+  if mine == "stairs" then
+    if theirs == "top" then return hall_xz(S.door, S.dc) end
+    if along < S.foot then return hall_xz(bottom, S.mid) end
+    return hall_xz(bottom, M.HALL.wid / 2 - 3)
+  end
+  -- down (the hall), after you up the stairs
+  local hx, hz = hall_xz(bottom, M.HALL.wid / 2 - 1.5)
+  if U.dist2d(x, z, hx, hz) > 1.2 then return hx, hz end
+  return hall_xz(bottom, S.mid)
 end
 
 -- Parts in one mesh at `o`, and their solids as invisible statics, all in layer 1.
@@ -221,11 +420,20 @@ function M.build(map)
   if not map or map.id ~= "turku" or M.built then return end
   M.built = true
   frame()
+  stairs_frame()
   local parts, solids = build_tunnel()
   place("louhi_tunnel", parts, solids, {T.cx, T.floor, T.cz})
   local hp, hs, bays = build_hall()
   place("louhi_hall", hp, hs, {M.HALL.c[1], M.HALL_Y, M.HALL.c[2]})
   M.bays = bays
+  local sp, ss = build_stairs()
+  local ox, oz = hall_xz(M.STAIRS.door, M.STAIRS.mid)
+  place("louhi_stairs", sp, ss, {ox, M.STAIRS.ys, oz})
+  build_stair_door()
+  do
+    local lx, lz = hall_xz((M.STAIRS.top + M.STAIRS.foot) / 2, M.STAIRS.mid)
+    engine.light{pos = {lx, (M.STAIRS.ys + M.HALL_Y) / 2 + 2.6, lz}, color = {1, 0.96, 0.9}, intensity = 1, radius = 12, layer = M.LAYER}
+  end
   -- Lamps: one every 30 m down the tunnel, and over the hall's aisles
   -- (only the nearest 16 are lit at a time).
   for u = 10, T.u_end, 30 do
@@ -287,8 +495,34 @@ engine.on("tick", function()
       end
     end
   end
+  if police then
+    for oid in pairs(police.officers) do
+      local to, nx, nz = M.door_crossing(oid)
+      if to then
+        local _, oy = engine.pos(oid)
+        engine.set_layer(oid, to)
+        engine.set_pos(oid, nx, oy + 0.05, nz)
+        M.took[oid] = to ~= 0 or nil
+      end
+    end
+  end
   local id = G.vehicle or G.player
   if not id or not engine.exists(id) then return end
+  if not G.vehicle then
+    local to, nx, nz = M.door_crossing(id)
+    if to then
+      local _, py = engine.pos(id)
+      engine.set_pos(id, nx, py + 0.05, nz)
+      set_layer(to)
+      engine.emit(to == 0 and "underground_exit" or "underground_enter", id)
+      local wanted = require "lib.wanted"
+      if to ~= 0 and wanted.stars() > 0 then
+        local ex, ez = hall_xz(M.STAIRS.door - 1.5, M.STAIRS.dc)
+        wanted.center = {ex, ez, M.STAIRS.ys}
+      end
+      return
+    end
+  end
   local to = M.crossing(id)
   if to then
     set_layer(to)

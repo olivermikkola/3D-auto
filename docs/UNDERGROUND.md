@@ -67,6 +67,7 @@ Gameplay to decide (Oliver):
    OSM) down to the hall at level -2: 608 places in rows, pillars, parked cars, ramps; out the
    same way. Test: drive in, park, drive out; cops per the decision above.
 3. **On foot up into town**: Louhi's foot exits, stairs up to Kauppatori (-263, -56).
+   Built (November 2026): through the stair house's door, see ROADMAP.
 4. **Hansa's lower floor**: from Louhi's Hansa exit along OSM's level -1 corridors, its shops
    with their names, the lifts, up and out the Aurakatu door. More floors later if it's fun.
 5. **Toriparkki**, joined to Louhi.

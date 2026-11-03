@@ -179,6 +179,7 @@ if os.getenv("KERB_TEST") then require "test.kerb_probe" end
 if os.getenv("PASSAGE_TEST") then require "test.passage_probe" end
 if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
 if os.getenv("LOUHI_TEST") then require "test.louhi_probe" end
+if os.getenv("LOUHI_FOOT_TEST") then require "test.louhi_foot_probe" end
 if os.getenv("LAYERS_TEST") then require "test.layers_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
 if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end
