@@ -252,6 +252,21 @@ Back in the same way. Louhi's doors, floors and ways on foot are now lists (`lou
 it. `HANSA_TEST=1` (`tools/test_hansa.py`): from the hall out onto Aurakatu and back down,
 never through a floor; at two stars an officer on Aurakatu follows you in and down to Louhi.
 
+### Toriparkki, joined to Louhi (November 2026)
+
+Piece 5 of docs/UNDERGROUND.md (`systems/toriparkki.lua`): the car park under Kauppatori's
+east half, where OpenStreetMap has it (way 1207799675): a 120 x 123 m body in eight aisles of
+bays with pillars and parked cars, an arm out to its own ramp (way 1035382220), and up the ramp
+to the street east of the square, TORIPARKKI and a 3,0 m bar over the mouth. From Louhi's
+hall, a way through its east end (the game's, 11 m wide) round into the arm. Louhi's portals,
+zones and the cops' way between them are now lists (`louhi.PORTALS`, `ZONES`, `ORDER`, `LEAVE`,
+`WITHIN`): cops come in through whichever way in is nearer you and drive zone by zone to you.
+Underground, they know you're down there: you can't get outside the search circle by driving
+far from the way in, only wait for them to give up or come up somewhere else. Floors down here
+are `ground`, not `wall`, so driving onto one isn't a crash. `TORIPARKKI_TEST=1`
+(`tools/test_toriparkki.py`): from Louhi's hall through the link, up the ramp into the street
+and back down to the first aisle; at two stars a cop car comes down the ramp to you.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

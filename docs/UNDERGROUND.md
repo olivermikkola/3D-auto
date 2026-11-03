@@ -71,7 +71,8 @@ Gameplay to decide (Oliver):
 4. **Hansa's lower floor**: from Louhi's Hansa exit along OSM's level -1 corridors, its shops
    with their names, the lifts, up and out the Aurakatu door. More floors later if it's fun.
    Built (November 2026), see ROADMAP; the corridors are the game's, the lifts don't go.
-5. **Toriparkki**, joined to Louhi.
+5. **Toriparkki**, joined to Louhi. Built (November 2026), see ROADMAP: one level (OSM has
+   it at -2), the body, arm and ramp where OSM has them; the link to Louhi is the game's.
 
 Piece 1 is the only risky one (engine); 2 is the most fun on its own. Roughly a day each for
 1 and 2, less for 3-5.

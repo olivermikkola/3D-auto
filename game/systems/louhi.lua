@@ -170,7 +170,7 @@ local function build_hall()
   end
   wall(M.GAPS.far, -L2 - 0.5, L2 + 0.5, function(m, l, cy, h) box(m, W2 + 0.25, cy, l, 0.5, h, CONC, true) end)
   wall(M.GAPS.west, -W2 - 0.5, W2 + 0.5, function(m, l, cy, h) box(-L2 - 0.25, m, cy, 0.5, l, h, CONC2, true) end)
-  box(L2 + 0.25, 0, y + M.H / 2, 0.5, H.wid + 1, M.H, CONC2, true)
+  wall(M.GAPS.east, -W2 - 0.5, W2 + 0.5, function(m, l, cy, h) box(L2 + 0.25, m, cy, 0.5, l, h, CONC2, true) end)
   -- The near wall, with the tunnel's mouth in it (along it, where the
   -- tunnel's middle line meets it).
   do
@@ -231,8 +231,12 @@ end
 --   M.ROUTES: ways on foot from the hall to a door, {pts = {{along, across},
 --     ...}, w = their width, door}: the officers' way after you.
 --   M.GAPS: openings in the hall's walls: far = {{a0, a1}, ...} along,
---     west = {{c0, c1}, ...} across.
-M.AREAS, M.DOORS, M.ROUTES, M.GAPS = {}, {}, {}, {far = {}, west = {}}
+--     west, east = {{c0, c1}, ...} across.
+M.PORTALS = {}
+M.AREAS, M.DOORS, M.ROUTES, M.GAPS = {}, {}, {}, {far = {}, west = {}, east = {}}
+--   M.PORTALS: other ways in by car from the street (systems/toriparkki),
+--     {axis, at, out, c, w, ys, order, outside = {along, across}}: the mouth
+--     at `axis` = at facing out the way `out` points, w wide round c.
 
 local function hall_xz(along, across)
   local H = M.HALL
@@ -271,23 +275,24 @@ function M.kit()
   local function put(p, solid)
     k.parts[#k.parts + 1] = p
     if solid then k.solids[#k.solids + 1] = p end
+    return p
   end
   function k.box(along, across, cy, l, w, h, color, solid, emissive)
     local x, z = hall_xz(along, across)
-    put({mesh = "cube", pos = {x, cy, z}, yaw = yaw_a, size = {w, h, l}, color = color, emissive = emissive}, solid)
+    return put({mesh = "cube", pos = {x, cy, z}, yaw = yaw_a, size = {w, h, l}, color = color, emissive = emissive}, solid)
   end
   function k.slab(a0, a1, y0, y1, across, w, h, color, solid, emissive)
     local da, dy = a1 - a0, y1 - y0
     local pitch = math.atan(dy, da)
     local x, z = hall_xz((a0 + a1) / 2, across)
-    put({mesh = "cube", pos = {x, (y0 + y1) / 2 - h / 2 * math.cos(pitch), z}, yaw = yaw_a, pitch = -pitch,
+    return put({mesh = "cube", pos = {x, (y0 + y1) / 2 - h / 2 * math.cos(pitch), z}, yaw = yaw_a, pitch = -pitch,
          size = {w, h, math.sqrt(da * da + dy * dy)}, color = color, emissive = emissive}, solid)
   end
   function k.slab_x(c0, c1, y0, y1, along, l, h, color, solid, emissive)
     local dc, dy = c1 - c0, y1 - y0
     local pitch = math.atan(dy, dc)
     local x, z = hall_xz(along, (c0 + c1) / 2)
-    put({mesh = "cube", pos = {x, (y0 + y1) / 2 - h / 2 * math.cos(pitch), z}, yaw = yaw_c, pitch = -pitch,
+    return put({mesh = "cube", pos = {x, (y0 + y1) / 2 - h / 2 * math.cos(pitch), z}, yaw = yaw_c, pitch = -pitch,
          size = {l, h, math.sqrt(dc * dc + dy * dy)}, color = color, emissive = emissive}, solid)
   end
   local FACE = {["+a"] = {1, 0}, ["-a"] = {-1, 0}, ["+c"] = {0, 1}, ["-c"] = {0, -1}}
@@ -551,6 +556,8 @@ function M.build(map)
   plan_stairs()
   local hansa = require "systems.hansa"
   hansa.plan(M)
+  local tori = require "systems.toriparkki"
+  tori.plan(M)
   local parts, solids = build_tunnel()
   place("louhi_tunnel", parts, solids, {T.cx, T.floor, T.cz})
   local hp, hs, bays = build_hall()
@@ -561,6 +568,7 @@ function M.build(map)
   place("louhi_stairs", sk.parts, sk.solids, {ox, M.STAIRS.ys, oz})
   M.street_door(M.DOORS[1], "LOUHI", true)
   hansa.build(M)
+  tori.build(M)
   do
     local lx, lz = hall_xz((M.STAIRS.top + M.STAIRS.foot) / 2, M.STAIRS.mid)
     engine.light{pos = {lx, (M.STAIRS.ys + M.HALL_Y) / 2 + 2.6, lz}, color = {1, 0.96, 0.9}, intensity = 1, radius = 12, layer = M.LAYER}
@@ -604,12 +612,22 @@ local function set_layer(l)
   engine.view_layer(l)
 end
 
+-- Through a portal by car (or on foot): which layer `id` goes to, and the
+-- portal (nil: Louhi's own), or nil.
 function M.crossing(id)
   local x, y, z = engine.pos(id)
   local u, v = local_uv(x, z)
   local layer = engine.layer(id)
   if layer == 0 and u > M.DOWN_AT and u < 8 and math.abs(v) < M.W / 2 and y < T.floor + 4 then return M.LAYER end
-  if layer == M.LAYER and M.took[id] and (u < M.UP_AT and math.abs(v) < M.W / 2 + 1 or not M.inside(x, z, 6)) then return 0 end
+  if layer == M.LAYER and M.took[id] and u < M.UP_AT and math.abs(v) < M.W / 2 + 1 then return 0 end
+  local along, across = M.hall_ab(x, z)
+  for _, p in ipairs(M.PORTALS) do
+    local o, side
+    if p.axis == "along" then o, side = (along - p.at) * p.out, across - p.c else o, side = (across - p.at) * p.out, along - p.c end
+    if layer == 0 and o < -0.5 and o > -8 and math.abs(side) < p.w / 2 and y < p.ys + 4 then return M.LAYER, p end
+    if layer == M.LAYER and M.took[id] and o > 1.5 and o < 20 and math.abs(side) < p.w / 2 + 1 then return 0, p end
+  end
+  if layer == M.LAYER and M.took[id] and not M.inside(x, z, 6) then return 0 end
   return nil
 end
 
@@ -654,15 +672,20 @@ engine.on("tick", function()
       return
     end
   end
-  local to = M.crossing(id)
+  local to, p = M.crossing(id)
   if to then
     set_layer(to)
     engine.emit(to == 0 and "underground_exit" or "underground_enter", id)
     -- Wanted, they saw where you went: in at the portal.
     local wanted = require "lib.wanted"
     if to ~= 0 and wanted.stars() > 0 then
-      local ex, ez = M.portal()
-      wanted.center = {ex, ez, T.floor}
+      if p then
+        local ex, ez = hall_xz(p.outside[1], p.outside[2])
+        wanted.center = {ex, ez, p.ys}
+      else
+        local ex, ez = at(-20, 0)
+        wanted.center = {ex, ez, T.floor}
+      end
     end
   end
   -- The view goes with you (after a respawn, a menu, a cutscene).
@@ -675,11 +698,42 @@ end)
 -- portal and drive in; down here they keep to the tunnel, then the hall,
 -- toward you; you come back up, they come back out after you.
 
--- Where (x, z) is down here: "tunnel" or "hall".
+-- Where (x, z) is down here: "tunnel", "hall", or a zone another system
+-- added (M.ZONES: functions of x, z giving a name or nil), and how far
+-- down the tunnel. In order from Louhi's portal (M.ORDER): a cop goes zone
+-- by zone toward yours, by M.LEAVE[its zone](x, z, way), or within yours by
+-- M.WITHIN[it](x, z, px, pz) (its "steer" target and speed).
+M.ZONES, M.ORDER, M.LEAVE, M.WITHIN = {}, {tunnel = 1, hall = 2}, {}, {}
 local function part(x, z)
+  for _, f in ipairs(M.ZONES) do
+    local n = f(x, z)
+    if n then return n end
+  end
   local u, v = local_uv(x, z)
   if u < T.u_end - 1 and math.abs(v) < M.W / 2 + 1 then return "tunnel", u end
   return "hall", u
+end
+M.part = part
+
+M.LEAVE.tunnel = function(x, z, way)
+  local u = local_uv(x, z)
+  if way > 0 then
+    local tx, tz = at(math.min(u + 15, T.u_end + 8), 0)
+    return tx, tz, 16
+  end
+  local tx, tz = at(u - 15, 0)
+  return tx, tz, 16
+end
+M.LEAVE.hall = function(x, z, way)
+  if way < 0 then
+    -- Into the tunnel, by the mouth.
+    local tx, tz = at(T.u_end + 4, 0)
+    if U.dist2d(x, z, tx, tz) < 6 then tx, tz = at(T.u_end - 10, 0) end
+    return tx, tz, 10
+  end
+  local f = M.HALL_ON
+  if f then return f(x, z) end
+  return nil
 end
 
 -- For police.drive_cop: where cop car `id` heads instead of by the roads,
@@ -694,45 +748,81 @@ function M.chase(id, sees, px, pz)
   local x, _, z = engine.pos(id)
   local u, v = local_uv(x, z)
   if mine == 0 then
-    -- Up top, after them underground: in through the portal.
-    local ex, ez = M.portal()
+    -- Up top, after them underground: in through the way nearest them.
+    local p = M.portal_for(px, pz)
+    if p then return p.approach(x, z) end
+    local ex, ez = at(-20, 0)
     if U.dist2d(x, z, ex, ez) > 45 then return "goal", ex, T.floor, ez end
     if u < -16 and math.abs(v) > 1.5 then return "steer", ex, ez, 10 end
     local tx, tz = at(math.max(u, -20) + 12, 0)
     return "steer", tx, tz, 12
   end
-  if theirs == 0 then
-    -- They went back up: out after them.
-    if part(x, z) == "hall" then
-      local tx, tz = at(T.u_end + 4, 0)
-      if U.dist2d(x, z, tx, tz) < 6 then tx, tz = at(T.u_end - 10, 0) end
-      return "steer", tx, tz, 10
-    end
-    local tx, tz = at(u - 15, 0)
-    return "steer", tx, tz, 16
-  end
-  -- Both down here.
-  local d = U.dist2d(x, z, px, pz)
-  local slow = math.max(0, d - 4) * 1.5
-  if sees and d < 30 then return "steer", px, pz, math.min(12, slow) end
   local mine_at = part(x, z)
-  local theirs_at, pu = part(px, pz)
-  if mine_at == "tunnel" then
-    local to = theirs_at == "hall" and T.u_end + 8 or pu
-    local tx, tz = at(to > u and math.min(u + 15, to) or math.max(u - 15, to), 0)
-    return "steer", tx, tz, theirs_at == "tunnel" and math.min(16, slow) or 16
+  local goal_order
+  if theirs == 0 then
+    -- They went back up: out after them, the way nearest them.
+    local p = M.portal_for(px, pz)
+    goal_order = p and p.order or 0
+  else
+    local theirs_at = part(px, pz)
+    if theirs_at == mine_at then
+      local d = U.dist2d(x, z, px, pz)
+      local slow = math.max(0, d - 4) * 1.5
+      if sees and d < 30 then return "steer", px, pz, math.min(12, slow) end
+      if mine_at == "tunnel" then
+        local _, pu = part(px, pz)
+        local tx, tz = at(pu > u and math.min(u + 15, pu) or math.max(u - 15, pu), 0)
+        return "steer", tx, tz, math.min(16, slow)
+      end
+      local w = M.WITHIN[mine_at]
+      if w then
+        local tx, tz, sp = w(x, z, px, pz)
+        return "steer", tx, tz, math.min(sp, slow)
+      end
+      return "steer", px, pz, math.min(10, slow)
+    end
+    goal_order = M.ORDER[theirs_at]
   end
-  if theirs_at == "tunnel" then
-    -- From the hall into the tunnel, by the mouth.
-    local tx, tz = at(T.u_end + 4, 0)
-    if U.dist2d(x, z, tx, tz) < 6 then tx, tz = at(T.u_end - 10, 0) end
-    return "steer", tx, tz, 10
-  end
-  return "steer", px, pz, math.min(10, slow)
+  local way = goal_order > M.ORDER[mine_at] and 1 or -1
+  local tx, tz, sp = M.LEAVE[mine_at](x, z, way)
+  if not tx then return "steer", px, pz, 10 end
+  return "steer", tx, tz, sp
 end
 
--- The way in, 20 m out in the street.
-function M.portal() return at(-20, 0) end
+-- The way in nearest (x, z): another portal (M.PORTALS) if (x, z) is
+-- nearer it by the zones' order, or nil (Louhi's).
+function M.portal_for(x, z)
+  if #M.PORTALS == 0 or not T then return nil end
+  local you = G.vehicle or G.player
+  local o
+  if you and engine.exists(you) and (engine.layer(you) or 0) ~= 0 then
+    o = M.ORDER[part(x, z)] or 0
+  else
+    -- (Up top: whichever way in is nearer.)
+    local best, bd = nil, U.dist2d(x, z, at(-20, 0))
+    for _, p in ipairs(M.PORTALS) do
+      local d = U.dist2d(x, z, hall_xz(p.outside[1], p.outside[2]))
+      if d < bd then best, bd = p, d end
+    end
+    return best
+  end
+  local best
+  for _, p in ipairs(M.PORTALS) do
+    if math.abs(p.order - o) < (best and math.abs(best.order - o) or o) then best = p end
+  end
+  return best
+end
+
+-- The way in, 20 m out in the street: the one nearest you.
+function M.portal()
+  local you = G.vehicle or G.player
+  if you and engine.exists(you) then
+    local x, _, z = engine.pos(you)
+    local p = M.portal_for(x, z)
+    if p then return hall_xz(p.outside[1], p.outside[2]) end
+  end
+  return at(-20, 0)
+end
 
 function M.down(id)
   id = id or G.vehicle or G.player
