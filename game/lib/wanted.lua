@@ -64,7 +64,8 @@ function W.give_up_time() return 30 + 10 * (math.max(W.level, 1) - 1) end
 function W.unseen(dt, px, pz)
   W.seen = false
   W.unseen_for = W.unseen_for + dt
-  local outside = U.dist2d(px, pz, W.center[1], W.center[2]) > W.radius()
+  -- Hiding where no cop saw you go in (systems/hideouts) is as good as away.
+  local outside = W.hiding or U.dist2d(px, pz, W.center[1], W.center[2]) > W.radius()
   if (outside and W.unseen_for > W.escape_time()) or W.unseen_for > W.give_up_time() then
     W.clear()
     return true

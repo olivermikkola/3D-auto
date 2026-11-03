@@ -81,6 +81,7 @@ engine.on("init", function()
   require("systems.kauppatori").build(city.map())
   require("systems.suurtori").build(city.map())
   require("systems.landmarks").build(city.map())
+  require("systems.hideouts").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -174,6 +175,7 @@ if os.getenv("MISSION_TEST") then require "test.missions" end
 if os.getenv("TERRAIN_TEST") then require "test.terrain" end
 if os.getenv("BORDER_TEST") then require "test.border_probe" end
 if os.getenv("KERB_TEST") then require "test.kerb_probe" end
+if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
 if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end
 if os.getenv("ARCH_TEST") then require "test.arch_probe" end

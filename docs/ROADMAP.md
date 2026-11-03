@@ -186,6 +186,15 @@ black-roofed stairs down from both ends and to the three platforms
 footbridge and the two tower boxes). You can run over it: `LOGOMONSILTA_TEST=1`
 (`tools/test_logomonsilta.py`) crosses both ways and goes down to a platform.
 
+### Hiding in Logomo (November 2026)
+
+The end of Oliver's chase on foot: wanted, walk in through Logomo's door (just past the foot of
+Logomonsilta's stairs, `systems/hideouts.lua`) and you're inside, where the cops and the
+helicopter can't see you and they can't bust you. Gone in unseen, they lose you as if you'd
+left their search area (`wanted.escape_time`, 3-25 s); if a cop saw you go in (in the last
+1.5 s), they wait you out (`wanted.give_up_time`, 30-70 s). Move to come back out by the door.
+`HIDEOUT_TEST=1` (`tools/test_hideouts.py`). Other hideouts: add a {name, from, to} to SPOTS.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

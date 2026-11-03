@@ -74,7 +74,7 @@ end
 
 engine.on("key", function(k, down)
   if k ~= "e" or not down then return end
-  if G.vehicle then M.exit() elseif G.player then M.enter_nearest() end
+  if G.vehicle then M.exit() elseif G.player and not G.hiding then M.enter_nearest() end
 end)
 
 engine.on("tick", function(dt)
@@ -82,7 +82,7 @@ engine.on("tick", function(dt)
     local throttle, steer, handbrake = input.drive()
     M.throttle = throttle -- (for systems/shore: input.drive may be a test's robot, asked once a tick)
     vehicle.drive(G.vehicle, dt, {throttle = throttle, steer = steer, handbrake = handbrake})
-  elseif G.player then
+  elseif G.player and not G.hiding then -- (in a hideout: systems/hideouts holds you)
     walk(dt)
   end
 end)
