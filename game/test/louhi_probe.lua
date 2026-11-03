@@ -19,12 +19,13 @@ local log = {}
 local function check(ok, what)
   print(string.format("LOUHI: %s %s", ok and "ok" or "FAIL", what))
   log[#log + 1] = ok
+  if not ok then log.bad = (log.bad and log.bad .. "; " or "") .. what end
 end
 local function finish()
   local bad = 0
   for _, ok in ipairs(log) do if not ok then bad = bad + 1 end end
   print(string.format("LOUHI: %d checks, %d failed", #log, bad))
-  assert(bad == 0, "Louhi isn't drivable")
+  if bad > 0 then engine.quit(); error("Louhi isn't drivable: " .. log.bad, 0) end
   print("ALL LOUHI CHECKS PASSED")
   engine.quit()
 end
