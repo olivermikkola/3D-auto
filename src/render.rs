@@ -6,7 +6,7 @@
 //!      point/spot lights, emissive glow, distance fog (opaque, then sorted alpha);
 //!   4. HUD quads.
 
-use crate::engine::Engine;
+use crate::engine::{Engine, Entity};
 use crate::math::{Mat4, Vec3, v3};
 use crate::mesh::Mesh;
 use miniquad::*;
@@ -239,11 +239,11 @@ vec3 ground_surface(float id, vec3 c, vec2 p) {
 
 void main() {
     vec3 n = normalize(v_normal);
-    vec3 base = v_color * tint.rgb;
+    vec3 base = v_color * TINT.rgb;
     if (v_facade.x > 65.5 && v_facade.x < 66.5) {
         // The terrain: its colour from the ground map where there's one.
         vec2 uv = (v_world.xz - gmap.xy) * gmap.zw;
-        if (gmap2.z > 0.5 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) base = ground_map(v_world.xz) * tint.rgb;
+        if (gmap2.z > 0.5 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) base = ground_map(v_world.xz) * TINT.rgb;
     } else if (v_facade.x > 63.5 && v_facade.x < 65.5 && n.y > 0.5) {
         // Far off, the pattern would shimmer: it fades to the plain colour.
         float far = smoothstep(40.0, 140.0, length(v_world - eye.xyz));
@@ -307,7 +307,7 @@ void main() {
     base = mix(base, vec3(0.9, 0.92, 0.96), snow);
     light += lamps * wet * 0.8;
     light += lamps / (1.0 + 0.4 * lamps);
-    float glow = v_emissive * params.x + extra.x;
+    float glow = v_emissive * params.x + GLOW;
     // A lit window at night: warm light from inside, not the glass's own colour.
     base = mix(base, vec3(1.0, 0.82, 0.5) * 0.55, lit_window * params.x);
     glow += lit_window * params.x;
@@ -329,7 +329,7 @@ void main() {
     float d = length(v_world - eye.xyz);
     float f = clamp((d - fog.x) / (fog.y - fog.x), 0.0, 1.0);
     f = f * f * (1.0 - 0.7 * glow);
-    gl_FragColor = vec4(mix(col, fog_color.rgb, f), tint.a);
+    gl_FragColor = vec4(mix(col, fog_color.rgb, f), TINT.a);
 }"#;
 
 const SHADOW_VS: &str = r#"
@@ -342,6 +342,34 @@ void main() {
     vec4 e = fract(gl_FragCoord.z * vec4(1.0, 255.0, 65025.0, 16581375.0));
     gl_FragColor = e - e.yzww * vec4(1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0, 0.0);
 }"#;
+
+// Instancing: every copy of a mesh in one draw, each copy's model matrix,
+// tint, and inverse scale squared with its glow in w, from an instance
+// buffer (INST floats a copy). The world and shadow shaders above, made to
+// read those instead of uniforms (`mvp` is then the view-projection).
+const INST: usize = 24;
+const INST_MIN: usize = 3; // copies in view: fewer are drawn one by one
+const INST_HEAD: &str = "attribute vec4 i_m0;\nattribute vec4 i_m1;\nattribute vec4 i_m2;\nattribute vec4 i_m3;\n\
+attribute vec4 i_tint;\nattribute vec4 i_scale;\nvarying vec4 v_tint;\nvarying float v_glow;\n";
+fn instanced_vs() -> String {
+    let vs = VS
+        .replace("uniform mat4 model;\nuniform vec4 inv_scale2;\n", INST_HEAD)
+        .replace(
+            "void main() {\n",
+            "void main() {\n    mat4 model = mat4(i_m0, i_m1, i_m2, i_m3);\n    vec4 inv_scale2 = i_scale;\n    v_tint = i_tint;\n    v_glow = i_scale.w;\n",
+        )
+        .replace("gl_Position = mvp * vec4(in_pos, 1.0);", "gl_Position = mvp * vec4(v_world, 1.0);");
+    assert!(vs.contains("i_m0, i_m1") && vs.contains("mvp * vec4(v_world"), "instanced shader: the world shader changed");
+    vs
+}
+const SHADOW_VS_INST: &str = r#"
+attribute vec3 in_pos;
+attribute vec4 i_m0;
+attribute vec4 i_m1;
+attribute vec4 i_m2;
+attribute vec4 i_m3;
+uniform mat4 mvp;
+void main() { gl_Position = mvp * (mat4(i_m0, i_m1, i_m2, i_m3) * vec4(in_pos, 1.0)); }"#;
 
 const SKY_VS: &str = r#"
 attribute vec2 in_pos;
@@ -444,6 +472,12 @@ pub struct Renderer {
     opaque: Pipeline,
     alpha: Pipeline,
     shadow: Pipeline,
+    /// The world and the shadow casters drawn instanced, and the instance
+    /// buffers: one for each group drawn in a frame, grown as needed
+    /// (buffer, floats it holds).
+    opaque_inst: Pipeline,
+    shadow_inst: Pipeline,
+    inst_bufs: Vec<(BufferId, usize)>,
     sky: Pipeline,
     hud: Pipeline,
     shadow_pass: RenderPass,
@@ -554,6 +588,38 @@ fn shader(ctx: &mut Box<dyn RenderingBackend>, vs: &str, fs: &str, uniforms: &[(
     ctx.new_shader(ShaderSource::Glsl { vertex: &vertex, fragment: &fragment }, meta).unwrap_or_else(|e| panic!("shader: {e:?}"))
 }
 
+/// A list sorted by mesh, in runs of one mesh: the runs of INST_MIN or more
+/// (start, end), and the indices of the rest.
+fn runs<T>(list: &[T], mesh: impl Fn(&T) -> usize) -> (Vec<(usize, usize)>, Vec<usize>) {
+    let (mut groups, mut singles, mut a) = (Vec::new(), Vec::new(), 0);
+    while a < list.len() {
+        let mut b = a + 1;
+        while b < list.len() && mesh(&list[b]) == mesh(&list[a]) {
+            b += 1;
+        }
+        if b - a >= INST_MIN {
+            groups.push((a, b))
+        } else {
+            singles.extend(a..b)
+        }
+        a = b;
+    }
+    (groups, singles)
+}
+
+/// The copies' instance data: model matrix, tint, and 1 / scale squared
+/// with the glow (INST floats each).
+fn copies<'a>(es: impl Iterator<Item = &'a Entity>) -> Vec<f32> {
+    let mut out = Vec::new();
+    for e in es {
+        out.extend_from_slice(&Mat4::trs_q(e.pos, e.rot, e.scale).0);
+        out.extend_from_slice(&e.color);
+        let s = e.scale;
+        out.extend_from_slice(&[1.0 / (s.x * s.x), 1.0 / (s.y * s.y), 1.0 / (s.z * s.z), e.glow]);
+    }
+    out
+}
+
 fn v4(v: Vec3, w: f32) -> [f32; 4] {
     [v.x, v.y, v.z, w]
 }
@@ -602,32 +668,35 @@ impl Renderer {
     pub fn new() -> Renderer {
         let mut ctx = window::new_rendering_backend();
         use UniformType::*;
-        let main = shader(
+        let uniforms = [
+            ("mvp", Mat4, 1),
+            ("model", Mat4, 1),
+            ("light_vp", Mat4, 1),
+            ("inv_scale2", Float4, 1),
+            ("tint", Float4, 1),
+            ("extra", Float4, 1),
+            ("eye", Float4, 1),
+            ("fog", Float4, 1),
+            ("fog_color", Float4, 1),
+            ("sun", Float4, 1),
+            ("sun_color", Float4, 1),
+            ("ambient", Float4, 1),
+            ("ground", Float4, 1),
+            ("params", Float4, 1),
+            ("gmap", Float4, 1),
+            ("gmap2", Float4, 1),
+            ("lpos", Float4, MAX_LIGHTS),
+            ("lcol", Float4, MAX_LIGHTS),
+            ("ldir", Float4, MAX_LIGHTS),
+        ];
+        let images = ["shadow_map", "ground_idx", "ground_pal"];
+        let main = shader(&mut ctx, VS, &format!("#define TINT tint\n#define GLOW extra.x\n{FS}"), &uniforms, &images);
+        let main_inst = shader(
             &mut ctx,
-            VS,
-            FS,
-            &[
-                ("mvp", Mat4, 1),
-                ("model", Mat4, 1),
-                ("light_vp", Mat4, 1),
-                ("inv_scale2", Float4, 1),
-                ("tint", Float4, 1),
-                ("extra", Float4, 1),
-                ("eye", Float4, 1),
-                ("fog", Float4, 1),
-                ("fog_color", Float4, 1),
-                ("sun", Float4, 1),
-                ("sun_color", Float4, 1),
-                ("ambient", Float4, 1),
-                ("ground", Float4, 1),
-                ("params", Float4, 1),
-                ("gmap", Float4, 1),
-                ("gmap2", Float4, 1),
-                ("lpos", Float4, MAX_LIGHTS),
-                ("lcol", Float4, MAX_LIGHTS),
-                ("ldir", Float4, MAX_LIGHTS),
-            ],
-            &["shadow_map", "ground_idx", "ground_pal"],
+            &instanced_vs(),
+            &format!("varying vec4 v_tint;\nvarying float v_glow;\n#define TINT v_tint\n#define GLOW v_glow\n{FS}"),
+            &uniforms,
+            &images,
         );
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
@@ -637,12 +706,32 @@ impl Renderer {
         let base =
             PipelineParams { depth_test: Comparison::LessOrEqual, depth_write: true, cull_face: CullFace::Back, ..Default::default() };
         let opaque = ctx.new_pipeline(&[BufferLayout::default()], &attrs, main, base);
+        let per_copy = BufferLayout { stride: (INST * 4) as i32, step_func: VertexStep::PerInstance, step_rate: 1 };
+        let inst_attrs = [
+            attrs[0].clone(),
+            attrs[1].clone(),
+            attrs[2].clone(),
+            VertexAttribute::with_buffer("i_m0", VertexFormat::Float4, 1),
+            VertexAttribute::with_buffer("i_m1", VertexFormat::Float4, 1),
+            VertexAttribute::with_buffer("i_m2", VertexFormat::Float4, 1),
+            VertexAttribute::with_buffer("i_m3", VertexFormat::Float4, 1),
+            VertexAttribute::with_buffer("i_tint", VertexFormat::Float4, 1),
+            VertexAttribute::with_buffer("i_scale", VertexFormat::Float4, 1),
+        ];
+        let opaque_inst = ctx.new_pipeline(&[BufferLayout::default(), per_copy.clone()], &inst_attrs, main_inst, base);
         let alpha =
             ctx.new_pipeline(&[BufferLayout::default()], &attrs, main, PipelineParams { depth_write: false, color_blend: blend(), ..base });
 
         // Shadow casters render back faces: cheap, and keeps acne off lit faces.
         let shadow_sh = shader(&mut ctx, SHADOW_VS, SHADOW_FS, &[("mvp", Mat4, 1)], &[]);
         let shadow = ctx.new_pipeline(&[BufferLayout::default()], &attrs, shadow_sh, PipelineParams { cull_face: CullFace::Front, ..base });
+        let shadow_inst_sh = shader(&mut ctx, SHADOW_VS_INST, SHADOW_FS, &[("mvp", Mat4, 1)], &[]);
+        let shadow_inst = ctx.new_pipeline(
+            &[BufferLayout::default(), per_copy],
+            &inst_attrs[..7],
+            shadow_inst_sh,
+            PipelineParams { cull_face: CullFace::Front, ..base },
+        );
         let tex = |format, filter| TextureParams {
             format,
             width: SHADOW_RES,
@@ -698,6 +787,9 @@ impl Renderer {
             opaque,
             alpha,
             shadow,
+            opaque_inst,
+            shadow_inst,
+            inst_bufs: Vec::new(),
             sky,
             hud,
             shadow_pass,
@@ -904,19 +996,44 @@ impl Renderer {
             t.begin();
         }
 
+        // Copies of one mesh together: those with INST_MIN or more drawn
+        // as one (instanced), the rest one by one.
+        casters.sort_by_key(|(_, mi)| *mi);
+        opaque.sort_by_key(|(_, _, mi)| *mi);
+        let (caster_runs, caster_singles) = runs(&casters, |c| c.1);
+        let (opaque_runs, opaque_singles) = runs(&opaque, |o| o.2);
+        let mut bufs = 0; // instance buffers filled this frame
+
         // 1. Shadow map.
         if shadows {
             self.ctx
                 .begin_pass(Some(self.shadow_pass), PassAction::Clear { color: Some((1., 1., 1., 1.)), depth: Some(1.0), stencil: None });
             self.ctx.apply_pipeline(&self.shadow);
-            for (e, mi) in &casters {
-                let g = self.meshes[*mi].as_ref().unwrap();
+            for &k in &caster_singles {
+                let (e, mi) = casters[k];
+                let g = self.meshes[mi].as_ref().unwrap();
                 let mvp = light_vp * Mat4::trs_q(e.pos, e.rot, e.scale);
                 self.ctx.apply_bindings(&g.bind);
                 self.ctx.apply_uniforms(UniformsSource::table(&mvp.0));
                 self.ctx.draw(0, g.count, 1);
                 self.draw_calls += 1;
                 self.triangles += g.count as usize / 3;
+            }
+            if !caster_runs.is_empty() {
+                self.ctx.apply_pipeline(&self.shadow_inst);
+                for &(a, b) in &caster_runs {
+                    let data = copies(casters[a..b].iter().map(|c| c.0));
+                    let buf = self.inst_buffer(bufs, &data);
+                    bufs += 1;
+                    let g = self.meshes[casters[a].1].as_ref().unwrap();
+                    let bind =
+                        Bindings { vertex_buffers: vec![g.bind.vertex_buffers[0], buf], index_buffer: g.bind.index_buffer, images: vec![] };
+                    self.ctx.apply_bindings(&bind);
+                    self.ctx.apply_uniforms(UniformsSource::table(&light_vp.0));
+                    self.ctx.draw(0, g.count, (b - a) as i32);
+                    self.draw_calls += 1;
+                    self.triangles += g.count as usize / 3 * (b - a);
+                }
             }
             self.ctx.end_render_pass();
         }
@@ -985,7 +1102,29 @@ impl Renderer {
             }
             uni.params[1] = self.lights_used as f32;
         }
-        for (pipe, list) in [(&self.opaque, &opaque), (&self.alpha, &alpha)] {
+        if !opaque_runs.is_empty() {
+            self.ctx.apply_pipeline(&self.opaque_inst);
+            uni.mvp = vp.0;
+            uni.extra[0] = 0.0;
+            for &(a, b) in &opaque_runs {
+                let data = copies(opaque[a..b].iter().map(|o| o.1));
+                let buf = self.inst_buffer(bufs, &data);
+                bufs += 1;
+                let g = self.meshes[opaque[a].2].as_ref().unwrap();
+                let bind = Bindings {
+                    vertex_buffers: vec![g.bind.vertex_buffers[0], buf],
+                    index_buffer: g.bind.index_buffer,
+                    images: g.bind.images.clone(),
+                };
+                self.ctx.apply_bindings(&bind);
+                self.ctx.apply_uniforms(UniformsSource::table(&uni));
+                self.ctx.draw(0, g.count, (b - a) as i32);
+                self.draw_calls += 1;
+                self.triangles += g.count as usize / 3 * (b - a);
+            }
+        }
+        let singles: Vec<_> = opaque_singles.iter().map(|&k| opaque[k]).collect();
+        for (pipe, list) in [(&self.opaque, &singles), (&self.alpha, &alpha)] {
             if list.is_empty() {
                 continue;
             }
@@ -1011,6 +1150,24 @@ impl Renderer {
         if let Some(t) = &mut self.gpu_timer {
             t.end();
         }
+    }
+
+    /// Instance buffer k for this frame, holding `data` (made, or remade
+    /// bigger, as needed).
+    fn inst_buffer(&mut self, k: usize, data: &[f32]) -> BufferId {
+        if k == self.inst_bufs.len() || self.inst_bufs[k].1 < data.len() {
+            let cap = data.len().next_power_of_two().max(INST * 16);
+            let b = self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<f32>(cap));
+            if k == self.inst_bufs.len() {
+                self.inst_bufs.push((b, cap));
+            } else {
+                self.ctx.delete_buffer(self.inst_bufs[k].0);
+                self.inst_bufs[k] = (b, cap);
+            }
+        }
+        let b = self.inst_bufs[k].0;
+        self.ctx.buffer_update(b, BufferSource::slice(data));
+        b
     }
 
     fn draw_hud(&mut self, eng: &Engine) {
