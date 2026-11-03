@@ -518,7 +518,12 @@ local function drive_cop(c, dt)
         end
         at = pick or at
       else
-        at = city.step_toward(at, goal)
+        -- (The wrong way up a one-way street if that's the only way in:
+        -- by Tyyssija, a short street reached only up a one-way one sat out of
+        -- reach, and cops waited at the corner for good.)
+        local nxt = city.step_toward(at, goal)
+        if nxt == at then nxt = city.step_toward(at, goal, true) end
+        at = nxt
       end
       -- Pick the road up at the bend after the stretch the car is on.
       c.route, c.ri, c.lane = city.path(from, at), 2, city.lane(from, at)
