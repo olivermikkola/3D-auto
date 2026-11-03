@@ -1,6 +1,7 @@
 -- Shop signs probe: most of the map's shops, cafés and pubs get a sign,
 -- every one flat on a building's wall (not floating, not inside it),
--- facing out, off the carriageway, at shop-sign height.
+-- facing out, off the carriageway, at shop-sign height; and in Turku the
+-- places Oliver asked for by name have theirs up, with that name.
 -- SIGNS_TEST=1 auto game --headless 600
 local U = require "lib.util"
 local city = require "lib.city"
@@ -19,11 +20,24 @@ engine.on("tick", function()
   done = true
   local places = 0
   for _, p in ipairs(pois.find{road = false}) do
-    if S.word(p.tags) then places = places + 1 end
+    if S.name(p.tags) or S.word(p.tags) then places = places + 1 end
   end
   print(string.format("SIGNS_PROBE %s: %d signs for %d places", city.map().id or "?", #S.list, places))
   check(places > 800, "the map has its shops")
   check(#S.list >= places * 0.6, string.format("most have a sign (%d of %d)", #S.list, places))
+  local named, by_name = 0, {}
+  for _, s in ipairs(S.list) do
+    if s.named then named = named + 1; by_name[s.name] = s end
+  end
+  print(string.format("SIGNS_PROBE %d with the place's own name", named))
+  if city.map().id == "turku" then
+    check(named > 150, "the town's own names up")
+    for _, want in ipairs{"Luostarivuoren lyseon lukio", "EduCity", "Panimoravintola Koulu", "Uusi Apteekki", "Proffan kellari",
+                          "Turun klassillinen lukio", "Forum Marinum"} do
+      local s = by_name[want]
+      check(s ~= nil, want .. (s and string.format(" (at %.0f, %.0f: %s)", s.x, s.z, s.word) or ": " .. tostring(S.missed[want])))
+    end
+  end
   local floating, buried, on_road, high = {}, {}, {}, {}
   for _, s in ipairs(S.list) do
     local nx, nz = math.sin(s.yaw), math.cos(s.yaw)
