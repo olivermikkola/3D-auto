@@ -18,6 +18,7 @@ local WIDTH = {highway = 18, main = 13, street = 10}
 local LAND, PAVE, ROAD = {0.3, 0.42, 0.24}, {0.6, 0.6, 0.58}, {0.24, 0.24, 0.26}
 local WATER = {0.16, 0.3, 0.52}
 local SUNNY = {-0.45, 0.89} -- the way balconies face: south-southwest (x east, z south)
+R.SUNNY = SUNNY
 local PATH = {0.36, 0.36, 0.37} -- foot and cycle paths: asphalt, a little paler than the road
 local ASPHALT, SETTS = 64, 65 -- the ground surfaces the shader draws (mesh.rs GROUND_*)
 
@@ -3636,7 +3637,11 @@ build = function(map, kit)
             add(mx, mz, {mesh = "cube", pos = {mx + nx * 0.12, base + h - 0.2, mz + nz * 0.12}, yaw = math.atan(dx, dz),
                                size = {0.24, 0.4, len + 0.24}, color = {lit(color[1]), lit(color[2]), lit(color[3])}, abs = true})
           end
-          if facade == FLATS_F and len > 6 and h >= 3 * kit.FLOOR and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
+          -- (Homes only: flats, and flats over shops; not a school or a police
+          -- station of the flats' era.)
+          if facade == FLATS_F and (o.kind == "flats" or o.kind == "shop") and len > 6 and h >= 3 * kit.FLOOR
+             and nx * SUNNY[1] + nz * SUNNY[2] > 0.2 then
+            o.balconies = true
             balconies(add, mx, mz, dx / len, dz / len, nx, nz, len, base, h, color, o.i)
           end
           for f = 0, floors - 1 do
@@ -3659,8 +3664,8 @@ build = function(map, kit)
   local wall_chunks = {}
   for _, oi in ipairs(placed) do
     local o = OUT[oi]
-    FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind, deck = o.deck}
     building_walls(o, nothing)
+    FOOTPRINTS[#FOOTPRINTS + 1] = {pts = o.pts, base = o.base, h = o.h, kind = o.kind, deck = o.deck, balconies = o.balconies}
     local k = math.floor((o.x0 + o.x1) / 2 / CHUNK) .. "," .. math.floor((o.z0 + o.z1) / 2 / CHUNK)
     wall_chunks[k] = wall_chunks[k] or {}
     table.insert(wall_chunks[k], o)
