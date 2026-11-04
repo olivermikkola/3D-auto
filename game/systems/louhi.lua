@@ -89,9 +89,9 @@ function M.inside(x, z, margin)
 end
 
 -- The floor's height at (x, z) down here, or nil outside.
-function M.ground(x, z)
+function M.ground(x, z, y)
   if not M.inside(x, z, 1) then return nil end
-  local sy = M.area_floor(x, z)
+  local sy = M.area_floor(x, z, nil, y)
   if sy then return sy end
   local u, v = local_uv(x, z)
   if math.abs(v) < M.W / 2 + 1 and u < T.u_end then return M.floor_at(u) end
@@ -427,17 +427,24 @@ end
 M.hall_xz, M.hall_ab = hall_xz, hall_ab
 
 -- The floor of M.AREAS at (x, z) (with a margin round each), or nil.
-function M.area_floor(x, z, margin)
+-- Floors over floors (Toriparkki's stairs over its car park): given y, the
+-- highest one under it (within a metre), else the lowest; without, the
+-- first in the list.
+function M.area_floor(x, z, margin, y)
   margin = margin or 0.3
   local along, across = hall_ab(x, z)
+  local best, low
   for _, r in ipairs(M.AREAS) do
     if along > r.a0 - margin and along < r.a1 + margin and across > r.c0 - margin and across < r.c1 + margin then
-      if r.axis == "along" then return r.y0 + (r.y1 - r.y0) * U.clamp((along - r.a0) / (r.a1 - r.a0), 0, 1) end
-      if r.axis == "across" then return r.y0 + (r.y1 - r.y0) * U.clamp((across - r.c0) / (r.c1 - r.c0), 0, 1) end
-      return r.y0
+      local f = r.y0
+      if r.axis == "along" then f = r.y0 + (r.y1 - r.y0) * U.clamp((along - r.a0) / (r.a1 - r.a0), 0, 1) end
+      if r.axis == "across" then f = r.y0 + (r.y1 - r.y0) * U.clamp((across - r.c0) / (r.c1 - r.c0), 0, 1) end
+      if not y then return f end
+      if f <= y + 1 and (not best or f > best) then best = f end
+      if not low or f < low then low = f end
     end
   end
-  return nil
+  return best or low
 end
 
 -- A builder in the hall's frame: parts to draw, solids to hit.
@@ -694,11 +701,12 @@ function M.street_door(d, sign, p)
   local ys = d.ys
   box(0.04, 0, ys + 1.15, 0.1, 1.7, 2.45, {0.85, 0.85, 0.82})   -- frame
   box(0.07, 0, ys + 1.1, 0.06, 1.4, 2.2, {0.1, 0.12, 0.14})      -- glass
-  box(0.07, 0, ys + 2.75, 0.06, 2.6, 0.5, {0.12, 0.13, 0.15})    -- the sign's band
+  local bw = math.max(2.6, #sign * 0.27 + (p and 1.1 or 0.5))      -- the sign's band, as wide as it needs
+  box(0.07, 0, ys + 2.75, 0.06, bw, 0.5, {0.12, 0.13, 0.15})
   text(0.1, p and -0.35 or 0, ys + 2.75, sign, 0.35, {0.95, 0.95, 0.92}, 0.6)
   if p then
-    box(0.09, 0.95, ys + 2.75, 0.06, 0.42, 0.42, {0.1, 0.3, 0.75})
-    text(0.13, 0.95, ys + 2.75, "P", 0.32)
+    box(0.09, bw / 2 - 0.35, ys + 2.75, 0.06, 0.42, 0.42, {0.1, 0.3, 0.75})
+    text(0.13, bw / 2 - 0.35, ys + 2.75, "P", 0.32)
   end
   local ox, oz = door_xz(d, 0, 0)
   for _, q in ipairs(k.parts) do q.pos = {q.pos[1] - ox, q.pos[2] - ys, q.pos[3] - oz} end
@@ -729,6 +737,7 @@ end
 function M.build(map)
   if not map or map.id ~= "turku" or M.built then return end
   M.built = true
+  M.map = map
   frame()
   plan_stairs()
   local hansa = require "systems.hansa"
