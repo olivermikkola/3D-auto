@@ -83,7 +83,9 @@ engine.on("init", function()
   for _, tag in ipairs(CLUTTER) do
     for _, id in ipairs(engine.find(tag)) do
       local x, y, z = engine.pos(id)
-      local ei = x and roadnet.on_carriageway(x, z, 0, y)
+      -- (underground, layer 1, isn't in the carriageway: Toriparkki's ways
+      -- run under the streets just below them)
+      local ei = x and (engine.layer(id) or 0) == 0 and roadnet.on_carriageway(x, z, 0, y)
       if ei then
         cc = cc + 1
         clutter[tag] = (clutter[tag] or 0) + 1
@@ -102,7 +104,7 @@ engine.on("init", function()
   for _, tag in ipairs{"tree", "lamp", "signal", "shelter", "prop", "wall", "scenery", "fence", "barrier", "stall"} do
     for _, id in ipairs(engine.find(tag)) do
       local x, y, z = engine.pos(id)
-      local w = x and roadnet.wet(x, z) and roadnet.water_level(x, z)
+      local w = x and (engine.layer(id) or 0) == 0 and roadnet.wet(x, z) and roadnet.water_level(x, z)
       local mesh = engine.mesh_of(id) or "-"
       if w and y < w + 2.5 and mesh ~= "riverboat" then
         wc = wc + 1

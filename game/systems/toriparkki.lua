@@ -113,74 +113,135 @@ end
 --   unit, OSM entrance (along, across), the pavilion, which way out of the
 --   bottom: "front" (the door's side) or "back".
 M.UNITS = {
-  {unit = "A", at = {22.9, 89.2}, pav = "Aurakadun toripaviljonki", exit = "front"},
-  {unit = "B", at = {55.7, 155.3}, pav = "Eerikinkadun toripaviljonki", exit = "back"},
-  {unit = "C", at = {126.6, 99.8}, pav = "Kauppiaskadun toripaviljonki", exit = "back"},
+  {unit = "A", at = {22.9, 89.2}, pav = "Aurakadun toripaviljonki", exit = "front", street = "KAUPPATORI"},
+  {unit = "B", at = {55.7, 155.3}, pav = "Eerikinkadun toripaviljonki", exit = "back", street = "KAUPPATORI"},
+  {unit = "C", at = {126.6, 99.8}, pav = "Kauppiaskadun toripaviljonki", exit = "back", street = "KAUPPATORI"},
+  -- The ways under the streets (Oliver's map; OSM's layer -1 stubs where
+  -- they leave the car park, ways 1443872641 and 1443872644): to Forum's
+  -- staircase door on Eerikinkatu (node 4765209338) and Wiklund's door on
+  -- Kauppiaskatu (node 5222924302), each down its own stairs at the far end.
+  {unit = "FORUM", at = {35, 194}, exit = "front", dir = -1, street = "EERIKINKATU", sign = "FORUM  KOP-KOLMIO"},
+  {unit = "WIKLUND", at = {158, 137}, exit = "front", street = "KAUPPIASKATU", sign = "WIKLUND",
+   shops = {{"PRISMA", "-"}, {"ALKO", "+"}}},
 }
 M.CORES = {}
-local CORE_W, LAND, BOTTOM, TREAD, RISE = 2.9, 2.4, 2.6, 0.29, 0.17
+M.WALKS = {}       -- the corridors under the streets: {r = rect, axis, y0, y1}
+M.BODY_GAPS = {west = {}, east = {}, south = {}}
+local CORE_W, LAND, BOTTOM, TREAD, RISE = 2.9, 2.4, 3.0, 0.29, 0.17
 
--- The pavilion's walls in the hall's frame: OpenStreetMap's footprint (the
--- map's, by name; systems/kauppatori's timber box stands inside it), and
--- the square's paving at its foot (systems/kauppatori: 0.6 m thick).
-local function pavilion_rect(Lh, name)
+-- A building's walls in the hall's frame: OpenStreetMap's footprint (the
+-- map's), by name, or the one at (a, c).
+local function footprint_rect(Lh, name, at)
   for _, f in ipairs(Lh.map and Lh.map.footprints or {}) do
-    if f[8] == name then
-      local a, c = Lh.hall_ab(f[1], f[2])
-      local fx, fz = math.sin(f[5]), math.cos(f[5])
-      local z_along = math.abs(fx * Lh.HALL.a[1] + fz * Lh.HALL.a[2]) > 0.7
-      local ha, hc = (z_along and f[4] or f[3]) / 2, (z_along and f[3] or f[4]) / 2
-      return {a0 = a - ha, a1 = a + ha, c0 = c - hc, c1 = c + hc}
-    end
+    local a, c = Lh.hall_ab(f[1], f[2])
+    local fx, fz = math.sin(f[5]), math.cos(f[5])
+    local z_along = math.abs(fx * Lh.HALL.a[1] + fz * Lh.HALL.a[2]) > 0.7
+    local ha, hc = (z_along and f[4] or f[3]) / 2, (z_along and f[3] or f[4]) / 2
+    local R = {a0 = a - ha, a1 = a + ha, c0 = c - hc, c1 = c + hc}
+    if name and f[8] == name then return R end
+    if not name and inside(R, at[1], at[2], 1.5) then return R end
   end
 end
 
 function plan_cores(Lh)
   for _, u in ipairs(M.UNITS) do
-    local R = pavilion_rect(Lh, u.pav)
-    if not R then return end
-    -- the door: in the face nearest OSM's entrance
-    local ea, ec = u.at[1], u.at[2]
-    local faces = {{"along", R.a0, -1, math.abs(ea - R.a0)}, {"along", R.a1, 1, math.abs(ea - R.a1)},
-                   {"across", R.c0, -1, math.abs(ec - R.c0)}, {"across", R.c1, 1, math.abs(ec - R.c1)}}
-    table.sort(faces, function(p, q) return p[4] < q[4] end)
-    local f = faces[1]
-    local d = {axis = f[1], at = f[2], out = f[3], c = f[1] == "along" and ec or ea, name = "Toriparkki " .. u.unit}
-    local ys = U.ground(Lh.door_xz(d, 1, 0)) + 0.6
-    d.ys = ys
-    -- The box: across its width from the door face in; along its length
-    -- (s) from the landing at the door to the bottom.
-    local n = math.max(2, math.ceil((ys - Y) / RISE))
-    local s0 = d.c - 1.2
-    local C = {unit = u.unit, door = d, n = n, ys = ys, w0 = math.min(d.at, d.at - d.out * CORE_W), w1 = math.max(d.at, d.at - d.out * CORE_W),
-               s0 = s0, top = s0 + LAND, foot = s0 + LAND + n * TREAD, exit = u.exit}
-    C.s1 = C.foot + BOTTOM
-    -- (s, w) to (along, across), and a rectangle of it
-    local function ac(sv, wv) if d.axis == "along" then return wv, sv end return sv, wv end
-    C.ac = ac
-    function C.rect(sa, sb, wa, wb)
-      local a0, c0 = ac(sa, wa)
-      local a1, c1 = ac(sb, wb)
-      return {a0 = math.min(a0, a1), a1 = math.max(a0, a1), c0 = math.min(c0, c1), c1 = math.max(c0, c1)}
+    local R = footprint_rect(Lh, u.pav, u.at)
+    if R then
+      -- the door: in the face nearest OSM's entrance
+      local ea, ec = u.at[1], u.at[2]
+      local faces = {{"along", R.a0, -1, math.abs(ea - R.a0)}, {"along", R.a1, 1, math.abs(ea - R.a1)},
+                     {"across", R.c0, -1, math.abs(ec - R.c0)}, {"across", R.c1, 1, math.abs(ec - R.c1)}}
+      table.sort(faces, function(p, q) return p[4] < q[4] end)
+      local f = faces[1]
+      local d = {axis = f[1], at = f[2], out = f[3], c = f[1] == "along" and ec or ea, name = "Toriparkki " .. u.unit}
+      -- (outside a pavilion, the square's paving, 0.6 m thick: systems/kauppatori)
+      local ys = U.ground(Lh.door_xz(d, 1, 0)) + (u.pav and 0.6 or 0)
+      d.ys = ys
+      -- The box: across its width from the door face in; along its length
+      -- (s) from the landing at the door to the bottom, `dir` the way it goes.
+      local dir = u.dir or 1
+      local n = math.max(2, math.ceil((ys - Y) / RISE))
+      local s0 = d.c - dir * 1.2
+      local C = {unit = u.unit, u = u, pavilion = u.pav ~= nil, door = d, n = n, ys = ys, dir = dir,
+                 w0 = math.min(d.at, d.at - d.out * CORE_W), w1 = math.max(d.at, d.at - d.out * CORE_W),
+                 s0 = s0, top = s0 + dir * LAND, exit = u.exit}
+      C.foot = C.top + dir * n * TREAD
+      C.s1 = C.foot + dir * BOTTOM
+      -- (s, w) to (along, across), and a rectangle of it
+      local function ac(sv, wv) if d.axis == "along" then return wv, sv end return sv, wv end
+      C.ac = ac
+      function C.rect(sa, sb, wa, wb)
+        local a0, c0 = ac(sa, wa)
+        local a1, c1 = ac(sb, wb)
+        return {a0 = math.min(a0, a1), a1 = math.max(a0, a1), c0 = math.min(c0, c1), c1 = math.max(c0, c1)}
+      end
+      C.R = C.rect(C.s0, C.s1, C.w0, C.w1)
+      -- the way out of the bottom: the exit face, and outside it
+      C.exit_w = (u.exit == "front") == (d.out > 0) and C.w1 or C.w0
+      C.exit_out = C.exit_w == C.w1 and 1 or -1
+      local A = Lh.AREAS
+      local land, flight = C.rect(C.s0, C.top, C.w0, C.w1), C.rect(C.top, C.foot, C.w0, C.w1)
+      A[#A + 1] = {a0 = land.a0, a1 = land.a1, c0 = land.c0, c1 = land.c1, y0 = ys}
+      -- (area floors rise from a0 / c0: going the other way, the other way round)
+      A[#A + 1] = {a0 = flight.a0, a1 = flight.a1, c0 = flight.c0, c1 = flight.c1, y0 = dir > 0 and ys or Y, y1 = dir > 0 and Y or ys,
+                   axis = d.axis == "along" and "across" or "along"}
+      local bottom = C.rect(C.foot, C.s1, C.w0, C.w1)
+      A[#A + 1] = {a0 = bottom.a0, a1 = bottom.a1, c0 = bottom.c0, c1 = bottom.c1, y0 = Y}
+      Lh.DOORS[#Lh.DOORS + 1] = d
+      local wm = (C.w0 + C.w1) / 2
+      local sm = (C.foot + C.s1) / 2
+      C.sm = sm
+      local pts = {}
+      for _, q in ipairs{{sm, C.exit_w + C.exit_out * 3}, {sm, wm}, {C.foot - dir * 0.3, wm}, {C.top - dir * 0.3, wm}, {d.c, d.at - d.out * 0.5}} do
+        local a, c = ac(q[1], q[2])
+        pts[#pts + 1] = {a, c}
+      end
+      C.route = {pts = pts, w = CORE_W, door = d}
+      Lh.ROUTES[#Lh.ROUTES + 1] = C.route
+      M.CORES[#M.CORES + 1] = C
     end
-    C.R = C.rect(C.s0, C.s1, C.w0, C.w1)
-    -- the way out of the bottom: the exit face, and outside it
-    C.exit_w = (u.exit == "front") == (d.out > 0) and C.w1 or C.w0
-    C.exit_out = C.exit_w == C.w1 and 1 or -1
-    local A = Lh.AREAS
-    local land, flight = C.rect(C.s0, C.top, C.w0, C.w1), C.rect(C.top, C.foot, C.w0, C.w1)
-    A[#A + 1] = {a0 = land.a0, a1 = land.a1, c0 = land.c0, c1 = land.c1, y0 = ys}
-    A[#A + 1] = {a0 = flight.a0, a1 = flight.a1, c0 = flight.c0, c1 = flight.c1, y0 = ys, y1 = Y, axis = d.axis == "along" and "across" or "along"}
-    Lh.DOORS[#Lh.DOORS + 1] = d
-    local wm = (C.w0 + C.w1) / 2
-    local sm = (C.foot + C.s1) / 2
-    local pts = {}
-    for _, q in ipairs{{sm, C.exit_w + C.exit_out * 3}, {sm, wm}, {C.foot - 0.3, wm}, {C.top - 0.3, wm}, {d.c, d.at - d.out * 0.5}} do
-      local a, c = ac(q[1], q[2])
-      pts[#pts + 1] = {a, c}
+  end
+  -- The ways under the streets, from the bottoms of the far stairs to the
+  -- car park's walls.
+  for _, C in ipairs(M.CORES) do
+    if not C.pavilion then
+      local lo, hi = math.min(C.foot, C.s1), math.max(C.foot, C.s1)
+      local r, mouth, into
+      if C.door.axis == "along" then -- (Wiklund: east, along)
+        r = {a0 = BODY.a1 + 0.25, a1 = C.exit_w, c0 = lo, c1 = hi}
+        M.BODY_GAPS.east[#M.BODY_GAPS.east + 1] = {lo, hi}
+        mouth, into = {BODY.a1 - 3, (lo + hi) / 2}, {BODY.a1 + 2, (lo + hi) / 2}
+        M.WALKS[#M.WALKS + 1] = {r = r, axis = "along", y0 = Y, y1 = Y, C = C}
+      else                            -- (Forum: south, across)
+        r = {a0 = lo, a1 = hi, c0 = BODY.c1 + 0.25, c1 = C.exit_w}
+        M.BODY_GAPS.south[#M.BODY_GAPS.south + 1] = {lo, hi}
+        mouth, into = {(lo + hi) / 2, BODY.c1 - 3}, {(lo + hi) / 2, BODY.c1 + 2}
+        M.WALKS[#M.WALKS + 1] = {r = r, axis = "across", y0 = Y, y1 = Y, C = C}
+      end
+      Lh.AREAS[#Lh.AREAS + 1] = {a0 = r.a0, a1 = r.a1, c0 = r.c0, c1 = r.c1, y0 = Y}
+      table.insert(C.route.pts, 1, into)
+      table.insert(C.route.pts, 1, mouth)
+      C.mouth = mouth
     end
-    Lh.ROUTES[#Lh.ROUTES + 1] = {pts = pts, w = CORE_W, door = d}
-    M.CORES[#M.CORES + 1] = C
+  end
+  -- And to Hansa: west under Aurakatu at 106..110 across (OSM's stubs, ways
+  -- 1443872639 / 1443872636), then north to Hansa's level -1 (systems/hansa,
+  -- which leaves its wall open there).
+  local hansa = require "systems.hansa"
+  local HF = 2.2
+  local H1 = {a0 = -39.5, a1 = BODY.a0 - 0.25, c0 = 106, c1 = 110}
+  local H2 = {a0 = -43.5, a1 = -39.5, c0 = 70.25, c1 = 110}
+  M.HANSA = {H1 = H1, H2 = H2, HF = HF}
+  Lh.AREAS[#Lh.AREAS + 1] = {a0 = H1.a0, a1 = H1.a1, c0 = H1.c0, c1 = H1.c1, y0 = HF, y1 = Y, axis = "along"}
+  Lh.AREAS[#Lh.AREAS + 1] = {a0 = H2.a0, a1 = H2.a1, c0 = H2.c0, c1 = H2.c1, y0 = HF}
+  M.BODY_GAPS.west[#M.BODY_GAPS.west + 1] = {H1.c0, H1.c1}
+  Lh.HANSA_LINK = {H2.a0, H2.a1}
+  M.WALKS[#M.WALKS + 1] = {r = H1, axis = "along", y0 = HF, y1 = Y}
+  M.WALKS[#M.WALKS + 1] = {r = H2, axis = "across", y0 = HF, y1 = HF, closed = "c1", open_a1 = {H1.c0, H1.c1}}
+  if hansa.door then
+    M.hansa_route = {pts = {{BODY.a0 + 3, 108}, {-41.5, 108}, {-41.5, 64}, {-48, 64}, {-48, hansa.top + 1}, {-48, 100.8}, {-9.6, 100.8}},
+                     w = 3.5, door = hansa.door}
+    Lh.ROUTES[#Lh.ROUTES + 1] = M.hansa_route
   end
 end
 
@@ -257,28 +318,30 @@ end
 -- One stair box, into the car park's kit `k`.
 local TILE, STEP, SIGN = {0.62, 0.6, 0.57}, {0.5, 0.49, 0.47}, {0.1, 0.3, 0.75}
 function M.build_core(Lh, k, C)
-  local d, ys = C.door, C.ys
+  local d, ys, dir = C.door, C.ys, C.dir
   local along = d.axis == "across" -- (the box's length runs along the hall)
   local CEIL = 3.0
-  -- a box from s0 to s1 along the stairs, w0 to w1 across them, y0 to y1 up
+  -- a box from sa to sb along the stairs (either way), wa to wb across, y0 to y1 up
   local function block(sa, sb, wa, wb, y0, y1, color, solid, em)
     local r = C.rect(sa, sb, wa, wb)
     return k.box((r.a0 + r.a1) / 2, (r.c0 + r.c1) / 2, (y0 + y1) / 2, r.a1 - r.a0, r.c1 - r.c0, y1 - y0, color, solid, em)
   end
-  -- a slab sloping from ys_a at sa to ys_b at sb, its top there
+  -- a slab sloping from ya at sa to yb at sb, its top there
   local function slope(sa, sb, ya, yb, wa, wb, h, color, solid, em)
+    if sa > sb then sa, sb, ya, yb = sb, sa, yb, ya end
     local wm, ww = (wa + wb) / 2, math.abs(wb - wa)
     if along then return k.slab(sa, sb, ya, yb, wm, ww, h, color, solid, em) end
     return k.slab_x(sa, sb, ya, yb, wm, ww, h, color, solid, em)
   end
   local w0, w1, wm = C.w0, C.w1, (C.w0 + C.w1) / 2
+  local back, front_end = C.s0 - dir * 0.25, C.s1 + dir * 0.25
   -- floors: the landing, the flight (steps to see, a ramp underfoot), the bottom
   block(C.s0, C.top, w0, w1, ys - 0.6, ys, TILE, true).floor = true
   slope(C.top, C.foot, ys, Y, w0, w1, 0.4, STEP, true).floor = true
-  block(C.foot, C.s1, w0, w1, Y - 0.3, Y + 0.01, TILE).floor = true
+  block(C.foot, C.s1, w0, w1, Y - 0.3, Y + 0.01, TILE, not C.pavilion).floor = true
   local rise = (ys - Y) / C.n
   for i = 0, C.n - 1 do
-    block(C.top + i * TREAD, C.top + (i + 1) * TREAD, w0 + 0.05, w1 - 0.05, ys - (i + 1) * rise - 0.02, ys - i * rise,
+    block(C.top + dir * i * TREAD, C.top + dir * (i + 1) * TREAD, w0 + 0.05, w1 - 0.05, ys - (i + 1) * rise - 0.02, ys - i * rise,
           i % 2 == 0 and STEP or TILE)
   end
   -- walls: both long sides, the ends; the bottom's way out open 2.6 m high
@@ -286,14 +349,14 @@ function M.build_core(Lh, k, C)
   for _, w in ipairs{w0, w1} do
     local t = w == w0 and -0.25 or 0.25
     if w == C.exit_w then
-      block(C.s0 - 0.25, C.foot, w, w + t, Y, top_y, CONC, true)
-      block(C.foot, C.s1 + 0.25, w, w + t, Y + 2.6, top_y, CONC, true)
+      block(back, C.foot, w, w + t, Y, top_y, CONC, true)
+      block(C.foot, front_end, w, w + t, Y + 2.6, top_y, CONC, true)
     else
-      block(C.s0 - 0.25, C.s1 + 0.25, w, w + t, Y, top_y, CONC, true)
+      block(back, front_end, w, w + t, Y, top_y, CONC, true)
     end
   end
-  block(C.s0 - 0.25, C.s0, w0, w1, ys - 0.6, top_y, CONC2, true)
-  block(C.s1, C.s1 + 0.25, w0, w1, Y, top_y, CONC2, true)
+  block(back, C.s0, w0, w1, ys - 0.6, top_y, CONC2, true)
+  block(C.s1, front_end, w0, w1, Y, top_y, CONC2, true)
   -- ceilings following the stairs down, a lit strip under them
   block(C.s0, C.top, w0, w1, ys + CEIL, ys + CEIL + 0.3, CONC2, true)
   slope(C.top, C.foot, ys + CEIL + 0.3, Y + CEIL + 0.3, w0, w1, 0.3, CONC2, true)
@@ -304,13 +367,58 @@ function M.build_core(Lh, k, C)
   slope(C.top, C.foot, ys + 0.9, Y + 0.9, far + (far == w0 and 0.08 or -0.08), far + (far == w0 and 0.14 or -0.14), 0.06, {0.25, 0.26, 0.28})
   local dw = d.at - d.out * 0.02
   block(d.c - 0.7, d.c + 0.7, dw - 0.02, dw + 0.02, ys + 0.1, ys + 2.3, {0.85, 0.88, 0.9}, false, 1)
-  -- over the way out of the bottom, in the car park: which pavilion
-  local sm = (C.foot + C.s1) / 2
+  -- over the way out of the bottom: which way up
+  local sm = C.sm
   local ew = C.exit_w + C.exit_out * 0.27
-  block(sm - 1.8, sm + 1.8, ew - 0.02, ew + 0.02, Y + 2.85, Y + 3.35, SIGN)
+  -- (into a way under the street, 3 m high, lower: clear of its ceiling)
+  local sy = C.pavilion and Y + 3.1 or Y + 2.55
+  block(sm - 1.45, sm + 1.45, ew - 0.02, ew + 0.02, sy - 0.25, sy + 0.25, SIGN)
   local a, c = C.ac(sm, C.exit_w + C.exit_out * 0.3)
   local face = d.axis == "along" and (C.exit_out > 0 and "+a" or "-a") or (C.exit_out > 0 and "+c" or "-c")
-  k.text(a, c, Y + 3.1, face, C.unit .. " KAUPPATORI", 0.26, nil, 0.4)
+  local label = C.pavilion and (C.unit .. " " .. C.u.street) or C.u.street
+  k.text(a, c, sy - 0.05, face, label, 0.26, nil, 0.4)
+end
+
+-- A corridor under a street: floor (rising y0 to y1 the way `axis` goes),
+-- its two long walls, a ceiling 3 m up, a lit strip; its ends left open
+-- (or `closed` = "c1": shut at that end), `open_a1` a gap in its a1 wall.
+local WALK_H = 3.0
+function M.build_walk(k, W)
+  local r, axis, y0, y1 = W.r, W.axis, W.y0, W.y1
+  local box, slab, slab_x = k.box, k.slab, k.slab_x
+  local am, cm = (r.a0 + r.a1) / 2, (r.c0 + r.c1) / 2
+  if axis == "along" then
+    local w = r.c1 - r.c0
+    slab(r.a0, r.a1, y0, y1, cm, w + 0.5, 0.6, TILE, true).floor = true
+    for _, c in ipairs{r.c0 - 0.25, r.c1 + 0.25} do
+      slab(r.a0, r.a1, y0 + WALK_H, y1 + WALK_H, c, 0.5, WALK_H + 0.6, CONC, true)
+    end
+    slab(r.a0, r.a1, y0 + WALK_H + 0.3, y1 + WALK_H + 0.3, cm, w + 1, 0.3, CONC2, true)
+    slab(r.a0, r.a1, y0 + WALK_H - 0.02, y1 + WALK_H - 0.02, cm, 0.25, 0.04, STRIP, false, 1)
+  else
+    local w = r.a1 - r.a0
+    slab_x(r.c0, r.c1, y0, y1, am, w + 0.5, 0.6, TILE, true).floor = true
+    local function side(a, gap)
+      if not gap then slab_x(r.c0, r.c1, y0 + WALK_H, y1 + WALK_H, a, 0.5, WALK_H + 0.6, CONC, true) return end
+      slab_x(r.c0, gap[1], y0 + WALK_H, y1 + WALK_H, a, 0.5, WALK_H + 0.6, CONC, true)
+      slab_x(gap[2], r.c1 + (W.closed and 0.5 or 0), y0 + WALK_H, y1 + WALK_H, a, 0.5, WALK_H + 0.6, CONC, true)
+    end
+    side(r.a0 - 0.25)
+    side(r.a1 + 0.25, W.open_a1)
+    slab_x(r.c0, r.c1, y0 + WALK_H + 0.3, y1 + WALK_H + 0.3, am, w + 1, 0.3, CONC2, true)
+    slab_x(r.c0, r.c1, y0 + WALK_H - 0.02, y1 + WALK_H - 0.02, am, 0.25, 0.04, STRIP, false, 1)
+    if W.closed == "c1" then box(am, r.c1 + 0.25, (y1 + y1 + WALK_H) / 2, w + 1, 0.5, WALK_H, CONC2, true) end
+  end
+  -- shop fronts along it near the far end (Wiklund's level -1: OSM's names)
+  for i, sh in ipairs(W.C and W.C.u.shops or {}) do
+    local c = sh[2] == "-" and r.c0 or r.c1
+    local inward = sh[2] == "-" and 1 or -1
+    local a0, a1 = r.a1 - 2 - i * 7, r.a1 - 2 - (i - 1) * 7 - 1
+    box((a0 + a1) / 2, c + inward * 0.06, y1 + 1.1, a1 - a0, 0.06, 2.2, {0.3, 0.36, 0.4}, false, 0.15)
+    -- (the name low enough to clear the 3 m ceiling: its top row hid in it)
+    box((a0 + a1) / 2, c + inward * 0.08, y1 + 2.5, a1 - a0, 0.1, 0.5, {0.14, 0.15, 0.17})
+    k.text((a0 + a1) / 2, c + inward * 0.14, y1 + 2.45, inward > 0 and "+c" or "-c", sh[1], 0.3, {0.98, 0.97, 0.94}, 0.7)
+  end
 end
 
 function M.build(Lh)
@@ -359,9 +467,33 @@ function M.build(Lh)
 
   -- The body: its walls (the near one open to the arm), bays in rows down
   -- the aisles, pillars between the rows, lit strips over the aisles.
-  wall_c(BODY.c0, BODY.c1 + 0.5, BODY.a0 - 0.25)
-  wall_c(BODY.c0, BODY.c1 + 0.5, BODY.a1 + 0.25)
-  wall_a(BODY.a0 - 0.5, BODY.a1 + 0.5, BODY.c1 + 0.25)
+  -- (with the ways under the streets open in them, 2.6 m high, a lintel over)
+  local function gapped(lo, hi, gaps, put)
+    local from = lo
+    table.sort(gaps, function(p, q) return p[1] < q[1] end)
+    for _, g in ipairs(gaps) do
+      put(from, g[1], Y, H)
+      put(g[1], g[2], Y + 2.6, H - 2.6)
+      from = g[2]
+    end
+    put(from, hi, Y, H)
+  end
+  gapped(BODY.c0, BODY.c1 + 0.5, M.BODY_GAPS.west, function(c0, c1, y, h) wall_c(c0, c1, BODY.a0 - 0.25, h, y) end)
+  gapped(BODY.c0, BODY.c1 + 0.5, M.BODY_GAPS.east, function(c0, c1, y, h) wall_c(c0, c1, BODY.a1 + 0.25, h, y) end)
+  gapped(BODY.a0 - 0.5, BODY.a1 + 0.5, M.BODY_GAPS.south, function(a0, a1, y, h) wall_a(a0, a1, BODY.c1 + 0.25, h, y) end)
+  -- over each, in the car park: where it goes
+  local function over(a, c, face, along_wall, s)
+    local w = #s * 0.24 + 0.8
+    if along_wall then box(a, c, Y + 3.1, w, 0.04, 0.5, BLUE) else box(a, c, Y + 3.1, 0.04, w, 0.5, BLUE) end
+    k.text(a, c, Y + 3.1, face, s, 0.3, nil, 0.4)
+  end
+  for _, C in ipairs(M.CORES) do
+    if C.mouth then
+      if C.door.axis == "along" then over(BODY.a1 - 0.05, C.mouth[2], "-a", false, C.u.sign)
+      else over(C.mouth[1], BODY.c1 - 0.05, "-c", true, C.u.sign) end
+    end
+  end
+  over(BODY.a0 + 0.05, (M.HANSA.H1.c0 + M.HANSA.H1.c1) / 2, "+a", false, "HANSA")
   wall_a(BODY.a0 - 0.5, ARM.a0, BODY.c0 - 0.25)
   local bays = {}
   for m = 0, 6 do
@@ -409,10 +541,11 @@ function M.build(Lh)
   k.text(RAMP_FOOT - 2.03, mid, Y + 3.4, "-a", "ULOS", 0.32, nil, 0.4)
 
   for _, C in ipairs(M.CORES) do M.build_core(Lh, k, C) end
+  for _, W in ipairs(M.WALKS) do M.build_walk(k, W) end
 
   local ox, oz = Lh.hall_xz(80, 110)
   bake(Lh, "toriparkki", k, {ox, Y, oz}, Lh.LAYER)
-  for _, C in ipairs(M.CORES) do Lh.street_door(C.door, "TORIPARKKI " .. C.unit, true) end
+  for _, C in ipairs(M.CORES) do Lh.street_door(C.door, C.pavilion and ("TORIPARKKI " .. C.unit) or "TORIPARKKI", true) end
 
   -- Lamps (the nearest 16 lit): over the aisles, the link, the ramp.
   local function lamp(a, c, y)
@@ -425,11 +558,19 @@ function M.build(Lh)
   lamp(108, 6.5)
   lamp(115, 22)
   lamp(135, 41)
+  for _, W in ipairs(M.WALKS) do
+    local r = W.r
+    if W.axis == "along" then
+      for a = r.a0 + 5, r.a1 - 2, 12 do lamp(a, (r.c0 + r.c1) / 2, W.y0 + 2.6) end
+    else
+      for c = r.c0 + 5, r.c1 - 2, 12 do lamp((r.a0 + r.a1) / 2, c, W.y0 + 2.6) end
+    end
+  end
   for _, C in ipairs(M.CORES) do
     local wm = (C.w0 + C.w1) / 2
     local a, c = C.ac(C.top, wm)
     lamp(a, c, C.ys + 2.6)
-    a, c = C.ac((C.foot + C.s1) / 2, wm)
+    a, c = C.ac(C.sm, wm)
     lamp(a, c, Y + 2.6)
   end
   for _, a in ipairs{150, 168, 186, 200} do

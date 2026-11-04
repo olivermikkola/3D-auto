@@ -80,7 +80,14 @@ function M.build(Lh)
   wall_a(C1.a0 - 0.5, T2.a0, C1.c0 - 0.25, HF, CEIL)
   wall_a(T2.a1, C1.a1 + 0.5, C1.c0 - 0.25, HF, CEIL)
   wall_a(C1.a0 - 0.5, C2.a0, C1.c1 + 0.25, HF, CEIL)
-  wall_a(C2.a1, C1.a1 + 0.5, C1.c1 + 0.25, HF, CEIL)
+  -- (open where the way from Toriparkki comes in: systems/toriparkki, Lh.HANSA_LINK)
+  local link = Lh.HANSA_LINK
+  if link then
+    if link[1] > C2.a1 then wall_a(C2.a1, link[1], C1.c1 + 0.25, HF, CEIL) end
+    if link[2] < C1.a1 + 0.5 then wall_a(link[2], C1.a1 + 0.5, C1.c1 + 0.25, HF, CEIL) end
+  else
+    wall_a(C2.a1, C1.a1 + 0.5, C1.c1 + 0.25, HF, CEIL)
+  end
   wall_c(C1.c0, C1.c1, C1.a0 - 0.25, HF, CEIL)
   wall_c(C1.c0, C1.c1, C1.a1 + 0.25, HF, CEIL)
 
@@ -113,6 +120,10 @@ function M.build(Lh)
   k.text(-112, C1.c0 + 0.1, HF + 3.1, "+c", "LOUHI P", 0.3, nil, 0.4)
   box(-48, C1.c1 - 0.06, HF + 3.4, 8, 0.06, 0.5, BAND)
   k.text(-48, C1.c1 - 0.1, HF + 3.4, "-c", "AURAKATU", 0.34, {0.98, 0.97, 0.94}, 0.7)
+  if link then
+    box((link[1] + link[2]) / 2, C1.c1 + 0.2, HF + 3.0, 3.6, 0.06, 0.5, {0.1, 0.3, 0.75})
+    k.text((link[1] + link[2]) / 2, C1.c1 + 0.16, HF + 3.0, "-c", "TORIPARKKI", 0.28, nil, 0.4)
+  end
   k.text(C1.a0 + 0.1, (C1.c0 + C1.c1) / 2, HF + 2.6, "+a", "HANSA", 1.1, {0.95, 0.8, 0.3}, 0.8)
 
   -- Up to the ground floor: the stairs, 8 m wide, steps over a ramp.
