@@ -307,6 +307,34 @@ to Hansa, Wiklund and Forum/KOP-kolmio on the map.
 
 ![The door on the square, the stairs down, the way out at the bottom](toriparkki-pavilions.png)
 
+### Turun Kauppahalli, walkable interior (November 2026)
+
+Piece 6 of docs/UNDERGROUND.md (`systems/kauppahalli.lua`): Turku's historic Market Hall (1896)
+between Eerikinkatu and Linnankatu (`center = {-215.2, 195.5}`, OSM building 24911). On layer 0,
+authentic red-brick arched portals with decorative stepped gables, "TURUN KAUPPAHALLI" and
+"ANNO 1896" signs, timber-framed glass doors, and brass lanterns mark both street entrances.
+Step inside and transition seamlessly to layer 1: a 112 m long, 15.4 m wide interior hall at
+`y = 4.80`, complete with checkerboard tile flooring, arched timber roof trusses, central
+clerestory skylight, pendant bronze lamps, and 12 authentic market stalls (Kahvila Halli, Leipomo Juuri,
+Kalaliike Virtanen, Turun Juustopuoti, Piirakkapaja, Herkku-Keitto, etc.) with readable signboards,
+shopkeeper NPCs behind counters, and browsing shoppers. Press `R` at food stalls to heal HP and buy
+food/drink ($4-$10). Entering breaks police line of sight and marks `wanted.hiding = true`.
+Radar icon `"H"`. `KAUPPAHALLI_TEST=1` (`tools/test_kauppahalli.py`).
+
+### Uusi Apteekki, iconic pub interior (November 2026)
+
+Piece 7 of docs/UNDERGROUND.md (`systems/pub.lua`): the legendary 1907 apothecary pub on
+Kaskenkatu 1 (`DOOR_X = 49.9, DOOR_Z = 428.9`). On layer 0, a rusticated stone arch facade with
+heavy timber door, dark green and gold "UUSI APTEEKKI" sign, double-sided hanging "PUB" blade sign,
+sidewalk chalkboard, and brass coach lanterns. Crossing the threshold enters layer 1 at `y = 12.68`
+(matching Kaskenkatu slope): 12 x 10.4 m interior with dark parquet floor, vintage apothecary green
+wainscotting, the signature 32-drawer wooden apothecary cabinet wall with rows of glowing elixir bottles,
+mahogany bar counter with brass beer taps, glassware, footrail, 4 bar stools, and 3 candlelight pub
+tables. Bartender Olli and regular patron NPCs. Press `R` at the bar to buy an Apteekkari-IPA ($7,
++35 HP, drinking sfx); press `R` at the wall dartboard to throw darts with authentic thud sfx and score
+popups (bullseye, triple 20, etc.). Wanted evasion and radar icon `"B"`. `PUB_TEST=1`
+(`tools/test_pub.py`).
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
