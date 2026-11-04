@@ -181,6 +181,7 @@ if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
 if os.getenv("LOUHI_TEST") then require "test.louhi_probe" end
 if os.getenv("LOUHI_FOOT_TEST") then require "test.louhi_foot_probe" end
 if os.getenv("TORIPARKKI_FOOT_TEST") then require "test.toriparkki_foot_probe" end
+if os.getenv("LOUHI_LIFE_TEST") then require "test.louhi_life_probe" end
 if os.getenv("HANSA_TEST") then require "test.hansa_probe" end
 if os.getenv("TORIPARKKI_TEST") then require "test.toriparkki_probe" end
 if os.getenv("LAYERS_TEST") then require "test.layers_probe" end

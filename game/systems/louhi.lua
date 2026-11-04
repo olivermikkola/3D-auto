@@ -367,11 +367,14 @@ local function dress_hall(k)
   end
   -- The sign over the way in (as photographed): dark, P1 and the free places
   -- in green in the middle, a 20 at each end; facing the cars coming in.
-  local free = M.free_bays or 0
   local sc, sy = -W2 + 6, y + M.H - 0.7
   k.box(M.mouth_along, sc, sy, 5.6, 0.15, 0.6, DARK)
   k.text(M.mouth_along + 1.0, sc - 0.08, sy, "-c", "P1", 0.36, {1, 1, 1}, 0.5)
-  k.text(M.mouth_along - 0.8, sc - 0.08, sy, "-c", tostring(free), 0.36, {0.2, 1, 0.3}, 1)
+  -- (the free places: systems/louhi_life's number, live, put here)
+  do
+    local x, z = M.hall_xz(M.mouth_along - 0.8, sc - 0.11)
+    M.SIGN_AT = {x, sy, z, math.atan(-T.bx, -T.bz)}
+  end
   for _, a in ipairs{M.mouth_along - 2.4, M.mouth_along + 2.4} do
     for _, d in ipairs{{0.48, RED, 0.1}, {0.38, {0.95, 0.95, 0.93}, 0.11}} do
       local p = k.box(a, sc - d[3], sy, d[1], d[1], 0.02, d[2])
@@ -782,13 +785,13 @@ function M.build(map)
       M.took[id] = true
     end
   end
-  M.free_bays = #bays - #M.cars
   local dp = {}
   dress_tunnel(dp)
   place("louhi_tunnel_look", dp, {}, {T.cx, T.floor, T.cz})
   local dk = M.kit()
   dress_hall(dk)
   place("louhi_hall_look", dk.parts, {}, {M.HALL.c[1], M.HALL_Y, M.HALL.c[2]})
+  require("systems.louhi_life").build(M)
 end
 
 -- Who's going where: the player, on foot or with what they drive.

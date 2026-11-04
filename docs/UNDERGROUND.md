@@ -57,7 +57,7 @@ Gameplay to decide (Oliver):
 - **Cops.** Follow you down (they switch layer at the portal too: a chase through the car park)
   or lose you at the mouth (like hiding in Logomo, #247)? Suggest: they follow at 3 stars and up.
 - **Traffic.** A few parked cars, one or two driving round the levels looking for a space; no
-  through traffic.
+  through traffic. Built (November 2026) in Louhi: `systems/louhi_life.lua`, see ROADMAP.
 
 ## In pieces (each a PR, each tested)
 

@@ -160,6 +160,8 @@ function M.driven(id)
   if id == require("lib.state").vehicle then return true end
   local traffic, police = package.loaded["systems.traffic"], package.loaded["systems.police"]
   local cop = police and police.cops[id]
+  local life = package.loaded["systems.louhi_life"] -- (Louhi's cars coming and going)
+  if life and life.active and life.moving[id] then return true end
   return (traffic and traffic.cars[id] ~= nil) or (cop ~= nil and not cop.deployed)
 end
 
