@@ -1,7 +1,10 @@
 -- Toriparkki on foot (systems/toriparkki, Oliver's map): through each of the
 -- three pavilions' doors on Kauppatori (A, B, C), down the stairs into the
--- car park and back up and out; then at two stars an officer on the square
--- follows you down through B.
+-- car park and back up and out; in at Forum's door on Eerikinkatu and
+-- Wiklund's on Kauppiaskatu and along the ways under the streets into the
+-- car park and back; from the car park along the way to Hansa and out its
+-- door on Aurakatu; then at two stars an officer follows you down through B,
+-- and another through Wiklund.
 -- TORIPARKKI_FOOT_TEST=1 MAP=turku
 local G = require "lib.state"
 local U = require "lib.util"
@@ -53,14 +56,21 @@ local function there(p, r)
   return U.dist2d(x, z, tx, tz) < (r or 1.2)
 end
 
--- A core's points: out on the square, the door, down, and out the bottom.
+-- A core's points: out on the street, the door, down, and out the bottom
+-- into the car park (along the way under the street, where there is one:
+-- its route the other way).
 local function pts(C)
   local d = C.door
   local function o(dist) if d.axis == "along" then return {d.at + d.out * dist, d.c} end return {d.c, d.at + d.out * dist} end
   local wm = (C.w0 + C.w1) / 2
   local out = o(5)
-  local down = {o(1.5), o(-0.6), {C.ac(C.top - 0.4, wm)}, {C.ac(C.foot + 0.4, wm)}, {C.ac((C.foot + C.s1) / 2, wm)},
-                {C.ac((C.foot + C.s1) / 2, C.exit_w + C.exit_out * 2.5)}}
+  local down = {o(1.5), o(-0.6), {C.ac(C.top - C.dir * 0.4, wm)}, {C.ac(C.foot + C.dir * 0.4, wm)}, {C.ac(C.sm, wm)}}
+  if C.mouth then
+    local r = C.route.pts
+    for i = 3, 1, -1 do down[#down + 1] = r[i] end
+  else
+    down[#down + 1] = {C.ac(C.sm, C.exit_w + C.exit_out * 2.5)}
+  end
   local below = down[#down]
   local up = {}
   for i = #down - 1, 1, -1 do up[#up + 1] = down[i] end
@@ -81,7 +91,12 @@ engine.on("tick", function(dt)
   if f then sunk = math.max(sunk, f - y) end
   local C = tori.CORES[ci]
   if step == 0 then
-    if ci == 1 then check(#tori.CORES == 3, string.format("three pavilions with stairs down (%d)", #tori.CORES)) end
+    if ci == 1 then
+      local n = 0
+      for _, c in ipairs(tori.CORES) do if c.pavilion then n = n + 1 end end
+      check(n == 3, string.format("three pavilions with stairs down (%d)", n))
+      check(#tori.CORES == 5, string.format("and two at the far ends of the ways under the streets (%d)", #tori.CORES - n))
+    end
     local out, down = pts(C)
     local sx, sz = Lh.hall_xz(out[1], out[2])
     engine.set_pos(G.player, sx, U.ground(sx, sz) + 1.4, sz)
@@ -106,17 +121,48 @@ engine.on("tick", function(dt)
     if there(out) then
       check(layer == 0, C.unit .. ": back up and out the door: on the square, layer 0")
       check(crossed == 2, string.format("%s: crossed down and up once each (%d)", C.unit, crossed))
-      if ci < #tori.CORES then ci, step = ci + 1, 0 else ci, step = 2, 3 end
+      if ci < #tori.CORES then ci, step = ci + 1, 0 else step = 10 end
       t = 0
     elseif t > 40 then
       check(false, string.format("%s: back out in 40 s (layer %d, %.1f %.1f %.1f)", C.unit, layer, x, y, z))
+      return finish()
+    end
+  elseif step == 10 then
+    -- From the car park along the way to Hansa, through its level -1 and up
+    -- and out its door on Aurakatu.
+    local r = tori.hansa_route
+    local sx, sz = Lh.hall_xz(r.pts[1][1], r.pts[1][2])
+    engine.set_layer(G.player, 1)
+    Lh.took[G.player] = true
+    engine.view_layer(1)
+    engine.set_pos(G.player, sx, 2 + 1, sz)
+    engine.set_vel(G.player, 0, 0, 0)
+    local d = r.door
+    local w = {}
+    for i = 2, #r.pts do w[#w + 1] = r.pts[i] end
+    w[#w + 1] = {d.at + d.out * 0.3, d.c}
+    w[#w + 1] = {d.at + d.out * 4, d.c}
+    go(w)
+    step, t, sunk, crossed = 11, 0, 0, 0
+  elseif step == 11 then
+    local d = tori.hansa_route.door
+    if there({d.at + d.out * 4, d.c}, 1.5) then
+      check(layer == 0, "from the car park to Hansa and out on Aurakatu: layer 0")
+      check(sunk < 0.5, string.format("never through a floor on the way (%.2f m at worst)", sunk))
+      ci, step, t = 2, 3, 0
+    elseif t > 90 then
+      check(false, string.format("to Hansa and out on Aurakatu in 90 s (layer %d, %.1f %.1f %.1f, along %.1f across %.1f)", layer, x, y, z, Lh.hall_ab(x, z)))
       return finish()
     end
   elseif step == 3 then
     -- Wanted, down through B; an officer on the square after you.
     local out, down = pts(C)
     local sx, sz = Lh.hall_xz(out[1], out[2])
+    engine.set_layer(G.player, 0)   -- (up top first: after B you're still down there)
+    Lh.took[G.player] = nil
+    engine.view_layer(0)
     engine.set_pos(G.player, sx, U.ground(sx, sz) + 1.4, sz)
+    engine.set_vel(G.player, 0, 0, 0)
     wanted.set(2)
     go(down)
     step, t = 4, 0
@@ -137,8 +183,13 @@ engine.on("tick", function(dt)
     if engine.exists(officer) and engine.layer(officer) == 1 then
       local _, oy = engine.pos(officer)
       if oy < 2 + 1.5 then
-        check(true, string.format("an officer followed you down B's stairs (%.0f s)", t))
-        return finish()
+        check(true, string.format("an officer followed you down %s's stairs (%.0f s)", C.unit, t))
+        if C.unit == "WIKLUND" then return finish() end
+        engine.despawn(officer)
+        police.officers[officer] = nil
+        officer = nil
+        ci, step, t = 5, 3, 0
+        return
       end
     end
     if t > 60 or not engine.exists(officer) then

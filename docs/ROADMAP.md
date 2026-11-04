@@ -307,6 +307,23 @@ to Hansa, Wiklund and Forum/KOP-kolmio on the map.
 
 ![The door on the square, the stairs down, the way out at the bottom](toriparkki-pavilions.png)
 
+### Toriparkki's ways under the streets (November 2026)
+
+The rest of Oliver's map: from the car park, ways on foot under the streets to its neighbours,
+where OpenStreetMap's layer -1 stubs leave it. South under Eerikinkatu (FORUM  KOP-KOLMIO over the
+way in) to stairs up to Forum's staircase door on Eerikinkatu; east under Kauppiaskatu (WIKLUND),
+past Prisma's and Alko's fronts (Wiklund's level -1 in OSM), to stairs up to Wiklund's door on
+Kauppiaskatu; west under Aurakatu (HANSA) and round into Hansa's level -1, so you can walk from
+the car park through Hansa and out on Aurakatu. Each far door has TORIPARKKI and the blue P over
+it up top. Officers follow you down any of them. The stairs at the far ends are #261's boxes, now
+going either way (`toriparkki.UNITS`: `dir`); the ways are `toriparkki.WALKS`, open into the car
+park through gaps in its walls (`BODY_GAPS`) and into Hansa through `louhi.HANSA_LINK`.
+`TORIPARKKI_FOOT_TEST=1` now also walks in at Forum's and Wiklund's doors along the ways into the
+car park and back, from the car park to Hansa and out on Aurakatu, and has an officer follow you
+down through Wiklund.
+
+![The way to Wiklund from the car park, past Alko, and the way to Hansa](toriparkki-walkways.png)
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
