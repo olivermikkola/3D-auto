@@ -73,6 +73,18 @@ Gameplay to decide (Oliver):
    Built (November 2026), see ROADMAP; the corridors are the game's, the lifts don't go.
 5. **Toriparkki**, joined to Louhi. Built (November 2026), see ROADMAP: one level (OSM has
    it at -2), the body, arm and ramp where OSM has them; the link to Louhi is the game's.
+6. **Turun Kauppahalli (Market Hall 1896)**: historic market hall on Eerikinkatu/Linnankatu
+   built as a full 3D walkable interior on layer 1 (`systems/kauppahalli.lua`). Red-brick exterior
+   portals on Eerikinkatu and Linnankatu, 112 m central aisle, timber trusses, clerestory skylight,
+   12 stalls (Kahvila Halli, Leipomo Juuri, Kalaliike Virtanen, etc.), NPCs, eating/drinking
+   interaction (+HP heal, cash deduct), police evasion and radar icon `"H"`. Tested in
+   `KAUPPAHALLI_TEST=1` (`tools/test_kauppahalli.py`).
+7. **Uusi Apteekki (pub 1907 on Kaskenkatu 1)**: iconic Turku pub interior on layer 1
+   (`systems/pub.lua`). Kaskenkatu stone arch facade, heavy timber door, green-gold sign, hanging
+   blade sign, chalkboard, parquet floor, 32-drawer apothecary cabinet wall with glowing elixir
+   bottles, mahogany bar counter, brass beer taps, bartender Olli and patron NPCs, interactive
+   craft beer (+35 HP, $7) and playable dartboard minigame with score popups, police evasion,
+   radar icon `"B"`. Tested in `PUB_TEST=1` (`tools/test_pub.py`).
 
 Piece 1 is the only risky one (engine); 2 is the most fun on its own. Roughly a day each for
 1 and 2, less for 3-5.

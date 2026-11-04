@@ -83,6 +83,8 @@ engine.on("init", function()
   require("systems.landmarks").build(city.map())
   require("systems.hideouts").build(city.map())
   require("systems.louhi").build(city.map())
+  require("systems.kauppahalli").build(city.map())
+  require("systems.pub").build(city.map())
   daynight.light_lamps()
   daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
 
@@ -183,6 +185,8 @@ if os.getenv("LOUHI_FOOT_TEST") then require "test.louhi_foot_probe" end
 if os.getenv("TORIPARKKI_FOOT_TEST") then require "test.toriparkki_foot_probe" end
 if os.getenv("LOUHI_LIFE_TEST") then require "test.louhi_life_probe" end
 if os.getenv("HANSA_TEST") then require "test.hansa_probe" end
+if os.getenv("KAUPPAHALLI_TEST") then require "test.kauppahalli_probe" end
+if os.getenv("PUB_TEST") then require "test.pub_probe" end
 if os.getenv("TORIPARKKI_TEST") then require "test.toriparkki_probe" end
 if os.getenv("LAYERS_TEST") then require "test.layers_probe" end
 if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
