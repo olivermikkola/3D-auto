@@ -267,6 +267,18 @@ are `ground`, not `wall`, so driving onto one isn't a crash. `TORIPARKKI_TEST=1`
 (`tools/test_toriparkki.py`): from Louhi's hall through the link, up the ramp into the street
 and back down to the first aisle; at two stars a cop car comes down the ramp to you.
 
+### Louhi as it looks (November 2026)
+
+From Oliver's photos of the real Louhi: the walls are the rock, sprayed and painted white, bumpy,
+leaning in where they meet the dark open ceiling (ducts, cable trays, the rows of strip lights);
+a low kerb along them, a red rail at hip height with red extinguisher boxes. At the way in from
+the tunnel, the striped height beam, red bollards and the dark sign with P1, the free places in
+green (`louhi.free_bays`) and a 20 at each end; green ULOS signs over the doors on foot. All
+drawn only (`louhi_tunnel_look`, `louhi_hall_look`: nothing new to hit), laid out by a hash of
+the place. `SHOT_LAYER=1` renders underground (`game/test/shot.lua`).
+
+![Louhi's hall, before and after](louhi-look-before-after.png)
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above

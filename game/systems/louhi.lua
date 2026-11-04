@@ -100,6 +100,7 @@ end
 
 local CONC, CONC2, ASPHALT, LINE, PILLAR = {0.55, 0.55, 0.53}, {0.45, 0.45, 0.44}, {0.2, 0.2, 0.21}, {0.85, 0.85, 0.8}, {0.62, 0.6, 0.56}
 local STRIP = {1, 0.97, 0.9}
+M.CEIL = {0.26, 0.26, 0.27} -- the hall's and the tunnel's ceiling: dark, open (Oliver's photos)
 
 -- Statics: drawn parts in one mesh each, and invisible boxes to hit.
 local function build_tunnel()
@@ -129,7 +130,7 @@ local function build_tunnel()
       slab(r[1], r[2], y0 + M.H, y1 + M.H, side * (M.W / 2 + 0.25), 0.5, M.H, side < 0 and CONC or CONC2, true)
       slab(r[1], r[2], y0 + 0.02, y1 + 0.02, side * (M.W / 2 - 0.6), 0.12, 0.02, LINE)
     end
-    slab(r[1], r[2], y0 + M.H + 0.5, y1 + M.H + 0.5, 0, M.W + 1, 0.5, CONC2, true)
+    slab(r[1], r[2], y0 + M.H + 0.5, y1 + M.H + 0.5, 0, M.W + 1, 0.5, M.CEIL, true)
     slab(r[1], r[2], y0 + M.H - 0.02, y1 + M.H - 0.02, 0, 0.3, 0.06, STRIP, false, 1)
   end
   -- The way out, bright: daylight at the mouth.
@@ -155,7 +156,7 @@ local function build_hall()
   end
   local L2, W2 = H.len / 2, H.wid / 2
   box(0, 0, y - 0.5, H.len + 1, H.wid + 1, 1, ASPHALT, true).floor = true   -- floor
-  box(0, 0, y + M.H + 0.25, H.len + 1, H.wid + 1, 0.5, CONC2, true)          -- ceiling
+  box(0, 0, y + M.H + 0.25, H.len + 1, H.wid + 1, 0.5, M.CEIL, true)        -- ceiling
   -- The far wall and the ends, with the doors on foot in them (M.GAPS):
   -- 2.6 m high, a lintel over.
   local function wall(gaps, lo, hi, place_at)
@@ -216,6 +217,179 @@ local function build_hall()
   end
   M.hall_at, M.hall_yaw = hall_at, yaw
   return parts, solids, bays
+end
+
+-- ---- the look, from Oliver's photos (November 2026) ------------------------------
+-- Blasted out of the hill: the walls are the rock, sprayed and painted white,
+-- bumpy, leaning in overhead where they meet the dark open ceiling (ducts,
+-- cable trays, rows of LED strips). Along the walls a low kerb, a red rail at
+-- hip height, red extinguisher boxes; at the way in a dark P1 sign with the
+-- free places in green, a striped height beam, 20 signs and red bollards.
+-- Drawn only (nothing new to hit), laid out by a hash of the place, the same
+-- every time (no math.random: it would shift traffic's draws).
+local ROCK = {{0.88, 0.88, 0.86}, {0.82, 0.82, 0.8}, {0.92, 0.92, 0.9}, {0.77, 0.77, 0.75}}
+local KERB_C, RED, DARK = {0.5, 0.5, 0.49}, {0.72, 0.1, 0.1}, {0.13, 0.14, 0.16}
+local DUCT, TRAY, EXIT = {0.55, 0.56, 0.57}, {0.42, 0.43, 0.45}, {0.1, 0.55, 0.25}
+local KERB_W, KERB_H = 0.6, 0.12
+
+local function hash(i, k)
+  local s = (i * 73856093 + k * 19349663) % 2147483648
+  s = (s * 1103515245 + 12345) % 2147483648
+  return (s % 10007) / 10007
+end
+
+-- One wall's dressing, in a frame of its own: s along the wall, `out` from
+-- its face into the room, y up from `fy(s)` (the floor there). part(s, out,
+-- cy, len, thick, h, color, lean, mesh, emissive, twist) puts one in (lean:
+-- its top toward the room; twist: turned about the vertical).
+-- The rock in three tiers of lumps 0.7 to 1.7 m long, each a little further
+-- out than the one under it, the top one leaning in: the vault's foot.
+local TIERS = {{KERB_H, 1.6, 0.05, 0.02}, {1.5, 2.9, 0.12, 0.1}, {2.8, nil, 0.22, 0.3}}
+local function dress_wall(s0, s1, seed, fy, part, opts)
+  opts = opts or {}
+  local m, l = (s0 + s1) / 2, s1 - s0
+  part(m, KERB_W / 2, fy(m) + KERB_H / 2, l, KERB_W, KERB_H, KERB_C)
+  for t, tier in ipairs(TIERS) do
+    local y0, y1 = tier[1], tier[2] or M.H + 0.1
+    local s, i = s0, t * 3000
+    while s < s1 - 0.2 do
+      local len = math.min(0.7 + 1.0 * hash(seed, i), s1 - s)
+      local r1, r2, r3 = hash(seed, i + 500), hash(seed, i + 900), hash(seed, i + 1700)
+      local c = ROCK[1 + math.floor(hash(seed, i + 1300) * #ROCK) % #ROCK]
+      local mid = s + len / 2
+      local h = y1 - y0 + 0.2 * r2
+      part(mid, tier[3] + 0.18 * r1 - 0.1, fy(mid) + y0 + h / 2, len + 0.2, 0.4, h, c,
+           tier[4] + (r2 - 0.5) * 0.2, nil, nil, (r3 - 0.5) * 0.5)
+      s, i = s + len, i + 1
+    end
+  end
+  -- and smaller bumps over them, so it doesn't read as panels
+  local s, i = s0 + 0.3, 9000
+  while s < s1 - 0.5 do
+    local r1, r2, r3, r4 = hash(seed, i), hash(seed, i + 500), hash(seed, i + 900), hash(seed, i + 1700)
+    local by = KERB_H + 0.4 + 2.9 * r1
+    local tier = by > 2.8 and TIERS[3] or by > 1.5 and TIERS[2] or TIERS[1]
+    part(s, tier[3] + 0.2, fy(s) + by, 0.5 + 0.5 * r2, 0.35, 0.35 + 0.4 * r3,
+         ROCK[1 + math.floor(r4 * #ROCK) % #ROCK], tier[4] + (r3 - 0.5) * 0.6, nil, nil, (r4 - 0.5) * 1.2)
+    s, i = s + 0.5 + 0.8 * r2, i + 1
+  end
+  if opts.rail then
+    part(m, 0.62, fy(m) + 1.25, l, 0.08, 0.12, RED)
+    for s = s0 + 14, s1 - 6, 36 do
+      part(s, 0.55, fy(s) + 1.0, 0.4, 0.22, 0.6, RED)
+      part(s, 0.5, fy(s) + 1.65, 0.25, 0.02, 0.25, RED, 0, nil, 0.3)
+    end
+  end
+end
+
+local function dress_tunnel(parts)
+  local slope_end = T.u_end - FLAT_IN
+  local grade = math.atan(M.HALL_Y - T.floor, slope_end)
+  local function pitch_at(u) return (u > 0 and u < slope_end) and grade or 0 end
+  local function piece(u, v, cy, len, w, h, color, roll, mesh, emissive, twist)
+    local x, z = at(u, v)
+    parts[#parts + 1] = {mesh = mesh or "cube", pos = {x, cy, z}, yaw = T.yaw + (twist or 0), pitch = -pitch_at(u),
+                         roll = roll, size = {w, h, len}, color = color, emissive = emissive}
+  end
+  for side = -1, 1, 2 do
+    local face = side * M.W / 2
+    dress_wall(0.5, T.u_end, side + 2, M.floor_at, function(s, out, cy, len, thick, h, color, lean, mesh, em, twist)
+      piece(s, face - side * out, cy, len, thick, h, color, lean and -side * lean, mesh, em, twist)
+    end)
+    -- a duct up by the roof, on one side
+    if side > 0 then
+      for u = 2, T.u_end - 4, 12 do
+        piece(u + 6, face - 1.1, M.floor_at(u + 6) + M.H - 0.45, 12.1, 0.5, 0.5, DUCT, nil, "cube")
+      end
+    end
+  end
+  for u = 4, T.u_end - 4, 6 do
+    piece(u, 0, M.floor_at(u) + 0.03, 3, 0.12, 0.02, LINE)
+  end
+end
+
+local function dress_hall(k)
+  local H = M.HALL
+  local L2, W2 = H.len / 2, H.wid / 2
+  local y = M.HALL_Y
+  local function flat() return y end
+  local function runs(lo, hi, gaps, margin)
+    local out, from, g = {}, lo, {}
+    for _, q in ipairs(gaps) do g[#g + 1] = q end
+    table.sort(g, function(p, q) return p[1] < q[1] end)
+    for _, q in ipairs(g) do
+      if q[1] - margin > from then out[#out + 1] = {from, q[1] - margin} end
+      from = math.max(from, q[2] + margin)
+    end
+    if hi > from then out[#out + 1] = {from, hi} end
+    return out
+  end
+  local mouth = {M.mouth_along - M.W / 2 - 0.5, M.mouth_along + M.W / 2 + 0.5}
+  local walls = {
+    {line = W2, sgn = 1, axis = "along", gaps = M.GAPS.far, lo = -L2, hi = L2},
+    {line = -W2, sgn = -1, axis = "along", gaps = {mouth}, lo = -L2, hi = L2},
+    {line = -L2, sgn = -1, axis = "across", gaps = M.GAPS.west, lo = -W2, hi = W2},
+    {line = L2, sgn = 1, axis = "across", gaps = M.GAPS.east, lo = -W2, hi = W2},
+  }
+  for wi, w in ipairs(walls) do
+    for ri, r in ipairs(runs(w.lo, w.hi, w.gaps, 0.2)) do
+      dress_wall(r[1], r[2], wi * 10 + ri, flat, function(s, out, cy, len, thick, h, color, lean, mesh, em, twist)
+        local p
+        if w.axis == "along" then
+          p = k.box(s, w.line - w.sgn * out, cy, len, thick, h, color, false, em)
+          if lean then p.roll = w.sgn * lean end
+        else
+          p = k.box(w.line - w.sgn * out, s, cy, thick, len, h, color, false, em)
+          if lean then p.pitch = -w.sgn * lean end
+        end
+        if mesh then p.mesh = mesh end
+        if twist then p.yaw = p.yaw + twist end
+      end, {rail = w.axis == "along"})
+    end
+  end
+  -- The open ceiling: ducts down each side, cable trays over the pillars.
+  for _, c in ipairs{-W2 + 2.2, W2 - 2.2} do
+    for along = -L2 + 3, L2 - 15, 12 do k.box(along + 6, c, y + M.H - 0.45, 12.1, 0.6, 0.6, DUCT) end
+  end
+  for _, c in ipairs{-1.1, 1.1} do
+    k.box(0, c, y + M.H - 0.25, H.len - 4, 0.5, 0.06, TRAY)
+  end
+  -- The way in from the tunnel: the striped height beam over the mouth, red
+  -- bollards at its corners, the P1 sign with the free places, the 20 signs.
+  local bc = -W2 + 0.6
+  local n = 0
+  for a = mouth[1], mouth[2] - 0.5, 0.5 do
+    n = n + 1
+    k.box(a + 0.25, bc, y + M.H - 0.35, 0.5, 0.25, 0.3, n % 2 == 0 and {0.95, 0.95, 0.93} or {0.08, 0.08, 0.08})
+  end
+  for _, a in ipairs{mouth[1] - 0.2, mouth[2] + 0.2} do
+    k.box(a, -W2 + 0.9, y + 0.5, 0.2, 0.2, 1.0, RED).mesh = "cylinder"
+  end
+  -- The sign over the way in (as photographed): dark, P1 and the free places
+  -- in green in the middle, a 20 at each end; facing the cars coming in.
+  local free = M.free_bays or 0
+  local sc, sy = -W2 + 6, y + M.H - 0.7
+  k.box(M.mouth_along, sc, sy, 5.6, 0.15, 0.6, DARK)
+  k.text(M.mouth_along + 1.0, sc - 0.08, sy, "-c", "P1", 0.36, {1, 1, 1}, 0.5)
+  k.text(M.mouth_along - 0.8, sc - 0.08, sy, "-c", tostring(free), 0.36, {0.2, 1, 0.3}, 1)
+  for _, a in ipairs{M.mouth_along - 2.4, M.mouth_along + 2.4} do
+    for _, d in ipairs{{0.48, RED, 0.1}, {0.38, {0.95, 0.95, 0.93}, 0.11}} do
+      local p = k.box(a, sc - d[3], sy, d[1], d[1], 0.02, d[2])
+      p.mesh, p.roll = "cylinder", math.pi / 2
+    end
+    k.text(a, sc - 0.12, sy, "-c", "20", 0.2, {0.05, 0.05, 0.05})
+  end
+  -- Over each door on foot: the green ULOS sign.
+  for _, g in ipairs(M.GAPS.far) do
+    local m = (g[1] + g[2]) / 2
+    k.box(m, W2 - 0.03, y + 3.7, 1.4, 0.05, 0.36, EXIT, false, 0.8)
+    k.text(m, W2 - 0.07, y + 3.7, "-c", "ULOS", 0.24, {1, 1, 1}, 0.8)
+  end
+  for _, g in ipairs(M.GAPS.west) do
+    local m = (g[1] + g[2]) / 2
+    k.box(-L2 + 0.03, m, y + 3.7, 0.05, 1.4, 0.36, EXIT, false, 0.8)
+    k.text(-L2 + 0.07, m, y + 3.7, "+a", "ULOS", 0.24, {1, 1, 1}, 0.8)
+  end
 end
 
 -- ---- on foot: doors up to the street, ways to them (pieces 3, 4) ----------------
@@ -599,6 +773,13 @@ function M.build(map)
       M.took[id] = true
     end
   end
+  M.free_bays = #bays - #M.cars
+  local dp = {}
+  dress_tunnel(dp)
+  place("louhi_tunnel_look", dp, {}, {T.cx, T.floor, T.cz})
+  local dk = M.kit()
+  dress_hall(dk)
+  place("louhi_hall_look", dk.parts, {}, {M.HALL.c[1], M.HALL_Y, M.HALL.c[2]})
 end
 
 -- Who's going where: the player, on foot or with what they drive.

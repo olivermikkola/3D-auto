@@ -3,6 +3,7 @@
 -- FOG="near,far" pushes the fog back for wide shots.
 -- SHOT_CAM_GROUND=1 reads both heights as metres above the ground under them
 -- (tools/postcards.py), so a spot stays at eye level when the terrain changes.
+-- SHOT_LAYER=n looks at layer n (1: underground, systems/louhi).
 -- SHOT_CAM_SNAP=1 moves the eye onto the middle of the nearest street and
 -- looks along it, the way that's nearer the target, so a street-level shot
 -- never stares into a wall after the map changes.
@@ -36,4 +37,7 @@ engine.on("init", function()
     engine.fog(tonumber(a), tonumber(b))
   end
 end)
-engine.on("frame", function() engine.camera(v[1], v[2], v[3], v[4], v[5], v[6], v[7] or 60) end)
+engine.on("frame", function()
+  if os.getenv("SHOT_LAYER") then engine.view_layer(tonumber(os.getenv("SHOT_LAYER"))) end
+  engine.camera(v[1], v[2], v[3], v[4], v[5], v[6], v[7] or 60)
+end)
