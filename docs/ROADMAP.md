@@ -279,6 +279,18 @@ the place. `SHOT_LAYER=1` renders underground (`game/test/shot.lua`).
 
 ![Louhi's hall, before and after](louhi-look-before-after.png)
 
+### Louhi's cars come and go (November 2026)
+
+While you're down in Louhi (`systems/louhi_life.lua`), three of its parked cars take turns: one
+backs out of its bay (swinging round to face the way it's going), drives round to the tunnel and
+away up it; out of your sight it's gone, and later comes back down as someone new, drives round
+the aisles looking for a space and parks, nose in. They stop for you, cops and each other, never
+come down the tunnel while you're in it, and nobody leaves while you're wanted. The P1 sign's
+green number is the free bays as they are. Only cars made at load are moved (never spawned in
+play) and every choice is a hash, so traffic up top plays out as before. `LOUHI_LIFE_TEST=1`
+(`tools/test_louhi_life.py`): six minutes standing in a bay; cars back out, leave, come back and
+park, none gets stuck or tips, nobody drives into you, the sign is right all along.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
