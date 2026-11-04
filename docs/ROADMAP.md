@@ -83,6 +83,23 @@ and `game/lib/roadnet.lua`. Raisio-only facts belong in `game/maps/raisio*.lua`.
 - Wave 4, life: cyclists, people at the shelters boarding the buses, market day on Kauppatori,
   terraces along the river, crowds outside the bars at night (every night: the game has no days
   of the week).
+  - **Kauppatori Torikahvila & Stalls (`systems/city_life.lua`):** Traditional orange-and-cream striped
+    canvas market pavilion on Kauppatori with valance signage (`TURUN TORIKAHVILA`), pine counter with
+    steaming coffee urns, posliinikupit, pastry display case with fresh possumunkkeja, chalkboard menu,
+    and 4 picnic tables with morning coffee patrons. Interactive purchasing (`R`: *Kahvi & possumunkki*
+    $5, +35 HP; `E`: *Lihapiirakka kahdella nakilla* $6, +45 HP) with custom synthesized audio (`torikahvi`,
+    `possumunkki`), open 06:00-18:00. Fast-purchase produce stalls (mansikat, herneet, uudet perunat, ruisleipä).
+  - **Aurajoen Jokilaivat (`systems/city_life.lua`):** Flagship floating restaurant vessels along Aurajoki quays:
+    **Svarte Rudolf** and **Donna** on Itäinen Rantakatu, **Majland** on Läntinen Rantakatu. Moored on surveyed
+    river water with walkable Layer 0 timber gangways (kulkusillat) connecting stone quays to solid boat decks
+    (`tag = "deck"`, `body = "static"`). Solid decks with perimeter railings and gangway boarding gates, shaded
+    canopies, round tables with parasols, seated patrons, and bar counters with beer taps and chalkboard menus.
+    Bartender NPCs (Rudolf, Donna, Matti) with interactive orders (`R`: *Aura-olut* $6, +25 HP; *Donna Special* $7,
+    +30 HP; *Majland-IPA* $6, +25 HP; synth audio `jokilaiva_drink`). Warm festoon fairy string lights illuminating
+    from dusk through the night (16:00-04:00).
+  - **River Safety Integration (`systems/shore.lua`):** Downward raycasts identify boat, deck, and ferry tags
+    (`deck`, `ship`, `ferry`, `boat`), allowing walking and standing on floating restaurant ships and gangways
+    without triggering water resets.
 - Wave 6 begun before the playtest: businesses to buy (`systems/businesses.lua`) and a story
   through the missions (`story/arc.lua`), both first drafts for the playtest to tune.
 - Wave 7 begun: big meshes go to the GPU as they're made and the CPU copy is dropped (the browser's

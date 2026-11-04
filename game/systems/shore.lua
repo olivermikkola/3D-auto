@@ -31,7 +31,10 @@ engine.on("tick", function(dt)
   for _, id in ipairs{G.vehicle or G.player} do
     if engine.exists(id) then
       local x, y, z = engine.pos(id)
-      if not roadnet.wet(x, z) then
+      local hit = engine.raycast(x, y + 0.5, z, 0, -1, 0, 2.5)
+      local tag = hit and engine.tag(hit)
+      local on_boat = tag == "deck" or tag == "ship" or tag == "ferry" or tag == "boat"
+      if not roadnet.wet(x, z) or on_boat then
         dry[id] = {x, y, z}
       elseif dry[id] then
         local d = dry[id]
