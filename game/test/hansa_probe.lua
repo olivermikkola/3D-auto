@@ -62,7 +62,7 @@ engine.on("tick", function(dt)
   t = t + dt
   local x, y, z = engine.pos(G.player)
   local layer = engine.layer(G.player)
-  local f = layer == 1 and Lh.area_floor(x, z, 0)
+  local f = layer == 1 and Lh.area_floor(x, z, 0, y)
   if f then sunk = math.max(sunk, f - y) end
   local top = Hs.top
   local WAY = {{-112, 12.8}, {-112, 64}, {-48, 64}, {-48, top + 1}, {-48, 100.8}, {-12, 100.8}, {-6.5, 100.8}}

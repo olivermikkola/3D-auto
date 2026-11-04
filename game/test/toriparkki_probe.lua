@@ -52,7 +52,7 @@ engine.on("tick", function(dt)
   t = t + dt
   if car and engine.exists(car) and Lh.down(car) then
     local x, y, z = engine.pos(car)
-    local f = Lh.area_floor(x, z, 0)
+    local f = Lh.area_floor(x, z, 0, y)
     if f then worst = math.max(worst, math.abs(y - 0.75 - f)) end
   end
   if step == 0 then

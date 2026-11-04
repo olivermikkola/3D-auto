@@ -279,6 +279,23 @@ the place. `SHOT_LAYER=1` renders underground (`game/test/shot.lua`).
 
 ![Louhi's hall, before and after](louhi-look-before-after.png)
 
+### Toriparkki on foot, from the pavilions (November 2026)
+
+From Oliver's map of Toriparkki's ways on foot: the stairs down are in three of the square's
+pavilions, A (Aurakatu's), B (Eerikinkatu's) and C (Kauppiaskatu's), their doors where
+OpenStreetMap has them (`toriparkki.UNITS`), in the wall of OSM's footprint that faces the middle
+of the square: TORIPARKKI A and the blue P over each. Through the door, a landing, a flight down
+and a landing at the bottom open to the car park, A KAUPPATORI (B, C) over it. The square is
+about as high as the car park's ceiling, so each is a walled box where it takes least room
+(A in the west end's cross aisle, B and C in bays, with 6 m kept clear beside them); the car
+park's ceiling has holes over them. Officers follow you down any of them. Floors over floors:
+`louhi.area_floor(x, z, margin, y)` takes a height. `TORIPARKKI_FOOT_TEST=1`
+(`tools/test_toriparkki_foot.py`): down and back up each of A, B, C, never through a step;
+at two stars an officer on the square follows you down B. Not yet: the ways under the streets
+to Hansa, Wiklund and Forum/KOP-kolmio on the map.
+
+![The door on the square, the stairs down, the way out at the bottom](toriparkki-pavilions.png)
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
