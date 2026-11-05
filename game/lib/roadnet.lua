@@ -3698,6 +3698,11 @@ build = function(map, kit)
       elseif o.kind == "shop" and h < 16 and area(o.pts) > BIG_SHOP then
         facade = BIG_SHOP_F
       end
+      -- (a look from photos may say what its walls are: a colour, a facade by name)
+      if o.look and o.look.wall then color = o.look.wall end
+      if o.look and o.look.facade then
+        facade = ({old = OLD_TOWN, flats = FLATS_F, glass = GLASS_F, new = NEW_F, shop = BIG_SHOP_F, works = WORKS_F})[o.look.facade]
+      end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end
       -- Passages through it (to its courtyard): gaps in its walls, and a

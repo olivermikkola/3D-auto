@@ -59,6 +59,10 @@ return {
   -- passages painted yellow, its balconies glazed loggias with white bars.
   outline_looks = {
     {at = {930, -1040}, passage = {0.93, 0.72, 0.2}, balconies = "loggias"},
+    -- EduCity, Joukahaisenkatu 7 (Kupittaa, 2020): handmade grey Kolumba
+    -- tiles, like the brick DataCity next door, windows in a square grid.
+    -- Inside it is systems/educity.lua.
+    {at = {1494, 334}, wall = {0.78, 0.76, 0.72}, facade = "new"},
   },
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,

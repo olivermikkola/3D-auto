@@ -369,6 +369,20 @@ tables. Bartender Olli and regular patron NPCs. Press `R` at the bar to buy an A
 popups (bullseye, triple 20, etc.). Wanted evasion and radar icon `"B"`. `PUB_TEST=1`
 (`tools/test_pub.py`).
 
+### EduCity, Turku AMK at Kupittaa (November 2026)
+
+EduCity (Joukahaisenkatu 7, 2020) was a dark glass box like any new office. Now its walls are
+the light grey of its handmade Kolumba tiles: an outline's look (`map.outline_looks`) can set
+its `wall` colour and its `facade` by name. Inside (`systems/educity.lua`, layer 1 as the
+Kauppahalli), from the glass door on Joukahaisenkatu: the atrium under its printed-glass
+skylight, galleries every floor with wooden "dice" jutting out, the Stairway of Skills down
+from the foyer to the restaurant (timber steps to sit on, a ramp underfoot), and a hackathon
+at long tables of laptops on the atrium floor with a big screen and pizza. Coffee in the foyer
+($3), lunch downstairs ($9), the hackathon's pizza free; inside the cops lose sight of you. A
+glass bridge joins it to ICT-City over the campus street. From Arkkitehti 1/2021; the exact
+look waits for photos. `EDUCITY_TEST=1` (`tools/test_educity.py`) walks in by the door and
+down the stairs. Postcard spot `educity`.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
