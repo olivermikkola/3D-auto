@@ -202,6 +202,7 @@ if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
 if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
 if os.getenv("MAP_TEST") then require "test.map_probe" end
 if os.getenv("MAP_MISSIONS_TEST") then require "test.map_missions_probe" end
+if os.getenv("UNDER_SQUARE_TEST") then require "test.under_square_probe" end
 if os.getenv("AURAJOKI_TEST") then require "test.aurajoki_probe" end
 if os.getenv("DIRECTION_TEST") then require "test.direction_probe" end
 if os.getenv("DEAD_END_TEST") then require "test.dead_end_probe" end
