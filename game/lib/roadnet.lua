@@ -3686,6 +3686,8 @@ build = function(map, kit)
   -- One building's walls, trim, windows and balconies, each part handed to
   -- add(x, z, part).
   local function building_walls(o, add)
+    -- (One a system draws itself, from photos: only its boxes, unseen, stay.)
+    if o.look and o.look.drawn_by then return end
     do
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
       local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})

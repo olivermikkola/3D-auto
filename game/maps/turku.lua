@@ -59,6 +59,9 @@ return {
   -- passages painted yellow, its balconies glazed loggias with white bars.
   outline_looks = {
     {at = {930, -1040}, passage = {0.93, 0.72, 0.2}, balconies = "loggias"},
+    -- EduCity, Joukahaisenkatu 7 (Kupittaa, 2020): terraces stepping down
+    -- either side of a sloping skylight; systems/educity.lua draws it.
+    {at = {1494, 334}, drawn_by = "systems/educity"},
   },
   railways = osm.railways,
   rail_bridges = osm.rail_bridges,
