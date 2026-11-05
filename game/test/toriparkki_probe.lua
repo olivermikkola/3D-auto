@@ -114,6 +114,8 @@ engine.on("tick", function(dt)
       wanted.set(2)
       local ox, oz = Lh.hall_xz(Tp.portal.outside[1], Tp.portal.outside[2])
       wanted.center = {ox, oz, Tp.ys}
+      wanted.unseen_for = 0 -- (they've just seen you: the clock starts now, not at the one star
+                            -- picked up earlier in the test)
       step, t = 3, 0
     end
   elseif step == 3 then

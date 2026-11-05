@@ -48,10 +48,28 @@ function M.plan(Lh)
   local P = {axis = "along", at = MOUTH, out = 1, c = mid, w = RAMP.c1 - RAMP.c0, ys = ys, order = 5, outside = {MOUTH + 7, mid},
              name = "Toriparkki"}
   -- Up top, after you down here: by the roads to the street outside, then in.
+  -- (The roads take a cop to the junction nearest the way in, but it may
+  -- be a dead end the cop can't get to from where it is: Yliopistonkatu's
+  -- end at the mouth is one, reached only from Aurakatu's far side; from the
+  -- other end its drivable bit stops 66 m off at another, the walking street
+  -- between. Cops there searched round it and never came in. From the next
+  -- junction out, they steer, down the walking street if that's the way.)
+  local city = require "lib.city"
+  local ox, oz = Lh.hall_xz(P.outside[1], P.outside[2])
+  local near = 45
+  if city.network() then
+    local best = math.huge
+    for _, id in ipairs(city.junctions()) do
+      local jx, jz = city.pos(id)
+      local d = U.dist2d(ox, oz, jx, jz)
+      if d > 5 and d < best then best = d end
+    end
+    if best < 75 then near = math.max(near, best + 10) end
+  end
+  print(string.format("toriparkki: cops steer in from %.0f m out", near))
   function P.approach(x, z)
     local a, c = Lh.hall_ab(x, z)
-    local ox, oz = Lh.hall_xz(P.outside[1], P.outside[2])
-    if U.dist2d(x, z, ox, oz) > 45 then return "goal", ox, ys, oz end
+    if U.dist2d(x, z, ox, oz) > near then return "goal", ox, ys, oz end
     if a > MOUTH + 3 and math.abs(c - mid) > 1.2 then return "steer", ox, oz, 8 end
     local tx, tz = Lh.hall_xz(math.min(a, MOUTH + 6) - 12, mid)
     return "steer", tx, tz, 10
