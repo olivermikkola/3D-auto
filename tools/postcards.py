@@ -59,6 +59,8 @@ SPOTS = {
                                about="Puolalanmäki from above: the museum and Puolalanpuisto"),
     "educity": dict(eye=(1533, 1.7, 285), look=(1515, 14, 308), fov=70, hour=13,
                     about="EduCity (Turku AMK) from Joukahaisenkatu"),
+    "educity_above": dict(eye=(1404, 55, 399), look=(1490, 12, 340), fov=55, hour=13,
+                          about="EduCity from over the car park: its terraces and skylight"),
     "kupittaa": dict(eye=(1200, 40, 420), look=(1080, 0, 680), fov=60, hour=14,
                      about="Kupittaa: the campus and the park beyond"),
     "rail_ylioppilaskyla": dict(eye=(680, 12, -1420), look=(560, 8, -1290), fov=60, hour=14,

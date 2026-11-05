@@ -3686,6 +3686,8 @@ build = function(map, kit)
   -- One building's walls, trim, windows and balconies, each part handed to
   -- add(x, z, part).
   local function building_walls(o, add)
+    -- (One a system draws itself, from photos: only its boxes, unseen, stay.)
+    if o.look and o.look.drawn_by then return end
     do
       local cx, cz, base, h, n = (o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2, o.base, o.h, #o.pts
       local color = o.wall or (o.kind == "works" and {0.72, 0.71, 0.68})
@@ -3697,11 +3699,6 @@ build = function(map, kit)
         facade = WORKS_F
       elseif o.kind == "shop" and h < 16 and area(o.pts) > BIG_SHOP then
         facade = BIG_SHOP_F
-      end
-      -- (a look from photos may say what its walls are: a colour, a facade by name)
-      if o.look and o.look.wall then color = o.look.wall end
-      if o.look and o.look.facade then
-        facade = ({old = OLD_TOWN, flats = FLATS_F, glass = GLASS_F, new = NEW_F, shop = BIG_SHOP_F, works = WORKS_F})[o.look.facade]
       end
       local flat = {}
       for _, p in ipairs(o.pts) do flat[#flat + 1] = p[1] - cx; flat[#flat + 1] = p[2] - cz end

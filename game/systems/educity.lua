@@ -92,39 +92,74 @@ local GLASS = {0.55, 0.66, 0.72}
 local WHITE = {0.94, 0.94, 0.92}
 local AMK = {0.86, 0.1, 0.32} -- Turku AMK's raspberry
 
--- Outside, in layer 0: the glass entrance and its canopy, EDUCITY up on the
--- wall, the bridge to ICT-City over the campus street.
+-- Outside, in layer 0, as Oliver's photos (Google Earth, 2026) have it: the
+-- whole building (the map's outline is only its boxes, unseen,
+-- maps/turku.lua). A tall block on Joukahaisenkatu, TURKU AMK high on it;
+-- behind it two wings of terraces stepping down either side of the sloping
+-- skylight over the atrium, to a low white wing on the car park with three
+-- roof lights; grey tiles, small square windows (the facade's), white
+-- terrace edges and brown decks. The bridge to ICT-City off its west side.
+-- (Frame: along -26..26, in 0..65; the low wing -22..22, 65..80.)
+local TILE_W = {0.55, 0.54, 0.52}
+local DECK = {0.42, 0.33, 0.25}
 local function build_outside(y)
   local k = kit()
+  local foot = y - 3 -- (the car park's side is lower)
+  local function mass(a0, a1, c0, c1, top, color, facade)
+    local p = k.box((a0 + a1) / 2, (c0 + c1) / 2, (foot + top) / 2, a1 - a0, c1 - c0, top - foot, color)
+    p.facade = facade
+    return p
+  end
+  -- the block on the street, its plant room on top
+  local TOP = y + 35
+  mass(-26, 26, 0, 14, TOP, TILE_W, 2)
+  k.box(0, 7, TOP + 1.5, 36, 9, 3, {0.7, 0.72, 0.74})
+  k.box(0, -0.12, TOP - 3.2, 19, 0.15, 2.6, {0.62, 0.66, 0.72})
+  k.text(0, -0.22, TOP - 3.2, "-c", "TURKU AMK", 2.0, {0.12, 0.13, 0.16})
+  -- the terraces, either side: each step a floor down and 7.3 m on
+  local STEPS, DEEP, DROP = 7, 51 / 7, 3.6
+  for _, side in ipairs{-1, 1} do
+    local a0, a1 = side < 0 and -26 or 6, side < 0 and -6 or 26
+    for i = 0, STEPS - 1 do
+      local c0, c1 = 14 + i * DEEP, 14 + (i + 1) * DEEP
+      local top = TOP - 3 - i * DROP
+      mass(a0, a1, c0, c1, top, TILE_W, 2)
+      k.box((a0 + a1) / 2, (c0 + c1) / 2, top + 0.05, a1 - a0 - 0.4, c1 - c0 - 0.2, 0.12, DECK)       -- its deck
+      k.box((a0 + a1) / 2, c1 - 0.1, top + 0.45, a1 - a0, 0.3, 0.9, WHITE)                        -- white edge
+      -- the glazed front of the floor above, set back over the deck
+      if i < STEPS - 1 then
+        k.box((a0 + a1) / 2, c1 + 0.08, top - DROP / 2 - 0.4, a1 - a0 - 1, 0.1, DROP - 1.4, GLASS, false, 0.12)
+      end
+    end
+  end
+  -- the skylight down the middle, over the atrium, and the walls under it
+  k.slope(0, 12.4, 14, 65, TOP - 2, y + 8, 0.3, {0.5, 0.62, 0.7}, false).emissive = 0.08
+  for c = 18, 62, 4 do k.slope(0, 12.6, c, c + 0.3, TOP - 2 - (c - 14) * (TOP - 10 - y) / 51 + 0.1,
+                               TOP - 2 - (c - 14) * (TOP - 10 - y) / 51, 0.35, {0.72, 0.74, 0.76}, false) end
+  mass(-6, 6, 64.6, 65, y + 8, GLASS)
+  -- the low white wing on the car park: a brown roof, three roof lights
+  mass(-22, 22, 65, 80, y + 4, {0.9, 0.9, 0.88})
+  k.box(0, 72.5, y + 4.08, 43.4, 14.4, 0.15, DECK)
+  for _, a in ipairs{-12, 0, 12} do
+    k.box(a, 72.5, y + 4.6, 3.2, 3.2, 1.0, WHITE)
+    k.box(a, 72.5, y + 5.15, 2.4, 2.4, 0.12, {0.3, 0.38, 0.45}, false, 0.2)
+  end
+  -- the way in on Joukahaisenkatu: glass, a canopy, the name
   local a = M.DOOR.a
   k.box(a, -0.1, y + 1.6, 7.0, 0.3, 3.2, {0.2, 0.22, 0.25})              -- the glazed front
   for s = -3, 3, 1.5 do k.box(a + s, -0.28, y + 1.6, 0.12, 0.08, 3.2, {0.82, 0.83, 0.84}) end
   k.box(a, -0.3, y + 1.25, 2.4, 0.1, 2.5, GLASS, false, 0.35)            -- the doors, lit
   k.box(a, -1.6, y + 3.5, 9.0, 3.4, 0.3, {0.8, 0.8, 0.79})               -- canopy
   k.box(a, -2.9, y + 3.1, 9.0, 0.1, 0.5, AMK)
-  k.text(a, -3.0, y + 3.1, "-c", "TURUN AMK  -  EDUCITY", 0.32, WHITE, 0.5)
-  -- the name, big, high on the wall over the street
-  k.box(-6, -0.12, y + 33.5, 22, 0.2, 3.6, DARK)
-  k.text(-6, -0.22, y + 33.5, "-c", "EDUCITY", 2.6, WHITE, 1)
+  k.text(a, -3.0, y + 3.1, "-c", "TURUN AMK - EDUCITY", 0.32, WHITE, 0.5)
   k.box(0, -3.0, y + 4.6, 9.0, 0.3, 1.6, WHITE)
   k.text(0, -3.15, y + 4.6, "-c", "EDUCITY", 1.1, AMK, 0.6)
-  -- bikes in a rack by the door
-  for s = 6, 11, 1.2 do
-    k.box(s, -2.4, y + 0.45, 0.06, 1.7, 0.9, {0.15, 0.15, 0.16})
-  end
+  for s = 6, 11, 1.2 do k.box(s, -2.4, y + 0.45, 0.06, 1.7, 0.9, {0.15, 0.15, 0.16}) end -- bikes
+  -- the bridge to ICT-City, off the west side a floor up
+  k.box(-39, 33, y + 7.75, 26, 4, 0.5, {0.7, 0.71, 0.72})
+  k.box(-39, 33, y + 9.35, 25.8, 3.8, 2.7, GLASS, false, 0.15)
+  k.box(-39, 33, y + 10.85, 26, 4.1, 0.35, {0.6, 0.62, 0.64})
   spawn("educity_outside", k, 0)
-  -- (the bridge in world terms: from ICT-City's corner across the street)
-  local x0, z0, x1, z1 = 1443.0, 335.0, 1452.5, 347.0
-  local gy = math.max(U.ground(x0, z0), U.ground(x1, z1))
-  local len = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
-  local by = math.atan(x1 - x0, z1 - z0)
-  local mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
-  engine.mesh("educity_bridge", {
-    {mesh = "cube", pos = {0, 0, 0}, size = {3.6, 0.5, len}, color = {0.7, 0.71, 0.72}},
-    {mesh = "cube", pos = {0, 1.6, 0}, size = {3.5, 2.7, len - 0.2}, color = GLASS, emissive = 0.15},
-    {mesh = "cube", pos = {0, 3.1, 0}, size = {3.7, 0.35, len}, color = {0.6, 0.62, 0.64}},
-  })
-  engine.spawn{mesh = "educity_bridge", pos = {mx, gy + 8.0, mz}, yaw = by, tag = "building"}
 end
 
 -- The atrium, in layer 1.
