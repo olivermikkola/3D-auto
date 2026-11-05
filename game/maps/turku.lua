@@ -130,6 +130,7 @@ return {
     }},
     bank = {junction = "Aurakatu / Linnankatu"},                    -- Aurakatu banking quarter
     getaway_start = {junction = "Brahenkatu / Eerikinkatu"},
+    under_square_start = {junction = "Kauppiaskatu / Linnankatu"}, -- (missions/12: the van's on Kauppatori)
     cargo_pickup = {junction = "Linnankatu / Satamakatu"},          -- Turku harbor dock
     cargo_drop = {junction = "Aninkaistenkatu / Linnankatu"},
     takedown_start = {junction = "Aninkaistenkatu / Eerikinkatu"},

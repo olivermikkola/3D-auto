@@ -369,6 +369,17 @@ tables. Bartender Olli and regular patron NPCs. Press `R` at the bar to buy an A
 popups (bullseye, triple 20, etc.). Wanted evasion and radar icon `"B"`. `PUB_TEST=1`
 (`tools/test_pub.py`).
 
+### Under the Square, the chase as a mission (November 2026)
+
+Oliver's chase route, played: `missions/12_under_the_square.lua`. Rob the Lumis van at
+Kauppatori's taxi rank, three stars; down Toriparkki's ramp under the square, through the link to
+Louhi's hall and up its tunnel to Ajurinkatu; leave the car, over Logomonsilta on foot and into
+Logomo, and lie low until they give up ($2500). If you lose them on the way, it's done there:
+Logomo's door only takes you in wanted. Turku only (the places are the underground's own).
+`UNDER_SQUARE_TEST=1` (`tools/test_under_square.py`): the robot drives it all, the cop cars kept
+off the road (it can't outrun them) but the stars kept; on foot into Logomo at three stars, lost
+in 13 s, passed and paid.
+
 ## Next (agreed with Oliver, 27 October 2026)
 
 The game has more features than reasons to play them, and Turku is recognisable from above
