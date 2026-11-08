@@ -264,6 +264,7 @@ if os.getenv("BIKE_TEST") then require "test.bike_probe" end
 if os.getenv("BUS_TEST") then require "test.bus_probe" end
 if os.getenv("YIELD_TEST") then require "test.yield_probe" end
 if os.getenv("SHOT_CAM") then require "test.shot" end
+if os.getenv("DRIVE_RECORD") then require "test.drive_record" end
 
 -- Click to recapture the mouse after Escape.
 engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)

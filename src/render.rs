@@ -1207,18 +1207,25 @@ impl Renderer {
 
     /// Read the back buffer and write a binary PPM.
     pub fn screenshot(&mut self, path: &str, w: i32, h: i32) -> std::io::Result<()> {
+        let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+        out.extend_from_slice(&self.read_rgb(w, h));
+        std::fs::write(path, out)
+    }
+
+    /// The frame just drawn, as RGB bytes, top row first.
+    pub fn read_rgb(&mut self, w: i32, h: i32) -> Vec<u8> {
         let mut px = vec![0u8; (w * h * 4) as usize];
         unsafe {
             miniquad::gl::glReadPixels(0, 0, w, h, miniquad::gl::GL_RGBA, miniquad::gl::GL_UNSIGNED_BYTE, px.as_mut_ptr() as *mut _);
         }
-        let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+        let mut out = Vec::with_capacity((w * h * 3) as usize);
         for y in (0..h).rev() {
             for x in 0..w {
                 let i = ((y * w + x) * 4) as usize;
                 out.extend_from_slice(&px[i..i + 3]);
             }
         }
-        std::fs::write(path, out)
+        out
     }
 }
 
