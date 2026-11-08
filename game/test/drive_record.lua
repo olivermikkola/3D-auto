@@ -19,6 +19,7 @@ local city = require "lib.city"
 local vehicle = require "lib.vehicle"
 local input = require "lib.input"
 local robot = require "test.robot"
+require("lib.menu").IDLE_PAUSE = math.huge -- nobody's at the keys, and that's the point
 
 local SPEED = tonumber(os.getenv("DRIVE_RECORD_SPEED") or "") or 17
 local FOV = tonumber(os.getenv("DRIVE_RECORD_FOV") or "") or 75
@@ -45,13 +46,14 @@ local function extend()
   end
 end
 
--- A new car on the road at a junction, facing along a fresh route.
+-- A new car on the road at a junction, facing along a fresh route, or false
+-- if there's no route from that junction.
 local cut = 1
 local function place(x, z)
   pts = {}
   driver = robot.driver(pts, SPEED, 7)
   last_j = city.nearest(x, z, U.ground(x, z))
-  if not extend() then error("DRIVE_RECORD: no road from junction " .. tostring(last_j)) end
+  if not extend() then return false end
   local p, q = pts[1], pts[2]
   local car = vehicle.spawn(p[1], p[2], math.atan(q[1] - p[1], q[2] - p[2]), 1, nil, "car",
     city.height_on(city.nearest(p[1], p[2]), last_j, p[1], p[2]))
@@ -59,6 +61,16 @@ local function place(x, z)
   G.player, G.vehicle = nil, car
   engine.emit("vehicle_enter", car)
   cut = 1
+  return true
+end
+
+-- Somewhere random, so that different seeds see different parts of town.
+local function place_anywhere()
+  local js = city.junctions()
+  for _ = 1, 50 do
+    if place(city.pos(js[1 + math.floor(rand() * #js)])) then return end
+  end
+  error("DRIVE_RECORD: no junction with a route from it")
 end
 
 -- Each nudge holds for a while, then is replaced: usually a small one the
@@ -92,15 +104,13 @@ local started, stuck = false, 0
 engine.on("tick", function(dt)
   if not started and engine.time() > 0.5 then
     started = true
-    local x, _, z = engine.pos(G.player)
-    if city.has("taxi_rank") then x, z = city.place("taxi_rank") end
-    place(x, z)
+    place_anywhere()
   end
   if not started then return end
   require("lib.wanted").set(0) -- this is about driving, not the police
   local car = G.vehicle
   if not car or not engine.exists(car) then -- written off
-    place(city.pos(last_j))
+    if not place(city.pos(last_j)) then place_anywhere() end
     return
   end
   nudge(dt)

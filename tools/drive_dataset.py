@@ -26,6 +26,8 @@ def pack(rgb, log, out, size, scale):
     frames = state[:, 0].astype(np.int64)
     if np.any(np.diff(frames) != 1):
         raise SystemExit("frame numbers are not consecutive")
+    if len(np.unique(np.diff(state[:, 1]))) > 1:  # the game paused itself, or something like it
+        raise SystemExit(f"frames are not evenly spaced in game time: tick steps {np.unique(np.diff(state[:, 1]))}")
     raw = np.memmap(rgb, dtype=np.uint8, mode="r")
     drawn = raw.size // (size * size * 3)
     if frames[0] > drawn:

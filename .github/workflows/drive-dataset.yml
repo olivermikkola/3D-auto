@@ -23,7 +23,12 @@ jobs:
           - {name: turku-2, map: turku, seed: 1002}
           - {name: turku-3, map: turku, seed: 1003}
           - {name: turku-4, map: turku, seed: 1004}
+          - {name: turku-5, map: turku, seed: 1005}
+          - {name: turku-6, map: turku, seed: 1006}
+          - {name: turku-7, map: turku, seed: 1007}
+          - {name: turku-8, map: turku, seed: 1008}
           - {name: raisio-1, map: raisio, seed: 2001}
+          - {name: raisio-2, map: raisio, seed: 2002}
     steps:
       - uses: actions/checkout@v4
       - name: Install headless display and audio stubs
