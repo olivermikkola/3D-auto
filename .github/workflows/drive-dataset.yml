@@ -1,0 +1,62 @@
+# Records drives for the world-model experiments in a separate repository.
+# Runs on a push to this branch only; it isn't part of ordinary CI.
+name: Drive dataset
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/drive-recorder]
+    paths:
+      - game/test/drive_record.lua
+      - tools/drive_dataset.py
+      - .github/workflows/drive-dataset.yml
+permissions:
+  contents: read
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        run:
+          - {name: turku-1, map: turku, seed: 1001}
+          - {name: turku-2, map: turku, seed: 1002}
+          - {name: turku-3, map: turku, seed: 1003}
+          - {name: turku-4, map: turku, seed: 1004}
+          - {name: turku-5, map: turku, seed: 1005}
+          - {name: turku-6, map: turku, seed: 1006}
+          - {name: turku-7, map: turku, seed: 1007}
+          - {name: turku-8, map: turku, seed: 1008}
+          - {name: raisio-1, map: raisio, seed: 2001}
+          - {name: raisio-2, map: raisio, seed: 2002}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless display and audio stubs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libasound2-dev libxi-dev libxkbcommon-dev libgl1-mesa-dev
+          python3 -m pip install --break-system-packages numpy
+      - name: Build
+        run: cargo build --release --locked -j 4
+      - name: Record
+        env:
+          DRIVE_RECORD: '1'
+          SHOT_NO_HUD: '1'
+          MAP: ${{ matrix.run.map }}
+          SEED: ${{ matrix.run.seed }}
+          DRIVE_RECORD_SEED: ${{ matrix.run.seed }}
+          HOUR: '13'
+          LP_NUM_THREADS: '3'
+        run: |
+          mkdir -p out
+          timeout 2100 xvfb-run -a ./target/release/auto game --size 128x128 --frames 3000 --ticks-per-frame 6 \
+            --record out/drive.rgb --save-dir out/save > out/drive.log 2>&1 || echo "recorder exit $?"
+          grep -v '^REC' out/drive.log | tail -5
+          grep -c '^REC' out/drive.log
+      - name: Pack
+        run: python3 tools/drive_dataset.py out/drive.rgb out/drive.log ${{ matrix.run.name }}.npz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drive-${{ matrix.run.name }}
+          path: ${{ matrix.run.name }}.npz
+          retention-days: 14

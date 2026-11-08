@@ -1,7 +1,7 @@
 //! auto: a minimal 3D sandbox kernel. The binary renders, simulates and
 //! forwards input; the game is whatever Lua scripts the data directory holds.
 //!
-//!   auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--size WxH] [--save-dir DIR]
+//!   auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--record OUT.rgb] [--frames N] [--size WxH] [--save-dir DIR]
 
 mod audio;
 mod engine;
@@ -30,6 +30,7 @@ struct Opts {
     root: PathBuf,
     headless: Option<u64>,
     screenshot: Option<String>,
+    record: Option<String>,
     frames: Option<u64>,
     ticks_per_frame: u32,
     size: (i32, i32),
@@ -43,6 +44,7 @@ fn parse_args() -> Result<Opts, String> {
         root: PathBuf::from("game"),
         headless: None,
         screenshot: None,
+        record: None,
         frames: None,
         ticks_per_frame: 1,
         size: (1280, 720),
@@ -56,6 +58,7 @@ fn parse_args() -> Result<Opts, String> {
         match a.as_str() {
             "--headless" => o.headless = Some(val("--headless")?.parse().map_err(|_| "bad tick count")?),
             "--screenshot" => o.screenshot = Some(val("--screenshot")?),
+            "--record" => o.record = Some(val("--record")?),
             "--frames" => o.frames = Some(val("--frames")?.parse().map_err(|_| "bad frame count")?),
             "--ticks-per-frame" => o.ticks_per_frame = val("--ticks-per-frame")?.parse().map_err(|_| "bad tick count")?,
             "--save-dir" => o.save_dir = Some(PathBuf::from(val("--save-dir")?)),
@@ -72,7 +75,7 @@ fn parse_args() -> Result<Opts, String> {
             }
             "-h" | "--help" => {
                 println!(
-                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR] [--fps N] [--fullscreen]"
+                    "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--record OUT.rgb] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR] [--fps N] [--fullscreen]"
                 );
                 std::process::exit(0);
             }
@@ -409,6 +412,8 @@ struct App {
     frame: u64,
     grabbed: bool,
     shot: Option<(String, u64)>,
+    /// --record: every drawn frame appended here, raw RGB, top row first.
+    record: Option<std::io::BufWriter<std::fs::File>>,
     quit_after: Option<u64>,
     ticks_per_frame: u32,
     closed: bool,
@@ -423,6 +428,10 @@ struct App {
 impl App {
     /// Tell scripts the game is closing (once), so they can save.
     fn close(&mut self) {
+        if let Some(out) = &mut self.record {
+            use std::io::Write;
+            let _ = out.flush();
+        }
         if !std::mem::replace(&mut self.closed, true)
             && let Some(s) = &self.script
         {
@@ -567,6 +576,13 @@ impl EventHandler for App {
                 Err(e) => eprintln!("screenshot failed: {e}"),
             }
             shot_done = true;
+        }
+        if let Some(out) = &mut self.record {
+            use std::io::Write;
+            if let Err(e) = out.write_all(&gfx.read_rgb(w as i32, h as i32)) {
+                eprintln!("record failed: {e}");
+                self.record = None;
+            }
         }
         gfx.commit();
         if let (Some(timer), Some(gpu)) = (&mut gfx.gpu_timer, &mut self.profile.gpu) {
@@ -789,8 +805,8 @@ fn main() {
         platform: conf::Platform { webgl_version: conf::WebGLVersion::WebGL2, ..Default::default() },
         ..Default::default()
     };
-    let (root, shot, frames, ticks_per_frame, fps, fullscreen) =
-        (o.root, o.screenshot, o.frames, o.ticks_per_frame.max(1), o.fps, o.fullscreen);
+    let (root, shot, record, frames, ticks_per_frame, fps, fullscreen) =
+        (o.root, o.screenshot, o.record, o.frames, o.ticks_per_frame.max(1), o.fps, o.fullscreen);
     // (A browser paces frames itself.)
     let target_frame = (shot.is_none() && frames.is_none() && fps > 0 && !cfg!(target_arch = "wasm32")).then(|| 1.0 / fps as f64);
     let failed = Rc::new(Cell::new(false));
@@ -830,6 +846,10 @@ fn main() {
             grabbed: false,
             quit_after: if shot.is_none() { frames } else { None },
             shot: shot.map(|p| (p, frames.unwrap_or(120))),
+            record: record.map(|p| {
+                let f = std::fs::File::create(&p).unwrap_or_else(|e| panic!("--record {p}: {e}"));
+                std::io::BufWriter::with_capacity(1 << 20, f)
+            }),
             ticks_per_frame,
             closed: false,
             fullscreen,
