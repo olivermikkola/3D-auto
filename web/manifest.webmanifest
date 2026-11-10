@@ -1,7 +1,7 @@
 {
-  "name": "GTÅ: Grand Tour Åbo",
-  "short_name": "GTÅ",
-  "description": "An open-world driving game in Turku and Raisio, built from open map data.",
+  "name": "3D-auto: Map Example",
+  "short_name": "3D-auto",
+  "description": "A procedural map example for the 3D-auto engine.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
@@ -9,7 +9,10 @@
   "background_color": "#111111",
   "theme_color": "#111111",
   "icons": [
-    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
-    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"}
+    {
+      "src": "icons/map.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
   ]
 }

@@ -75,7 +75,7 @@ function engine.emit(ev, ...)
   end
 end
 -- The handlers slowest in a single call since the last report, worst
--- first, as "12.3 ms tick game/systems/police.lua:120 (40.1 ms in all)".
+-- first, as "12.3 ms tick main.lua:120 (40.1 ms in all)".
 function engine._profile_report(n)
   if not timed then return {} end
   local all = {}
@@ -1068,7 +1068,3 @@ fn ground_id(p: &Table) -> Result<Option<u8>> {
         id => Ok(id),
     }
 }
-
-#[cfg(test)]
-#[path = "bridge_tests.rs"]
-mod bridge_tests;

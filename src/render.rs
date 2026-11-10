@@ -13,8 +13,7 @@ use miniquad::*;
 
 pub const MAX_LIGHTS: usize = 16;
 // 4096 texels over 340 m: twice the reach of the old 2048 over 170 m at the
-// same sharpness (8 cm a texel). The Beelink's Radeon 890M draws Turku in
-// 2-4 ms a frame either way. Browsers keep 2048 (some WebGL caps it).
+// same sharpness (8 cm a texel). Browsers keep 2048 (some WebGL caps it).
 #[cfg(not(target_arch = "wasm32"))]
 const SHADOW_RES: u32 = 4096;
 #[cfg(target_arch = "wasm32")]

@@ -1,1 +1,0 @@
-return {answer = 42}

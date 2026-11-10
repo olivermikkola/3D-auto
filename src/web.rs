@@ -1,7 +1,7 @@
 //! The browser build: the game folder packed into the module, and the WASI
 //! system calls Lua's C library makes, answered here instead of by the page.
 //! Files open read-only from the pack under "/", the environment comes from
-//! the page's address (`?map=raisio&hour=22` sets MAP and HOUR), and what Lua
+//! the page's address (`?map=example` sets MAP), and what Lua
 //! prints goes to the browser console. Everything else fails as "not
 //! supported", which the C library reports as an ordinary error.
 use std::cell::RefCell;

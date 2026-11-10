@@ -33,22 +33,16 @@ jobs:
           curl -sSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
           echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk-34.0-x86_64-linux" >> "$GITHUB_ENV"
       - run: web/build.sh
-      # Headless Chromium with software WebGL, at a phone's landscape size.
-      - name: Turku in the browser
+      - name: Render and interact with the map example
         run: |
-          python3 -m pip install --quiet playwright
+          python3 -m pip install --quiet playwright pillow
           python3 -m playwright install --with-deps chromium
-          python3 tools/web_check.py --browser chromium --size 844x390 --query "map=turku&seed=1337&hour=12" --wait 60 --report web-turku.json --shot web-turku.png
-      - name: Saves and sound in the browser
-        run: python3 tools/web_saves_sound.py --shot web-saves.png
+          python3 tools/check_web.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-check
-          path: |
-            web-turku.json
-            web-turku.png
-            web-saves.png
+          name: map-example-browser
+          path: web-map.png
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
