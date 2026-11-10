@@ -1,286 +1,98 @@
--- Entry point. The engine calls nothing but the event bus:
---   init, tick(dt), frame(dt), key(name, down), contact(a, b, speed)
--- Everything below is ordinary game code; change it and it hot-reloads.
--- In the browser memory that WebAssembly takes is never given back, so
--- the most the load ever holds, garbage and all, is what the game keeps for
--- good: there the collector keeps closer up while the city is built, and
--- goes back to its usual pace once it stands (see the first tick); with
--- lib/roadnet's collections, Turku's load peaks 93 MB lower for a second
--- more (headless, WEB=1).
-if os.getenv("WEB") == "1" then collectgarbage("incremental", 150, 100) end
-local G = require "lib.state"
-local U = require "lib.util"
-require "lib.progress" -- loads saved cash and missions before anything reads them
-local prefabs = require "lib.prefabs"
-local city = require "lib.city"
-local settings = require "lib.settings"
--- The map, before anything asks the city where things are: the one picked
--- in the pause menu, or MAP=<name> for any in maps/.
-city.use(city.start())
-local player = require "lib.player"
-local vehicle = require "lib.vehicle"
-local mission = require "lib.mission"
-local traffic = require "systems.traffic"
-local police = require "systems.police"
-local peds = require "systems.peds"
-local daynight = require "lib.daynight"
-local weather = require "lib.weather"
-local pickups = require "lib.pickups"
-local wanted = require "lib.wanted"
-require "lib.health"
-require "systems.carnage"
-require "systems.shore"
-require "systems.weapons"
-local sfx = require "lib.sfx"
-require "lib.stunts"
-require "lib.camera"
-require "lib.hud"
-require "lib.story"
-require "story.radio"
-require "story.arc"
-require "systems.garage"
-require "systems.cashvan"
-require "systems.heli"
-require "systems.racer"
-require "systems.fares"
-require "systems.ambulance"
-require "systems.vigilante"
-require "systems.fire"
-require "systems.busroute"
-require "systems.shelters"
-require "systems.shopsigns"
-require "systems.ambience"
-require "systems.parking"
-require "systems.trees"
-require "lib.menu"
-require "lib.shop"
-
-engine.on("tick", function()
-  if engine.ticks() == 2 and os.getenv("WEB") == "1" then collectgarbage("incremental", 200, 100) end
-end)
-
+-- A small procedural map example using only the engine API.
+local map = require "maps.example"
+local angle, distance = 0.72, 180
+local drag
+local buildings, park_x, park_z = {}, 0, 0
+local function box(pos, size, color, tag)
+  return engine.spawn{mesh="cube", pos=pos, size=size, color=color, tag=tag, body="static"}
+end
 engine.on("init", function()
-  -- Keep the default repeatable; SEED makes population/AI failures reproducible.
-  local seed = os.getenv("SEED")
-  seed = seed and assert(math.tointeger(tonumber(seed)), "SEED must be an integer") or 1337
-  math.randomseed(seed)
-  print(string.format("map=%s seed=%d", city.map().id or city.map().name, seed))
-  local fog = city.map().fog or {110, 380} -- a map can see further
-  settings.watch("view", function(p) weather.base_fog(fog[1] * p / 100, fog[2] * p / 100) end)
-
-  prefabs.build()
-  sfx.build()
-  police.build()
-  pickups.build()
-  peds.build()
-  G.city = city.build()
-  require("lib.borders").build(city.map())
-  require("systems.aurajoki").build(city.map())
-  require("systems.kakola").build(city.map())
-  require("systems.harbor").build(city.map())
-  require("systems.kauppatori").build(city.map())
-  require("systems.suurtori").build(city.map())
-  require("systems.landmarks").build(city.map())
-  require("systems.hideouts").build(city.map())
-  require("systems.louhi").build(city.map())
-  require("systems.kauppahalli").build(city.map())
-  require("systems.pub").build(city.map())
-  require("systems.city_life").build(city.map())
-  daynight.light_lamps()
-  daynight.set_hour(tonumber(os.getenv("HOUR") or "") or daynight.hour) -- HOUR=22 starts at night
-
-  -- Start on the sidewalk by the parking lot, with a few cars to pick from.
-  local lx, lz = city.place("lot")
-  -- (the far end: a sports car and a van)
-  for s = -3, 2 do vehicle.spawn(lx + s * 4 + 4, lz, 0, nil, s == 1 and "sports" or (s == 2 and "van" or nil)) end
-  G.spawn = {lx - 6, 1.2 + U.ground(lx - 6, lz - 15), lz - 15}
-
-  local transfer = engine.load("cross_city_transfer")
-  if transfer then
-    engine.save("cross_city_transfer", nil)
-    local tx, tz = transfer.target_pos[1], transfer.target_pos[2]
-    G.spawn = {tx, 1.2 + U.ground(tx, tz), tz}
-    player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
-    if transfer.in_vehicle then
-      local v_id = vehicle.spawn(tx, tz, 0)
-      G.vehicle = v_id
-      if G.player then
-        engine.despawn(G.player)
-        G.player = nil
+  engine.lighting{sky={0.74, 0.83, 0.87}, sky_top={0.34, 0.56, 0.69},
+    sun={-0.5, 0.8, 0.35}, ambient={0.48, 0.53, 0.57}, shadows=true}
+  engine.fog(350, 700)
+  box({8, -1, 0}, {220, 2, 200}, {0.69, 0.72, 0.65}, "ground")
+  box({map.canal_x, 0.02, 0}, {map.canal_width, 0.08, 200}, {0.23, 0.48, 0.58}, "water")
+  local offset = (map.blocks - 1) * map.spacing / 2
+  for i=0,map.blocks do
+    local p = i * map.spacing - offset - map.spacing/2
+    box({p, 0.04, 0}, {map.road_width, 0.08, map.blocks*map.spacing+map.road_width}, {0.29, 0.33, 0.35}, "road")
+    box({0, 0.05, p}, {map.blocks*map.spacing+map.road_width, 0.08, map.road_width}, {0.29, 0.33, 0.35}, "road")
+  end
+  for i=0,map.blocks-1 do
+    for j=0,map.blocks-1 do
+      local x, z = i*map.spacing-offset, j*map.spacing-offset
+      if i==1 and j==2 then
+        park_x, park_z = x, z
+        box({x, 0.14, z}, {21, 0.2, 21}, {0.42, 0.59, 0.39}, "park")
+        for n=1,4 do
+          local tx, tz = x + (n%2)*10-5, z + math.floor((n-1)/2)*10-5
+          box({tx, 1.5, tz}, {0.8, 3, 0.8}, {0.42, 0.34, 0.25}, "tree")
+          engine.spawn{mesh="sphere", pos={tx, 4, tz}, size={5, 6, 5}, color={0.28, 0.48, 0.32}, tag="tree"}
+        end
+      else
+        local h = 9 + ((i*7+j*3)%5)*5
+        local color = ({ {0.78,0.63,0.48}, {0.69,0.74,0.74}, {0.80,0.78,0.68} })[(i+j)%3+1]
+        local id = box({x,h/2+0.1,z}, {map.building_width,h,map.building_width}, color, "building")
+        buildings[#buildings+1] = {id=id,x=x,z=z,height=h}
+        box({x,h+0.3,z}, {map.building_width+0.6,0.5,map.building_width+0.6}, {0.34,0.39,0.41}, "roof")
       end
     end
-    if transfer.wanted_stars and transfer.wanted_stars > 0 then
-      wanted.set(transfer.wanted_stars)
-    end
-  else
-    player.spawn(G.spawn[1], G.spawn[2], G.spawn[3], 0)
   end
-  G.cam_yaw = 0.3
-
-  local quality = require "lib.quality"
-  traffic.start(quality.pick(quality.TRAFFIC))
-  quality.watch(function() if traffic.target and traffic.target > 0 then traffic.target = quality.pick(quality.TRAFFIC) end end)
-  peds.start()
-  pickups.start()
-  -- The hospital: where you wake up after getting wasted.
-  local hx, hz = city.place("hospital")
-  G.hospital = {hx, 1.2 + U.ground(hx, hz), hz}
-  mission.load_all("missions")
-  require("systems.garage").build()
-  require("systems.gunshop").build()
-  require("systems.paintshop").build()
-  require("systems.businesses").build()
-  require("systems.dealer").build()
-  require("systems.nightlife").build()
-  require("systems.cashvan").build()
-  require("systems.ambulance").build()
-  require("systems.fire").build()
-  require("systems.busroute").build()
-  require("systems.shelters").build()
-  require("systems.shopsigns").build()
-  require("systems.parking").build()
-  require("systems.trees").build()
-  require("lib.roadnet").stream_now() -- (what's streamed, near where the player starts)
-  require("systems.heli").build()
-  require("systems.terraces").build()
-  require("systems.cyclists").build()
-  engine.grab_mouse(true)
+  -- A footbridge and quays show how ordinary geometry composes a map.
+  box({map.canal_x, 1, 0}, {map.canal_width+4, 0.5, 5}, {0.81,0.78,0.68}, "bridge")
+  for _, side in ipairs{-1,1} do
+    box({map.canal_x+side*(map.canal_width/2+2),0.15,0}, {4,0.3,190}, {0.78,0.77,0.70}, "quay")
+  end
+  print("map=example buildings=" .. #buildings)
 end)
-
--- Every test ends by calling engine.quit(), passed or failed. Running out of
--- --headless ticks first means it got stuck, which must not exit zero.
-local TESTS = {"AUTO_TEST", "SOAK", "GARAGE_TEST", "SAVE_TEST", "MENU_TEST", "SHOP_TEST",
-               "CITY_TEST", "PAD_TEST", "RELIABILITY_TEST", "MISSION_TEST"}
-for _, var in ipairs(TESTS) do
-  if os.getenv(var) then
-    local quit, reload, finished = engine.quit, engine.reload, false
-    engine.quit = function(...) finished = true; return quit(...) end
-    engine.reload = function(...) finished = true; return reload(...) end -- it carries on afresh
-    engine.on("quit", function()
-      if not finished then error("TEST FAILED: " .. var .. " ran out of ticks before finishing", 0) end
-    end)
-    break
-  end
-end
-
--- AUTO_TEST=1 plays the game by itself and quits (used by CI in headless mode).
-if os.getenv("AUTO_TEST") then require "test.autoplay" end
-if os.getenv("SOAK") then require "test.soak" end
-if os.getenv("GARAGE_TEST") then require "test.garage" end
-if os.getenv("SAVE_TEST") then require "test.save" end
-if os.getenv("MENU_TEST") then require "test.menu" end
-if os.getenv("SHOP_TEST") then require "test.shops" end
-if os.getenv("BUSINESS_TEST") then require "test.businesses_probe" end
-if os.getenv("CITY_TEST") then require "test.city" end
-if os.getenv("STREAM_TEST") then require "test.stream_probe" end
-if os.getenv("PAD_TEST") then require "test.pad" end
-if os.getenv("RELIABILITY_TEST") then require "test.reliability" end
-if os.getenv("MISSION_TEST") then require "test.missions" end
-if os.getenv("TERRAIN_TEST") then require "test.terrain" end
-if os.getenv("BORDER_TEST") then require "test.border_probe" end
-if os.getenv("KERB_TEST") then require "test.kerb_probe" end
-if os.getenv("PASSAGE_TEST") then require "test.passage_probe" end
-if os.getenv("HIDEOUT_TEST") then require "test.hideout_probe" end
-if os.getenv("LOUHI_TEST") then require "test.louhi_probe" end
-if os.getenv("LOUHI_FOOT_TEST") then require "test.louhi_foot_probe" end
-if os.getenv("TORIPARKKI_FOOT_TEST") then require "test.toriparkki_foot_probe" end
-if os.getenv("LOUHI_LIFE_TEST") then require "test.louhi_life_probe" end
-if os.getenv("HANSA_TEST") then require "test.hansa_probe" end
-if os.getenv("KAUPPAHALLI_TEST") then require "test.kauppahalli_probe" end
-if os.getenv("PUB_TEST") then require "test.pub_probe" end
-if os.getenv("CITY_LIFE_TEST") then require "test.city_life_probe" end
-if os.getenv("TORIPARKKI_TEST") then require "test.toriparkki_probe" end
-if os.getenv("LAYERS_TEST") then require "test.layers_probe" end
-if os.getenv("LOGOMONSILTA_TEST") then require "test.logomonsilta_probe" end
-if os.getenv("STAIRS_TEST") then require "test.stairs_probe" end
-if os.getenv("ARCH_TEST") then require "test.arch_probe" end
-if os.getenv("PASI_TEST") then require "test.pasi_probe" end
-if os.getenv("FOLI_TEST") then require "test.foli_probe" end
-if os.getenv("BUSLINES_TEST") then require "test.buslines_probe" end
-if os.getenv("AMBIENCE_TEST") then require "test.ambience_probe" end
-if os.getenv("CHUNK_TEST") then require "test.chunk_probe" end
-if os.getenv("CORRIDOR_TEST") then require "test.corridor_probe" end
-if os.getenv("MAP_TEST") then require "test.map_probe" end
-if os.getenv("MAP_MISSIONS_TEST") then require "test.map_missions_probe" end
-if os.getenv("AURAJOKI_TEST") then require "test.aurajoki_probe" end
-if os.getenv("DIRECTION_TEST") then require "test.direction_probe" end
-if os.getenv("DEAD_END_TEST") then require "test.dead_end_probe" end
-if os.getenv("POI_TEST") then require "test.poi_probe" end
-if os.getenv("TEMPLATE_TEST") then require "test.template_probe" end
-if os.getenv("DRIVE_SWEEP") then require "test.drive_sweep" end
-if os.getenv("PED_SWEEP") then require "test.ped_sweep" end
-if os.getenv("PROFILE_DRIVE") then require "test.profile_drive" end
-if os.getenv("CHASE_TEST") then require "test.chase_probe" end
-if os.getenv("PLAYER_SWEEP") then require "test.player_sweep" end
-if os.getenv("BRIDGE_AUDIT") then require "test.bridge_audit" end
-if os.getenv("HEIST_TEST") then require "test.heist_probe" end
-if os.getenv("KAKOLA_TEST") then require "test.kakola_probe" end
-if os.getenv("HARBOR_TEST") then require "test.harbor_probe" end
-if os.getenv("KAUPPATORI_TEST") then require "test.kauppatori_probe" end
-if os.getenv("MARKET_TEST") then require "test.market_probe" end
-if os.getenv("BUSSTOPS_TEST") then require "test.busstops_probe" end
-if os.getenv("SUURTORI_TEST") then require "test.suurtori_probe" end
-if os.getenv("PED_EVASION_TEST") then require "test.ped_evasion_probe" end
-if os.getenv("PED_PASS_TEST") then require "test.ped_pass_probe" end
-if os.getenv("STORY_TEST") then require "test.story_probe" end
-if os.getenv("SPEED_TEST") then require "test.speed_probe" end
-if os.getenv("LAMP_TEST") then require "test.lamp_probe" end
-if os.getenv("WANTED_TEST") then require "test.wanted_probe" end
-if os.getenv("TOUCH_TEST") then require "test.touch_probe" end
-if os.getenv("TOUCH_SHOT") then require "test.touch_shot" end
-if os.getenv("LOOKBACK_TEST") then require "test.lookback_probe" end
-if os.getenv("PED_ROAD_TEST") then require "test.ped_road_probe" end
-if os.getenv("ROAD_CLEAR_TEST") then require "test.road_clear_probe" end
-if os.getenv("WATER_TEST") then require "test.water_probe" end
-if os.getenv("RAIL_PROFILE_TEST") then require "test.rail_profile_probe" end
-if os.getenv("DECK_TEST") then require "test.deck_probe" end
-if os.getenv("QUAY_TEST") then require "test.quay_probe" end
-if os.getenv("TREES_TEST") then require "test.trees_probe" end
-if os.getenv("RAIL_CROSSING_TEST") then require "test.rail_crossing_probe" end
-if os.getenv("OFFROAD_TEST") then require "test.offroad_probe" end
-if os.getenv("RACER_TEST") then require "test.racer_probe" end
-if os.getenv("TUNNEL_TEST") then require "test.tunnel_probe" end
-if os.getenv("HELI_TEST") then require "test.heli_probe" end
-if os.getenv("CARKINDS_TEST") then require "test.carkinds_probe" end
-if os.getenv("ROADBLOCK_TEST") then require "test.roadblock_probe" end
-if os.getenv("CONVOY_TEST") then require "test.convoy_probe" end
-if os.getenv("SIGNALS_TEST") then require "test.signals_probe" end
-if os.getenv("SHELTERS_TEST") then require "test.shelters_probe" end
-if os.getenv("SIGNS_TEST") then require "test.shopsigns_probe" end
-if os.getenv("QUALITY_TEST") then require "test.quality_probe" end
-if os.getenv("PARKING_TEST") then require "test.parking_probe" end
-if os.getenv("WEATHER_TEST") then require "test.weather_probe" end
-if os.getenv("TERRACES_TEST") then require "test.terraces_probe" end
-if os.getenv("CASHVAN_TEST") then require "test.cashvan_probe" end
-if os.getenv("GPS_TEST") then require "test.gps_probe" end
-if os.getenv("FARES_TEST") then require "test.fares_probe" end
-if os.getenv("WAYPOINT_TEST") then require "test.waypoint_probe" end
-if os.getenv("AMBULANCE_TEST") then require "test.ambulance_probe" end
-if os.getenv("VIGILANTE_TEST") then require "test.vigilante_probe" end
-if os.getenv("FIRE_TEST") then require "test.fire_probe" end
-if os.getenv("NIGHTLIFE_TEST") then require "test.nightlife_probe" end
-if os.getenv("CYCLISTS_TEST") then require "test.cyclists_probe" end
-if os.getenv("BIKE_TEST") then require "test.bike_probe" end
-if os.getenv("BUS_TEST") then require "test.bus_probe" end
-if os.getenv("YIELD_TEST") then require "test.yield_probe" end
-if os.getenv("SHOT_CAM") then require "test.shot" end
-if os.getenv("DRIVE_RECORD") then require "test.drive_record" end
-
--- Click to recapture the mouse after Escape.
-engine.on("key", function(k, down) if k == "mouse1" and down then engine.grab_mouse(true) end end)
-
--- Every crate you ram is worth a dollar (once). Contacts fire every tick bodies touch.
-local rammed = {}
-engine.on("contact", function(a, b)
-  if G.vehicle and (a == G.vehicle or b == G.vehicle) then
-    local other = a == G.vehicle and b or a
-    if engine.tag(other) == "crate" and not rammed[other] then
-      rammed[other] = true
-      G.cash = G.cash + 1
+engine.on("tick", function()
+  if os.getenv("ENGINE_SMOKE")=="1" and engine.ticks()==3 then
+    assert(#buildings==15, "map buildings were not constructed")
+    for _, b in ipairs(buildings) do
+      assert(engine.exists(b.id), "building disappeared")
+      local id, _, _, y = engine.raycast(b.x,60,b.z,0,-1,0,70)
+      assert(id and engine.tag(id)=="roof" and y>b.height, "roof not present in collision world")
     end
+    local id = engine.raycast(park_x,20,park_z,0,-1,0,30)
+    assert(id and engine.tag(id)=="park", "park surface missing")
+    local bridge = engine.raycast(map.canal_x,20,0,0,-1,0,30)
+    assert(bridge and engine.tag(bridge)=="bridge", "bridge surface missing")
+    local water = engine.raycast(map.canal_x,20,30,0,-1,0,30)
+    assert(water and engine.tag(water)=="water", "canal surface missing")
+    print("ENGINE DEMO PASSED: buildings, roofs, park, bridge and canal collision queries")
   end
 end)
-
--- Mods last, so their "init" handlers run after the city exists.
-engine.load_mods("mods")
-if os.getenv("TRAFFIC_CALM_TEST") then require "test.traffic_calm_probe" end
+engine.on("key", function(k, down)
+  if not down then return end
+  if k=="escape" then engine.quit() end
+  if k=="r" then angle,distance=0.72,180 end
+end)
+engine.on("touch", function(phase,id,x,y)
+  if phase=="start" then
+    local w,h=engine.screen()
+    if y>h-64 and x>w-132 then
+      distance=math.max(90,math.min(280,distance+(x>w-66 and 15 or -15)))
+    elseif not drag then drag={id=id,x=x} end
+  elseif drag and drag.id==id then
+    if phase=="move" then angle=angle+(x-drag.x)*0.008; drag.x=x
+    else drag=nil end
+  end
+end)
+engine.on("frame", function(dt)
+  if engine.key("a") or engine.key("left") then angle=angle-dt*0.7 end
+  if engine.key("d") or engine.key("right") then angle=angle+dt*0.7 end
+  if engine.key("w") or engine.key("up") then distance=math.max(90,distance-dt*65) end
+  if engine.key("s") or engine.key("down") then distance=math.min(280,distance+dt*65) end
+  engine.camera(8+math.sin(angle)*distance, distance*0.72, math.cos(angle)*distance, 8,0,0,45)
+  local w,h=engine.screen()
+  engine.rect(16,16,engine.text_width("3D-AUTO / MAP EXAMPLE",18)+24,64,0.10,0.16,0.19,0.91)
+  engine.text("3D-AUTO / MAP EXAMPLE",28,28,18,0.95,0.94,0.86,1)
+  engine.text("PROCEDURAL GEOMETRY",28,54,12,0.72,0.81,0.82,1)
+  engine.rect(16,h-42,400,26,0.10,0.16,0.19,0.91)
+  engine.text("A/D ORBIT   W/S ZOOM   R RESET",28,h-35,12,0.86,0.89,0.87,1)
+  for n,label in ipairs{"+","-"} do
+    local x=w-132+(n-1)*66
+    engine.rect(x,h-64,56,48,0.10,0.16,0.19,0.91)
+    engine.text(label,x+19,h-52,24,0.95,0.94,0.86,1)
+  end
+end)

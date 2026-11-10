@@ -1,141 +1,22 @@
-# The game in a browser
+# Browser map example
 
-`web/` builds the same engine (`../src/main.rs`) for `wasm32-unknown-unknown`, miniquad's web
-target, with the whole `game/` folder packed into the module. The page is `index.html`, plus
-miniquad's own `gl.js` loader. The result is a static folder (`dist/`) that any web host can serve.
+This builds the Rust engine and the fictional map in `game/` into a WebAssembly
+module. No external map data is fetched. The source is shared with the native
+binary through `web/Cargo.toml`.
 
-```sh
-WASI_SDK_PATH=~/tools/wasi-sdk-34.0-x86_64-linux web/build.sh   # -> web/dist
-python3 tools/web_check.py --query "map=raisio" --wait 40 --shot /tmp/web.png
-```
-
-The page's address sets the game's environment: `index.html?map=raisio&hour=22` is
-`MAP=raisio HOUR=22`. `?log=1` keeps the log box on screen. On a touch screen (`pointer: coarse`) the page adds
-`phone=1`, and the game starts on the low graphics preset the first time (`lib/settings.lua`);
-the player's later choice in the menu stands.
-
-## What it needs
-
-- The Rust target: `rustup target add wasm32-unknown-unknown`.
-- [wasi-sdk](https://github.com/WebAssembly/wasi-sdk/releases), for compiling Lua (C) to wasm
-  against wasi-libc. Point `WASI_SDK_PATH` at it.
-- For `tools/web_check.py`: Firefox and [geckodriver](https://github.com/mozilla/geckodriver/releases).
-
-## How it works
-
-- **Lua.** mlua builds Lua for wasm only through emscripten, which miniquad doesn't support. So
-  `web/lua-src` is a patched copy of the Lua source crate that compiles Lua with wasi-sdk's clang.
-  Lua's errors (setjmp/longjmp) become wasm exceptions in the legacy encoding, which Safari has
-  supported since iOS 15.2. Only this crate uses the copy.
-- **System calls.** wasi-libc's system calls are defined in `src/web.rs`, inside the module, so
-  the page has nothing extra to provide. Files open read-only from the pack, the environment
-  comes from the address, and print goes to the browser console and the page's log box. The
-  Rust side reads the same pack through `src/vfs.rs`.
-- **Graphics.** WebGL 2. The shaders were already GLSL 100.
-
-## Saves and sound
-
-- **Saves** go to the browser's `localStorage`, each key as `gta/<key>` (the same Lua-table text a
-  desktop save file holds), so progress, settings and the help-seen flag survive closing the page.
-  The page asks the browser to keep them (`navigator.storage.persist`). Clearing the site's data
-  in the browser starts a new game. They are kept per browser and per address.
-- **Sound**: the game's own mixer (`src/audio.rs`) is pulled by a WebAudio node in `index.html`
-  through `auto_audio_mix`, 4096 frames (~85 ms) at a time so a slow frame on a phone doesn't
-  starve it. Browsers allow sound only after a touch or key press, so it starts with the first
-  one, and it pauses while the page is hidden. On an iPhone the silent switch mutes it.
-
-`python3 tools/web_saves_sound.py` checks both in headless Chromium (CI runs it on every build).
-
-## Install and offline
-
-The page is a web app: `manifest.webmanifest` (name, landscape, full screen, icons from the
-cover art) and `sw.js`, a service worker that keeps the game's files on the device so an
-installed game starts without a connection. `build.sh` stamps the worker with the module's hash,
-so each build replaces the stored copy and nobody is left on an old one. Browsers allow this only
-over https or on localhost. Checked in headless Chrome: the manifest has no errors, all seven
-files are stored, and the game starts again with the network off. Not yet installed on a real
-phone.
-
-## Play it on a phone
-
-`.github/workflows/pages.yml` builds this folder on every push to main and publishes it at
-**https://olivermikkola.github.io/3D-auto/** (pull requests get the same build and browser
-check, without publishing). `?map=raisio` picks Raisio; Turku is the default.
-
-- **Android (Chrome):** open the address, then ⋮ → *Add to Home screen* / *Install app*.
-- **iPhone (Safari):** open the address, then Share → *Add to Home Screen*. Turku needs about
-  530 MiB of wasm memory, which older iPhones may refuse; try `?map=raisio` (about 450 MiB).
-
-Hold the phone sideways. Once installed it starts from the phone's own copy, also offline; a new
-build replaces that copy the next time it starts with a connection.
-
-## Measuring without mixing metrics
-
-Use a fresh build and keep the map, seed, hour, viewport and browser version fixed:
+Install the `wasm32-unknown-unknown` Rust target and
+[wasi-sdk 34](https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-34).
+Set `WASI_SDK_PATH` to the extracted SDK folder, then run:
 
 ```sh
-python3 tools/web_check.py --query 'map=raisio&seed=1337&hour=12' --wait 40 \
-  --report baseline/raisio.json --shot baseline/raisio.png
+web/build.sh
+python3 -m http.server 8000 --directory web/dist
 ```
 
-Repeat for `starter` and `turku`, sequentially. The JSON retains timestamped
-samples, page logs, browser version and the largest observed wasm allocation.
-The command fails if the game never logs its map/seed or the sampled log contains
-a runtime error/panic. Missing build files fail before a driver is started.
-`--firefox /path/to/firefox` selects a binary explicitly when needed.
+Open http://localhost:8000 in a browser with WebGL 2. Drag on touch screens to
+orbit; + / - zoom. Keyboard controls match the native example. The manifest and
+service worker allow installation; a WASM hash changes the cache each build.
 
-For isolated headless software rendering, the optional Chromium backend needs
-`python3 -m pip install playwright` and `python3 -m playwright install chromium`:
-
-```sh
-python3 tools/web_check.py --browser chromium --query 'map=raisio&seed=1337&hour=12' \
-  --wait 12 --report baseline/raisio.json --shot baseline/raisio.png
-WEB_CHECK_INTEGRATION=1 python3 -m unittest tools.test_web_check -v
-```
-
-It removes desktop display/session variables **only from the child browser** and
-uses SwiftShader with hardware GPU disabled. This avoided the reproduced local
-WebGL2 initialization stall; the precise driver/session interaction is not proven.
-It does not change host settings or validate hardware FPS. Page exceptions are
-reported and fail the check except the exact known pointer-lock user-gesture
-startup warning, which remains disclosed in `page_errors`.
-
-Values are bytes (console display: **MiB**), not total browser RSS, GPU memory or
-JavaScript heap. Samples start after WebDriver navigation returns; this does not
-capture the complete startup timeline. Wasm allocation does not shrink when Lua
-or Rust frees memory. This checker does not measure rendered FPS or prove visual
-correctness. Capture Chrome DevTools traces and inspect screenshots separately.
-Readiness here means the map/seed initialization marker, not an independently
-verified playable frame. Keep generated reports/screenshots outside version control.
-
-For a separate native CPU baseline, build `cargo build --release` first, then:
-
-```sh
-MAP=raisio SEED=1337 MESH_REPORT=1 /usr/bin/time -v target/release/auto game --headless 15
-```
-
-`MESH_REPORT` uses decimal MB; Linux `/usr/bin/time -v` maximum RSS is KiB.
-Headless mode does not exercise GPU uploads or rendered frame pacing.
-
-## Touch
-
-On a phone or tablet the controls appear once the screen is touched (`game/lib/touch.lua`): a
-stick under the left thumb, buttons on the right for what you're doing (on foot, in a car), a
-drag elsewhere on the right to look, and pause at the top. They act as a gamepad, so nothing else
-in the game needs to know. In the pause menu a tap picks a row and a drag scrolls a page taller
-than the screen; on the map a drag pans, a tap sets a waypoint, and + and - zoom.
-`TOUCH_SHOT=foot|car|menu|settings|map` with `--screenshot` pictures each (`game/test/touch_shot.lua`).
-
-The game is played sideways. Held upright, a phone shows "Turn your phone sideways" instead; on
-Android the first tap also asks for full screen locked sideways (an iPhone allows neither). Checked with real touch events in headless Chrome as an
-844×390 phone; not yet on a real iPhone or Android phone.
-
-## Not yet
-
-- Gamepads (the Gamepad API).
-- Memory: wasm memory grows to its peak and stays there. Post-#95 sampled
-  allocations on headless Chromium 151 / SwiftShader at 1280×720, seed 1337,
-  hour 12 and a 12-second window: starter **24.38 MiB**, Raisio **448.62 MiB**,
-  Turku **514.44 MiB**. Raw JSON is in `docs/baselines/2026-10-16/`.
-  These are single-run observed linear allocations, not total browser memory,
-  full load traces, hardware performance or proof of iPhone suitability.
+CI builds the module, renders it in headless Chromium, exercises controls and
+uploads a screenshot. The Pages workflow publishes the example after a main
+branch update. Existing historical releases are unaffected by this build.

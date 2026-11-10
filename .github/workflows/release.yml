@@ -30,22 +30,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release
       - name: Smoke test
-        run: AUTO_TEST=1 ./target/release/auto game --headless 9000
-      # Aurajoki: ships Turku and Raisio as playable cities, plus starter.lua
-      # for modders. Manhattan, the harbor, archived variants and tests stay
-      # in the repo; the menu defaults to Turku for the Aurajoki release.
-      - name: Package
+        run: ENGINE_SMOKE=1 ./target/release/auto game --headless 120
+      - name: Package engine and map example
         run: |
-          dir="aurajoki-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
+          dir="3d-auto-${GITHUB_REF_NAME//\//-}-${{ matrix.name }}"
           mkdir "$dir"
-          cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md MODDING.md LICENSE "$dir/"
-          cp -r game "$dir/game"
-          rm -rf "$dir/game/test" "$dir/game/maps/archive"
-          rm -f "$dir/game/maps/manhattan.lua" "$dir/game/maps/harbor.lua"
-          ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} "$dir/game" --headless 300 | tee pkg.log
-          grep -q "map=turku" pkg.log
+          cp target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} README.md LICENSE "$dir/"
+          cp -r game docs "$dir/"
+          ENGINE_SMOKE=1 ./target/release/auto${{ runner.os == 'Windows' && '.exe' || '' }} "$dir/game" --headless 120 | tee pkg.log
+          grep -q "ENGINE DEMO PASSED:" pkg.log
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
-          echo "ARCHIVE=$(ls aurajoki-*.zip aurajoki-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
+          echo "ARCHIVE=$(ls 3d-auto-*.zip 3d-auto-*.tar.gz 2>/dev/null)" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
@@ -62,6 +57,6 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          name: Aurajoki ${{ github.ref_name }}
+          name: 3D-auto ${{ github.ref_name }}
           files: dist/*
           generate_release_notes: true
