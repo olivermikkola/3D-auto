@@ -11,6 +11,11 @@ canal. It demonstrates the engine without missions, characters or game assets.
 
 ![Procedural map example](docs/map-example.png)
 
+To try the current engine example in a browser, build it locally with
+[the WebAssembly instructions](web/README.md). For the historical Turku game,
+[play GTÅ](https://moesystems.com/labs/gta/) or browse the
+[historical game releases](https://github.com/olivermikkola/3D-auto/releases).
+
 ## Run
 
 ```sh
