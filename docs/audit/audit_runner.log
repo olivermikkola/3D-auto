@@ -1,0 +1,4 @@
+[AUDIT] Skipping already completed pass: 01_rust_physics_collision
+
+[AUDIT] Starting Pass: 02_lua_roadnet_bridges (Prompt size: 107357 chars)...
+[AUDIT COMPLETE] Wrote report to: /home/olivermikkola/Projects/3D-auto/docs/audit/02_lua_roadnet_bridges_report.md (Took 563.3s)
