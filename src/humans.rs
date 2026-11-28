@@ -37,7 +37,7 @@ impl Humans {
         if people == 0 || people > 255 || frames == 0 || frames > 255 || bones == 0 || bones > 32 {
             return Err(format!("humans_poses.bin: {people} people, {frames} frames, {bones} bones is out of range"));
         }
-        let floats: Vec<f32> = poses[16..].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+        let floats: Vec<f32> = poses[16..].as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
         let want = people as usize * (1 + (frames as usize + 1) * bones as usize * 12);
         if floats.len() != want {
             return Err(format!("humans_poses.bin: {} floats, expected {want}", floats.len()));
@@ -52,7 +52,7 @@ impl Humans {
             frames,
             bones,
             cycle: cycle.to_vec(),
-            poses: rest.chunks_exact(4).map(|c| [c[0], c[1], c[2], c[3]]).collect(),
+            poses: rest.as_chunks::<4>().0.to_vec(),
             atlas,
             meshes: HashMap::new(),
             rev: 0,

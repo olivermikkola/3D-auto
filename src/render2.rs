@@ -1224,7 +1224,9 @@ impl Renderer2 {
         let hud = (!eng.hud.is_empty()).then(|| {
             let data: Vec<_> = eng
                 .hud
-                .chunks_exact(6)
+                .as_chunks::<6>()
+                .0
+                .iter()
                 .flat_map(|v| [v[0] / output.0 as f32 * 2.0 - 1.0, 1.0 - v[1] / output.1 as f32 * 2.0, v[2], v[3], v[4], v[5]])
                 .collect();
             (buffer(device, "HUD vertices", cast_slice(&data), BufferUsages::VERTEX), data.len() as u32 / 6)
@@ -1944,7 +1946,7 @@ fn save_ppm(
     let mut ppm = format!("P6\n{width} {height}\n255\n").into_bytes();
     ppm.reserve(width as usize * height as usize * 3);
     for scanline in data[..image_bytes as usize].chunks_exact(row as usize) {
-        for rgba in scanline[..width as usize * 4].chunks_exact(4) {
+        for rgba in scanline[..width as usize * 4].as_chunks::<4>().0 {
             ppm.extend_from_slice(&rgba[..3]);
         }
     }

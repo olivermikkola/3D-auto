@@ -74,14 +74,16 @@ pub fn decode(b: &[u8]) -> Result<Mesh, String> {
         return Err("packed mesh: wrong length".into());
     }
     let verts = b[vs..ss]
-        .chunks_exact(VERTEX)
+        .as_chunks::<VERTEX>()
+        .0
+        .iter()
         .map(|c| Vertex {
             pos: [f32_at(c, 0), f32_at(c, 4), f32_at(c, 8)],
             normal: [c[12], c[13], c[14], c[15]],
             color: [c[16], c[17], c[18], c[19]],
         })
         .collect();
-    let indices: Vec<u32> = b[is..].chunks_exact(4).map(|c| u32_at(c, 0)).collect();
+    let indices: Vec<u32> = b[is..].as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c)).collect();
     if indices.iter().any(|&i| i as usize >= nv) {
         return Err("packed mesh: index out of range".into());
     }
@@ -90,7 +92,9 @@ pub fn decode(b: &[u8]) -> Result<Mesh, String> {
     #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
     {
         m.obj_surfaces = b[ss..is]
-            .chunks_exact(SURFACE)
+            .as_chunks::<SURFACE>()
+            .0
+            .iter()
             .map(|c| crate::mesh::ObjSurface { uv: [f32_at(c, 0), f32_at(c, 4)], role: u32_at(c, 8) })
             .collect();
     }
