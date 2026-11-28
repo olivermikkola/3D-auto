@@ -2,9 +2,18 @@
 
 [![CI](https://github.com/olivermikkola/3D-auto/actions/workflows/ci.yml/badge.svg)](https://github.com/olivermikkola/3D-auto/actions/workflows/ci.yml)
 
-A small 3D engine in Rust with Lua scripting. It renders low-poly meshes,
-simulates rigid bodies, mixes sound and forwards keyboard, mouse, touch and
-gamepad input. Applications supply their own scripts and assets.
+A small 3D engine in Rust with Lua scripting. It renders meshes, simulates
+rigid bodies, mixes sound and forwards keyboard, mouse, touch and gamepad
+input. Applications supply their own scripts and assets.
+
+It has two renderers that draw the same scripts:
+
+- **OpenGL**: the default window, and the only one in the browser.
+- **wgpu** (Vulkan, Metal, DX12): textured materials, HDR with a filmic tone
+  map, ambient occlusion and reflections, cached sun shadows, night street
+  lamps, rain, skinned people, and meshes streamed in tiles. It was built for a
+  city game on an integrated GPU, and draws a 1 km² city street at 1080p in
+  about 9 ms on a Radeon 890M. See [docs/RENDERER.md](docs/RENDERER.md).
 
 The included example is a fictional map: streets, buildings, a park and a
 canal. It demonstrates the engine without missions, characters or game assets.
@@ -21,6 +30,7 @@ To try the current engine example in a browser, build it locally with
 ```sh
 cargo run --release
 cargo run --release -- path/to/your_scene
+cargo run --release -- game --wgpu        # the same in a wgpu window (HDR on; --no-hdr)
 ```
 
 The default scene lives in `game/` for compatibility with existing launchers.
@@ -34,6 +44,7 @@ F5 reloads scripts. Escape exits. The example uses no downloaded map data.
 ```sh
 cargo fmt --check
 cargo clippy --release -- -D warnings
+cargo clippy --release --no-default-features -- -D warnings   # OpenGL only, as the browser builds it
 cargo test --release
 cargo build --release
 python3 tools/check_demo.py
@@ -43,6 +54,13 @@ For a real rendered screenshot on Linux with software GL:
 
 ```sh
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a target/release/auto game --frames 4 --screenshot map.ppm
+```
+
+The wgpu renderer takes offscreen pictures without a window (add `--hdr` for
+the tone-mapped look, `WGPU_BENCH=60` for GPU time per stage):
+
+```sh
+target/release/auto game --render-size 1600x900 --frames 4 --screenshot map-wgpu.ppm
 ```
 
 `web/build.sh` builds the same example for WebAssembly. See
@@ -65,7 +83,12 @@ end)
 
 The binary supports `--headless TICKS`, `--frames N`, `--screenshot OUT.ppm`,
 `--record OUT.rgb`, `--ticks-per-frame N`, `--size WxH`, `--save-dir DIR`,
-`--fps N` and `--fullscreen`. Run `auto --help` for syntax.
+`--fps N` and `--fullscreen`. The wgpu renderer adds `--wgpu` / `--gl`,
+`--render-size WxH`, `--render-scale`, `--upscale`, `--hdr` / `--no-hdr` and
+`--material-pack DIR`; `auto --pack-meshes DIR` packs OBJs into fast-loading
+`.mesh` files for streaming. Run `auto --help` for syntax.
+
+`--no-default-features` builds the OpenGL-only engine, without wgpu.
 
 ## Repository scope
 
