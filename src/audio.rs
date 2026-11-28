@@ -293,6 +293,115 @@ impl Synth {
     }
 }
 
+/// One part of a `compose`d loop: a note per 16th step (Hz; 0 a rest, -1
+/// holds the note before on).
+#[derive(Clone, Debug)]
+pub struct Track {
+    pub wave: Wave,
+    pub notes: Vec<f32>,
+    pub volume: f32,
+    /// One-pole lowpass, 0..1 (1: open).
+    pub lowpass: f32,
+    /// Seconds to rise; seconds for the level to fall to a third (0: held).
+    pub attack: f32,
+    pub decay: f32,
+    /// Fraction of the note's length it sounds.
+    pub gate: f32,
+    /// The pitch starts this many times higher and falls to the note in
+    /// ~30 ms (a kick drum's thump); 1 is none.
+    pub slide: f32,
+}
+
+/// A loop of several tracks over the same 16th-note grid at `bpm`, mixed and
+/// softly limited: exactly `steps` 16ths long, so it repeats in time. Notes
+/// keep their own phase and envelope (with 3 ms edges: no clicks).
+pub fn compose(bpm: f32, steps: usize, tracks: &[Track]) -> Vec<f32> {
+    let sr = RATE as f32;
+    let step = 60.0 / bpm.max(1.0) / 4.0;
+    let total = (steps as f32 * step * sr).round() as usize;
+    let mut mix = vec![0.0f32; total];
+    let mut rng: u32 = 0x2545_F491;
+    for t in tracks {
+        let a = t.lowpass.clamp(0.001, 1.0).powi(2);
+        let mut lp = 0.0f32;
+        let mut i = 0;
+        while i < steps.min(t.notes.len()) {
+            let f = t.notes[i];
+            let mut len = 1;
+            while i + len < t.notes.len() && t.notes[i + len] < 0.0 {
+                len += 1;
+            }
+            if f > 0.0 {
+                let start = (i as f32 * step * sr).round() as usize;
+                let dur = len as f32 * step * t.gate.clamp(0.05, 1.0);
+                let n = (dur * sr) as usize;
+                let (mut phase, mut noise) = (0.0f32, 0.0f32);
+                for k in 0..n {
+                    let secs = k as f32 / sr;
+                    let freq = f * (1.0 + (t.slide.max(1.0) - 1.0) * (-secs / 0.03).exp());
+                    let prev = phase;
+                    phase = (phase + freq / sr).fract();
+                    let x = match t.wave {
+                        Wave::Sine => (phase * std::f32::consts::TAU).sin(),
+                        Wave::Square => {
+                            if phase < 0.5 {
+                                1.0
+                            } else {
+                                -1.0
+                            }
+                        }
+                        Wave::Saw => 2.0 * phase - 1.0,
+                        Wave::Triangle => 1.0 - 4.0 * (phase - 0.5).abs(),
+                        Wave::Noise => {
+                            if phase < prev || k == 0 {
+                                rng ^= rng << 13;
+                                rng ^= rng >> 17;
+                                rng ^= rng << 5;
+                                noise = (rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                            }
+                            noise
+                        }
+                    };
+                    let rise = if t.attack > 0.0 { (secs / t.attack).min(1.0) } else { 1.0 };
+                    let fall = if t.decay > 0.0 { (-secs / t.decay).exp() } else { 1.0 };
+                    let edge = (secs / 0.003).min(1.0) * ((dur - secs) / 0.003).clamp(0.0, 1.0);
+                    lp += a * (x - lp);
+                    if let Some(out) = mix.get_mut((start + k) % total.max(1)) {
+                        *out += lp * rise * fall * edge * t.volume;
+                    }
+                }
+            }
+            i += len;
+        }
+    }
+    for x in &mut mix {
+        *x = x.tanh();
+    }
+    mix
+}
+
+/// Mono samples as a 16-bit PCM WAV file at `RATE`.
+pub fn wav_bytes(samples: &[f32]) -> Vec<u8> {
+    let data = (samples.len() * 2) as u32;
+    let mut out = Vec::with_capacity(44 + data as usize);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data.to_le_bytes());
+    for &x in samples {
+        out.extend_from_slice(&((x.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+    }
+    out
+}
+
 /// 8/16-bit PCM WAV, any channel count and rate, to mono at `RATE`.
 pub fn load_wav(bytes: &[u8]) -> Result<Vec<f32>, String> {
     let u16le = |b: &[u8], o: usize| u16::from_le_bytes([b[o], b[o + 1]]);

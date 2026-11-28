@@ -6,16 +6,27 @@
 mod audio;
 mod engine;
 mod font;
+mod gltf_anim;
+mod gltf_mesh;
+mod humans;
 mod math;
 mod mesh;
+mod meshbin;
 mod pad;
 mod physics;
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+mod postcard_materials;
 mod render;
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+mod render2;
 mod save;
 mod script;
+mod stream;
 mod vfs;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+mod window2;
 
 use engine::{Engine, TICK_HZ};
 use miniquad::{EventHandler, KeyCode, KeyMods, MouseButton, conf, window};
@@ -37,6 +48,26 @@ struct Opts {
     save_dir: Option<PathBuf>,
     fps: u32,
     fullscreen: bool,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    render_size: Option<(u32, u32)>,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    upscale: Option<render2::Upscale>,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    material_pack: Option<PathBuf>,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    hdr: bool,
+    /// Play in a window drawn by the wgpu renderer: the default, unless
+    /// --gl (or --record, which only the GL window does) asks for the old one.
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    wgpu: bool,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    gl: bool,
+    /// --no-hdr: the wgpu window without HDR (on by default there).
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    no_hdr: bool,
+    /// --render-scale: the 3D scene's size as a fraction of the window's.
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    render_scale: f32,
 }
 
 fn parse_args() -> Result<Opts, String> {
@@ -51,6 +82,22 @@ fn parse_args() -> Result<Opts, String> {
         save_dir: None,
         fps: 60,
         fullscreen: false,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        render_size: None,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        upscale: None,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        material_pack: None,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        hdr: false,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        wgpu: false,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        gl: false,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        no_hdr: false,
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        render_scale: 1.0,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -63,7 +110,36 @@ fn parse_args() -> Result<Opts, String> {
             "--ticks-per-frame" => o.ticks_per_frame = val("--ticks-per-frame")?.parse().map_err(|_| "bad tick count")?,
             "--save-dir" => o.save_dir = Some(PathBuf::from(val("--save-dir")?)),
             "--fps" => o.fps = val("--fps")?.parse().map_err(|_| "bad fps")?,
+            // Write a packed .mesh beside every OBJ in DIR (meshbin.rs), then exit.
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--pack-meshes" => {
+                let dir = PathBuf::from(val("--pack-meshes")?);
+                let t = std::time::Instant::now();
+                let (packed, fresh) = meshbin::pack_dir(&dir)?;
+                println!("packed {packed} meshes in {:.1} s ({fresh} already up to date)", t.elapsed().as_secs_f64());
+                std::process::exit(0);
+            }
             "--fullscreen" => o.fullscreen = true,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--render-size" => {
+                let value = val("--render-size")?;
+                let (w, h) = value.split_once('x').ok_or("render size is WxH")?;
+                o.render_size = Some((w.parse().map_err(|_| "bad render width")?, h.parse().map_err(|_| "bad render height")?));
+            }
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--upscale" => o.upscale = Some(val("--upscale")?.parse()?),
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--material-pack" => o.material_pack = Some(val("--material-pack")?.into()),
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--hdr" => o.hdr = true,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--wgpu" => o.wgpu = true, // the wgpu window (the default one with the `wgpu-window` feature)
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--gl" => o.gl = true,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--no-hdr" => o.no_hdr = true,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            "--render-scale" => o.render_scale = val("--render-scale")?.parse().map_err(|_| "bad render scale")?,
             "--size" => {
                 let v = val("--size")?;
                 let (w, h) = v.split_once('x').ok_or("size is WxH")?;
@@ -77,11 +153,49 @@ fn parse_args() -> Result<Opts, String> {
                 println!(
                     "usage: auto [GAME_DIR] [--headless TICKS] [--screenshot OUT.ppm] [--record OUT.rgb] [--frames N] [--ticks-per-frame K] [--size WxH] [--save-dir DIR] [--fps N] [--fullscreen]"
                 );
+                #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+                {
+                    println!("--render-size WxH opts a --screenshot run into wgpu; --upscale bilinear|easu|easu-rcas selects the filter");
+                    println!("--material-pack DIR applies a material pack (KTX2 arrays: docs/RENDERER.md)");
+                    println!("--hdr draws in linear light with haze, glass reflections and a filmic tone map");
+                    println!(
+                        "--wgpu plays in a window drawn by the wgpu renderer{}, with HDR (--no-hdr: without) and the textures in GAME_DIR/materials",
+                        if cfg!(feature = "wgpu-window") { " (the default in this build)" } else { "" }
+                    );
+                    println!("  (--material-pack DIR: others) at --render-scale 0.25..1; --gl plays in the OpenGL window");
+                }
                 std::process::exit(0);
             }
             s if s.starts_with('-') => return Err(format!("unknown flag {s}")),
             s => o.root = PathBuf::from(s),
         }
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    {
+        // A window to play in: the wgpu one (with HDR) if asked for with
+        // --wgpu, or by default in a build with the `wgpu-window` feature
+        // unless --gl asks for the OpenGL one. --record only works in that.
+        let asked = o.wgpu || cfg!(feature = "wgpu-window");
+        if o.record.is_some() && asked && !o.gl && o.headless.is_none() && o.render_size.is_none() {
+            eprintln!("auto: --record uses the OpenGL window");
+            o.gl = true;
+        }
+        o.wgpu = asked && !o.gl && o.headless.is_none() && o.render_size.is_none();
+        if o.wgpu && !o.no_hdr {
+            o.hdr = true;
+        }
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if o.upscale.is_some() && o.render_size.is_none() && !o.wgpu {
+        return Err("--upscale requires --render-size".into());
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if o.hdr && o.render_size.is_none() && !o.wgpu {
+        return Err("--hdr requires --render-size".into());
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if o.material_pack.is_some() && o.render_size.is_none() && !o.wgpu {
+        return Err("--material-pack requires --render-size".into());
     }
     // In a browser the game folder is packed into the module, under "/".
     if cfg!(target_arch = "wasm32") {
@@ -533,6 +647,7 @@ impl EventHandler for App {
             self.profile.frame_lua += now() - t;
         }
         self.eng.borrow_mut().update_audio();
+        self.eng.borrow_mut().update_stream(fixed);
         {
             let mut e = self.eng.borrow_mut();
             e.mouse_delta = (0.0, 0.0);
@@ -792,6 +907,22 @@ fn main() {
         }
     };
     let saves = save_store(&o);
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if let Some(render_size) = o.render_size {
+        if let Err(error) = run_wgpu_postcard(o, render_size, saves) {
+            eprintln!("auto: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if o.wgpu && o.headless.is_none() {
+        if let Err(error) = window2::run(o, saves) {
+            eprintln!("auto: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Some(ticks) = o.headless {
         return run_headless(o.root, ticks, saves, o.fullscreen);
     }
@@ -863,4 +994,150 @@ fn main() {
     if result.get() {
         std::process::exit(1);
     }
+}
+
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+fn run_wgpu_postcard(o: Opts, render_size: (u32, u32), saves: save::Store) -> Result<(), String> {
+    let path = o.screenshot.clone().ok_or("--render-size requires --screenshot")?;
+    if o.headless.is_some() || o.record.is_some() || o.fullscreen {
+        return Err("--render-size screenshots are a separate capture mode".into());
+    }
+    let output_size = (u32::try_from(o.size.0).map_err(|_| "bad output width")?, u32::try_from(o.size.1).map_err(|_| "bad output height")?);
+    let frames = o.frames.unwrap_or(5);
+    if frames == 0 {
+        return Err("--frames must be positive".into());
+    }
+    let mixer = Arc::new(Mutex::new(audio::Mixer::default()));
+    let eng: Shared = Rc::new(RefCell::new(Engine::new(o.root.clone(), mixer)));
+    eng.borrow_mut().saves = saves;
+    eng.borrow_mut().skinning = true;
+    eng.borrow_mut().screen = (output_size.0 as f32, output_size.1 as f32);
+    let s = load(&eng).ok_or("could not load the Lua game")?;
+    let ticks_per_frame = o.ticks_per_frame.max(1);
+    let delta = ticks_per_frame as f32 / TICK_HZ as f32;
+    if let Some(seconds) = std::env::var("FLY").ok().and_then(|v| v.parse::<f64>().ok()) {
+        return fly_bench(&eng, &s, seconds, render_size, output_size, &o);
+    }
+    for _ in 0..frames {
+        if !eng.borrow().paused {
+            for _ in 0..ticks_per_frame {
+                tick(&eng, &s);
+            }
+        }
+        {
+            let mut state = eng.borrow_mut();
+            state.hud.clear();
+            state.hud_clip = None;
+        }
+        s.emit(&eng, "frame", frame_dt(&eng, delta));
+        eng.borrow_mut().update_stream(true);
+        if let Some(error) = &eng.borrow().error {
+            return Err(error.clone());
+        }
+    }
+    render2::postcard(
+        &eng.borrow(),
+        render_size,
+        output_size,
+        o.upscale.unwrap_or_default(),
+        o.material_pack.as_deref(),
+        o.hdr,
+        Path::new(&path),
+    )
+}
+
+/// FLY=seconds with --render-size: the game's frames for that long at 60 a
+/// second (the game moves the camera: main.lua flies a loop round the map),
+/// drawn offscreen with streaming as in play, each frame's CPU time (the
+/// scripts, streaming, culling, uploads and recording) and GPU time
+/// measured. Stalls from loading tiles show as the worst CPU frames.
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+fn fly_bench(
+    eng: &Shared,
+    s: &script::Script,
+    seconds: f64,
+    render_size: (u32, u32),
+    output_size: (u32, u32),
+    o: &Opts,
+) -> Result<(), String> {
+    let mut renderer =
+        render2::offscreen(&eng.borrow(), render_size, output_size, o.upscale.unwrap_or_default(), o.material_pack.as_deref(), o.hdr)?;
+    let frames = (seconds * 60.0).round() as usize;
+    let dt = 1.0 / 60.0;
+    let (mut cpu, mut gpu, mut stream_ms, mut shadow_ms) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut loaded, mut dropped, mut most_resident, mut worst_at) = (0, 0, 0, (0.0, 0));
+    let mut ticks = 0.0;
+    for f in 0..frames {
+        let start = std::time::Instant::now();
+        ticks += dt * TICK_HZ;
+        while ticks >= 1.0 {
+            tick(eng, s);
+            ticks -= 1.0;
+        }
+        let ticked = start.elapsed().as_secs_f64() * 1000.0;
+        {
+            let mut e = eng.borrow_mut();
+            e.hud.clear();
+            e.hud_clip = None;
+        }
+        let t = std::time::Instant::now();
+        s.emit(eng, "frame", dt as f32);
+        let frame_lua = t.elapsed().as_secs_f64() * 1000.0;
+        let t = std::time::Instant::now();
+        eng.borrow_mut().update_stream(false);
+        stream_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        if let Some(error) = &eng.borrow().error {
+            return Err(error.clone());
+        }
+        let (encoder, _) = renderer.encode(&eng.borrow())?;
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        // A slow frame after the start: say where its time went.
+        if f >= 60 && ms > 25.0 {
+            println!(
+                "fly: slow frame {f}: {ms:.1} ms = ticks {ticked:.1} + frame Lua {frame_lua:.1} + streaming {:.1} + drawing {:.1}",
+                stream_ms.last().unwrap_or(&0.0),
+                ms - ticked - frame_lua - stream_ms.last().unwrap_or(&0.0)
+            );
+        }
+        // The first second is the start: everything near the camera loads.
+        if f >= 60 && ms > worst_at.0 {
+            worst_at = (ms, f);
+        }
+        cpu.push(ms);
+        if let Some((g, stages)) = renderer.gpu_stages(encoder)? {
+            gpu.push(g);
+            shadow_ms.push(stages[0]);
+        }
+        let st = eng.borrow().streamer.stats;
+        loaded += st.loaded;
+        dropped += st.dropped;
+        most_resident = most_resident.max(st.resident);
+    }
+    let pct = |v: &mut Vec<f64>, q: f64| {
+        v.sort_by(f64::total_cmp);
+        v.get(((v.len().max(1) - 1) as f64 * q).round() as usize).copied().unwrap_or(0.0)
+    };
+    let worst_stream = stream_ms.iter().copied().fold(0.0, f64::max);
+    println!(
+        "fly: sun shadows GPU ms median {:.2}, p99 {:.2}; the cached near layer redrawn in {} of {frames} frames",
+        pct(&mut shadow_ms, 0.5),
+        pct(&mut shadow_ms, 0.99),
+        renderer.still_redraws()
+    );
+    println!(
+        "fly: {frames} frames; CPU ms median {:.2}, p99 {:.2}, worst after the first second {:.2} (frame {}); GPU ms median {:.2}, p99 {:.2}, worst {:.2}",
+        pct(&mut cpu, 0.5),
+        pct(&mut cpu, 0.99),
+        worst_at.0,
+        worst_at.1,
+        pct(&mut gpu, 0.5),
+        pct(&mut gpu, 0.99),
+        pct(&mut gpu, 1.0)
+    );
+    println!(
+        "fly: streaming loaded {loaded} and dropped {dropped} meshes, at most {most_resident} of {} in memory; stream update ms median {:.2}, worst {worst_stream:.2}",
+        eng.borrow().streamer.len(),
+        pct(&mut stream_ms, 0.5)
+    );
+    Ok(())
 }

@@ -102,6 +102,22 @@ pub struct Terrain {
     pub w: usize,
     pub d: usize,
     pub heights: Vec<f32>,
+    /// Optional source terrain category for each height sample.
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    pub material_classes: Option<Vec<u8>>,
+    /// Optional signed distance to the nearest kerb per sample, in 2 cm
+    /// steps around 128 (above on the raised side; 0 = none within 2.5 m).
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    pub material_kerbs: Option<Vec<u8>>,
+    /// Optional ground class per sample (the map's own codes), for game
+    /// queries such as "is this a building or water?".
+    pub classes: Option<Vec<u8>>,
+    /// Optional sideways moves of the drawn grid points (x, z metres): the
+    /// land/water boundary points stand on the true quay line, so a diagonal
+    /// quay wall is straight instead of a 1 m staircase. Drawing only: the
+    /// surface queries keep the plain grid (they differ by under ~1 m, at
+    /// the quay walls).
+    pub offsets: Option<Vec<[f32; 2]>>,
     pub id: usize,
     pub top: f32,
     /// How far raised pavements and medians stand above the road beside them.
@@ -144,6 +160,12 @@ impl Terrain {
             w,
             d,
             heights,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            material_classes: None,
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            material_kerbs: None,
+            classes: None,
+            offsets: None,
             id: usize::MAX,
             top,
             kerb: 0.0,
@@ -289,6 +311,15 @@ impl Terrain {
             Some((on, rh, rn)) => (h + (rh - h) * on, (n * (1.0 - on) + rn * on).norm()),
             None => (h, n),
         })
+    }
+
+    /// The ground class of the sample nearest (x, z), if the map has classes.
+    pub fn class_at(&self, x: f32, z: f32) -> Option<u8> {
+        let (u, v) = (((x - self.x0) / self.step).round(), ((z - self.z0) / self.step).round());
+        if !(u >= 0.0 && v >= 0.0) || u as usize >= self.w || v as usize >= self.d {
+            return None;
+        }
+        self.classes.as_ref().map(|c| c[v as usize * self.w + u as usize])
     }
 
     /// The heightfield's own triangles at (x, z), as drawn.
@@ -1046,6 +1077,18 @@ fn ray_test(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ground_class_is_read_at_the_nearest_sample() {
+        let mut t = Terrain::new(-1.0, -1.0, 1.0, 3, 2, vec![0.0; 6]);
+        assert_eq!(t.class_at(0.0, 0.0), None);
+        t.classes = Some(vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(t.class_at(-1.0, -1.0), Some(1));
+        assert_eq!(t.class_at(0.4, -0.6), Some(2));
+        assert_eq!(t.class_at(1.2, 0.1), Some(6));
+        assert_eq!(t.class_at(2.0, 0.0), None);
+        assert_eq!(t.class_at(-2.0, 0.0), None);
+    }
+
     use super::*;
     use crate::engine::Entity;
 

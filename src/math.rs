@@ -187,6 +187,22 @@ impl Mul for Quat {
 pub struct Mat4(pub [f32; 16]);
 
 impl Mat4 {
+    /// Column-major: p' = M * (p, 1).
+    pub fn transform_point(self, p: Vec3) -> Vec3 {
+        let m = &self.0;
+        v3(
+            m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12],
+            m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13],
+            m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14],
+        )
+    }
+
+    /// Column-major: v' = M * (v, 0) — rotation/scale only.
+    pub fn transform_vector(self, v: Vec3) -> Vec3 {
+        let m = &self.0;
+        v3(m[0] * v.x + m[4] * v.y + m[8] * v.z, m[1] * v.x + m[5] * v.y + m[9] * v.z, m[2] * v.x + m[6] * v.y + m[10] * v.z)
+    }
+
     /// translate * rotY(yaw) * scale
     #[cfg(test)]
     pub fn trs(t: Vec3, yaw: f32, s: Vec3) -> Mat4 {

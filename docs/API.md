@@ -27,9 +27,20 @@ engine.mesh(name, {{mesh="cube", pos=..., size=..., yaw=..., color=..., axis="x"
 -- a part can be a footprint pushed up instead: walls round it from pos up `height`, a flat roof
 engine.mesh(name, {{outline={x,z, x,z, ...}, height=12, pos=..., yaw=..., color=...}, ...})
 engine.load_obj(name, "assets/thing.obj")      -- usemtl Kd = color, Ke = glows at night
+engine.load_gltf(name, "assets/thing.gltf")    -- glTF 2.0 / .glb static mesh (baseColorFactor)
+engine.load_anim_clips("characters/hero.glb")  -- {{name=, duration=, channels=}, ...} from glTF
+engine.stream(name, "tiles/t_3_4.obj", x, z, radius)  -- loads on a worker thread within radius of the camera
+engine.stream_stats() -> {resident=, waiting=, loaded=, dropped=, total=}  -- `auto --pack-meshes DIR` packs OBJs first
+
+-- the wgpu renderer only (docs/RENDERER.md); false / 0 / no effect in the OpenGL one and headless
+engine.load_humans(dir) -> people     engine.set_gait(id, 0..1)   -- skinned walkers; 0 stands
+engine.load_car_atlas(path) -> ok     engine.load_prop_atlas(path) -> ok
+engine.set_driven(id, metres)         -- the wheels roll with it
+engine.set_car(id, steer, braking)    -- front wheels' angle (radians), brake lamps
 
 -- lighting (lights and emissive parts are scaled by glow: 0 by day, 1 at night)
-engine.lighting{sky={r,g,b}, sky_top=, sun={x,y,z}, sun_color=, ambient=, ground=, glow=0..1, shadows=true}
+engine.lighting{sky={r,g,b}, sky_top=, sun={x,y,z}, sun_color=, ambient=, ground=, glow=0..1, shadows=true,
+                wet=0..1, rain=0..1, cloud=0..1}   -- wet streets, rain and cloud: the wgpu renderer
 id = engine.light{pos={x,y,z}, dir={x,y,z}, color=, intensity=1, radius=12, cone=180, follow=entity}
 engine.set_light(id, {...})  engine.remove_light(id)  -- cone = half-angle in degrees (180 = point)
 
@@ -37,6 +48,8 @@ engine.set_light(id, {...})  engine.remove_light(id)  -- cone = half-angle in de
 engine.synth(name, {wave="square"|"saw"|"sine"|"triangle"|"noise", freq=440, freq_end=,
                     dur=0.3, attack=, release=, volume=0.5, lowpass=1, notes={...}, note_len=, loop=false})
 engine.load_wav(name, "assets/boom.wav")                  -- 8/16-bit PCM, any rate
+engine.compose(name, {bpm=, steps=, tracks={{wave=, notes={Hz per 16th; 0 rest, -1 hold}, volume=,
+               lowpass=, attack=, decay=, gate=, slide=}, ...}}) -> seconds   -- a loop of several parts
 voice = engine.play(name[, {volume=1, pitch=1, loop=false, pos={x,y,z}, follow=id, ui=false}])  -- ui: plays while paused
 engine.set_voice(voice, {volume=, pitch=, pos=})  engine.stop(voice)  engine.playing(voice)
 engine.volume([master]) -> master
@@ -47,6 +60,9 @@ engine.terrain{x0=, z0=, step=, w=, d=, heights={w*d, row by row toward +z}, col
                       side 1 raised (0/1), side 2 raised, ...}, kerb=meters}  -- roads: see "Terrain"
 engine.terrain(nil)                            -- the ground as a heightfield; nil removes it
 engine.terrain_height(x, z) -> h, nx,ny,nz     -- nothing off the grid
+engine.terrain_class(x, z) -> class            -- the terrain file's class byte; nothing off the grid
+engine.radar_palette({{r,g,b,a}, ...})         -- colours by ground class, for:
+engine.radar(x, y, size, cx, cz, yaw, metres_across[, cells]) -> rects   -- the ground as a HUD map
 engine.camera(ex,ey,ez, tx,ty,tz[, fov_deg])  engine.camera_pos() -> x,y,z
 engine.sky(r,g,b)  engine.fog(start, end)  engine.sun(x,y,z)  engine.gravity(g)  -- shorthands
 

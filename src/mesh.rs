@@ -8,6 +8,7 @@ use std::path::Path;
 
 /// 20 bytes: a city is millions of triangles, so normal and colour are bytes.
 #[repr(C)]
+#[cfg_attr(all(feature = "wgpu-postcard", not(target_arch = "wasm32")), derive(bytemuck::Pod, bytemuck::Zeroable))]
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub pos: [f32; 3],
@@ -148,15 +149,75 @@ pub fn text(cube: &Mesh, s: &str, height: f32, depth: f32) -> Mesh {
     out
 }
 
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ObjSurface {
+    pub uv: [f32; 2],
+    // 0 means absent, followed by wall, roof, other, and unclassified.
+    pub role: u32,
+}
+
+/// Up to four bone influences per vertex (glTF JOINTS_0 / WEIGHTS_0). Empty
+/// `Mesh::influences` means a rigid mesh. Read by `apply_skin` (and GPU later).
+#[derive(Clone, Copy, Debug, Default)]
+#[allow(dead_code)] // joints/weights consumed by apply_skin / upcoming GPU path
+pub struct SkinInfluence {
+    pub joints: [u16; 4],
+    pub weights: [f32; 4],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
     pub verts: Vec<Vertex>,
     pub indices: Vec<u32>,
+    /// Parallel to `verts` when the source was a skinned glTF; otherwise empty.
+    pub influences: Vec<SkinInfluence>,
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    pub obj_surfaces: Vec<ObjSurface>,
 }
 
 impl Mesh {
     pub fn tri(&mut self, a: Vec3, b: Vec3, c: Vec3, col: Vec3) {
         self.tri_e(a, b, c, col, 0.0);
+    }
+
+    /// Skin vertices in place. `bones[j]` is the joint matrix already including
+    /// the inverse-bind (glTF style). No-op when `influences` is empty.
+    /// Wired to animation playback in the next character PR; kept public for tests.
+    #[allow(dead_code)]
+    pub fn apply_skin(&mut self, bones: &[crate::math::Mat4]) -> Result<(), String> {
+        if self.influences.is_empty() {
+            return Ok(());
+        }
+        if self.influences.len() != self.verts.len() {
+            return Err(format!("skin: {} influences vs {} verts", self.influences.len(), self.verts.len()));
+        }
+        for (v, inf) in self.verts.iter_mut().zip(&self.influences) {
+            let p = v.pos();
+            let n = v.normal();
+            let (facade, ground) = (v.facade(), v.ground());
+            let col = v.color();
+            let glow = v.emissive();
+            let mut sp = Vec3::ZERO;
+            let mut sn = Vec3::ZERO;
+            for k in 0..4 {
+                let w = inf.weights[k];
+                if w <= 1e-6 {
+                    continue;
+                }
+                let bone = bones.get(inf.joints[k] as usize).ok_or_else(|| format!("skin: joint {} out of range", inf.joints[k]))?;
+                sp += bone.transform_point(p) * w;
+                sn += bone.transform_vector(n) * w;
+            }
+            *v = Vertex::new(sp, sn.norm(), col, glow);
+            if facade.0 > 0 {
+                v.set_facade(facade.0, facade.1, facade.2);
+            } else if ground > 0 {
+                v.set_ground(ground);
+            }
+        }
+        Ok(())
     }
 
     /// A triangle with a colour at each corner, blended across it.
@@ -783,43 +844,203 @@ pub fn builtins() -> Vec<(&'static str, Mesh)> {
     ]
 }
 
-/// Minimal Wavefront OBJ: v, f (any polygon, fan-triangulated, v/vt/vn and negative
-/// indices), mtllib + usemtl for flat Kd colors. Normals are recomputed flat.
+/// Minimal Wavefront OBJ: positions, fan-triangulated faces, and MTL colours.
+/// The postcard renderer also keeps texture coordinates and surface roles.
 pub fn load_obj(path: &Path) -> Result<Mesh, String> {
     let src = crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let dir = path.parent().unwrap_or(Path::new("."));
+    parse_obj(&src, |file| crate::vfs::read_to_string(&dir.join(file)).ok())
+}
+
+/// glTF 2.0 static mesh (see `gltf_mesh`). Skins/animations come in later PRs.
+pub fn load_gltf(path: &Path) -> Result<Mesh, String> {
+    crate::gltf_mesh::load_gltf(path)
+}
+
+fn obj_index(index: i64, count: usize) -> Option<usize> {
+    let index = if index < 0 { count as i64 + index } else { index - 1 };
+    usize::try_from(index).ok().filter(|&i| i < count)
+}
+
+/// The surface role of a skinned vertex (an OBJ `vs j0 j1 j2 w0 w1 w2`
+/// line): bit 31 set, three 5-bit bone indices, and the first two weights
+/// in 255ths (the third is what is left). See `skin_pose` in render2.wgsl.
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+pub const SKINNED: u32 = 1 << 31;
+
+/// A prop's surface (OBJ material `prop_...`: shop signs, tram livery): its
+/// colour is read from the prop atlas at the OBJ texture coordinate
+/// (normalised, v up), texels with alpha under one half cut out.
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+pub const PROP_ROLE: u32 = 14;
+
+/// A car's surface (OBJ material `car_...`): shaded from the car atlas (see
+/// `car_shade` in render2.wgsl).
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+pub const CAR_ROLE: u32 = 13;
+
+/// A car's wheel (OBJ material `carwheel_<along cm>_<hub cm>`): a car
+/// surface that also rolls about the hub with the distance driven. Bits 5-15
+/// hold the hub's place along the car (+z) in cm + 1024, bits 16-23 its
+/// height (= the wheel's radius) in cm.
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+pub const WHEEL: u32 = 1 << 30;
+
+/// A car's number plate (OBJ material `carplate_<step px>_<count>`): a car
+/// surface whose atlas rows shift down by `step` pixels times a number the
+/// renderer picks per car (below `count`), so neighbours show different
+/// plates. Bits 5-15 hold the step, 16-23 the count.
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+pub const PLATE: u32 = 1 << 29;
+
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+fn car_role(name: &str) -> Option<u32> {
+    if name.starts_with("car_") {
+        return Some(CAR_ROLE);
+    }
+    if let Some(rest) = name.strip_prefix("carplate_") {
+        let mut it = rest.split('_').map(|v| v.parse::<u32>().ok());
+        return Some(match (it.next().flatten(), it.next().flatten()) {
+            (Some(step), Some(count)) if step < 2048 && (1..256).contains(&count) => CAR_ROLE | PLATE | step << 5 | count << 16,
+            _ => CAR_ROLE,
+        });
+    }
+    let mut it = name.strip_prefix("carwheel_")?.split('_').map(|v| v.parse::<i32>().ok());
+    let (along, hub) = (it.next()??, it.next()??);
+    if !(-1024..1024).contains(&along) || !(1..256).contains(&hub) {
+        return Some(CAR_ROLE);
+    }
+    Some(CAR_ROLE | WHEEL | ((along + 1024) as u32) << 5 | (hub as u32) << 16)
+}
+
+#[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+fn skin_role(n: &[u32]) -> Option<u32> {
+    let &[j0, j1, j2, w0, w1, _] = n else { return None };
+    if j0.max(j1).max(j2) > 31 || w0 + w1 > 255 {
+        return None;
+    }
+    Some(SKINNED | j0 | j1 << 5 | j2 << 10 | w0 << 15 | w1 << 23)
+}
+
+fn parse_obj(src: &str, read_materials: impl Fn(&str) -> Option<String>) -> Result<Mesh, String> {
     let mut pos: Vec<Vec3> = Vec::new();
+    let mut normals: Vec<Vec3> = Vec::new();
     let mut mats: HashMap<String, (Vec3, f32)> = HashMap::new();
     let (mut col, mut glow) = (Vec3::ONE, 0.0);
     let mut m = Mesh::default();
     let num = |s: Option<&str>| s.and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    let mut texcoords: Vec<Option<[f32; 2]>> = Vec::new();
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    let mut skins: Vec<Option<u32>> = Vec::new();
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    let mut role = 0;
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    let mut face_uv = Vec::new();
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    let mut face_role = Vec::new();
     for (ln, line) in src.lines().enumerate() {
-        let mut it = line.split_whitespace();
+        let mut it = line.split_whitespace().take_while(|token| !token.starts_with('#'));
         match it.next() {
             Some("v") => pos.push(v3(num(it.next()), num(it.next()), num(it.next()))),
+            Some("vn") => normals.push(v3(num(it.next()), num(it.next()), num(it.next())).norm()),
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            Some("vt") => {
+                let u = it.next().and_then(|value| value.parse::<f32>().ok());
+                let v = it.next().unwrap_or("0").parse::<f32>().ok();
+                texcoords.push(u.zip(v).filter(|(u, v)| u.is_finite() && v.is_finite()).map(|(u, v)| [u, v]));
+            }
+            #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+            Some("vs") => skins.push(skin_role(&it.filter_map(|v| v.parse().ok()).collect::<Vec<u32>>())),
             Some("mtllib") => {
-                if let Some(f) = it.next()
-                    && let Ok(txt) = crate::vfs::read_to_string(&dir.join(f))
-                {
-                    parse_mtl(&txt, &mut mats);
+                if let Some(text) = it.next().and_then(&read_materials) {
+                    parse_mtl(&text, &mut mats);
                 }
             }
-            Some("usemtl") => (col, glow) = it.next().and_then(|n| mats.get(n).copied()).unwrap_or((Vec3::ONE, 0.0)),
+            Some("usemtl") => {
+                let name = it.next().unwrap_or("");
+                (col, glow) = mats.get(name).copied().unwrap_or((Vec3::ONE, 0.0));
+                #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+                {
+                    role = if let Some(car) = car_role(name) {
+                        car
+                    } else if name.starts_with("prop_") {
+                        PROP_ROLE
+                    } else if name.starts_with("wall_") {
+                        1
+                    } else if name.starts_with("roof_") {
+                        2
+                    } else if name.starts_with("other_") {
+                        3
+                    } else if name.starts_with("leaf_") {
+                        5
+                    } else if name.starts_with("glass_") {
+                        6
+                    } else if let Some(limb) =
+                        ["limbll_", "limbrl_", "limbla_", "limbra_", "limbls_", "limbrs_"].iter().position(|p| name.starts_with(p))
+                    {
+                        // A walker's left/right leg and arm, swung in the vertex shader.
+                        7 + limb as u32
+                    } else {
+                        0
+                    };
+                }
+            }
             Some("f") => {
-                let idx: Result<Vec<Vec3>, String> = it
+                #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+                {
+                    face_uv.clear();
+                    face_role.clear();
+                }
+                let corners: Result<Vec<(Vec3, Option<Vec3>)>, String> = it
                     .map(|tok| {
-                        let i: i64 = tok.split('/').next().unwrap_or("").parse().map_err(|_| format!("line {}: bad face", ln + 1))?;
-                        let i = if i < 0 { pos.len() as i64 + i } else { i - 1 };
-                        pos.get(i as usize).copied().ok_or(format!("line {}: index out of range", ln + 1))
+                        let mut parts = tok.split('/');
+                        let index = parts.next().unwrap_or("").parse().map_err(|_| format!("line {}: bad face", ln + 1))?;
+                        let vi = obj_index(index, pos.len()).ok_or_else(|| format!("line {}: index out of range", ln + 1))?;
+                        let vt = parts.next();
+                        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+                        {
+                            let uv = vt.and_then(|s| s.parse().ok()).and_then(|index| obj_index(index, texcoords.len()));
+                            face_uv.push(uv.and_then(|i| texcoords[i]));
+                            face_role.push(skins.get(vi).copied().flatten().unwrap_or(role));
+                        }
+                        #[cfg(not(all(feature = "wgpu-postcard", not(target_arch = "wasm32"))))]
+                        let _ = vt;
+                        let n =
+                            parts.next().and_then(|s| s.parse().ok()).and_then(|index| obj_index(index, normals.len())).map(|i| normals[i]);
+                        Ok((pos[vi], n))
                     })
                     .collect();
-                let p = idx?;
+                let p = corners?;
                 for k in 1..p.len().saturating_sub(1) {
-                    m.tri_e(p[0], p[k], p[k + 1], col, glow);
+                    let tri = [p[0], p[k], p[k + 1]];
+                    if let [(a, Some(na)), (b, Some(nb)), (c, Some(nc))] = tri {
+                        // Smooth: each corner keeps its own normal.
+                        let base = m.verts.len() as u32;
+                        m.verts.extend([(a, na), (b, nb), (c, nc)].map(|(p, n)| Vertex::new(p, n, col, glow)));
+                        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+                    } else {
+                        m.tri_e(tri[0].0, tri[1].0, tri[2].0, col, glow);
+                    }
+                    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+                    {
+                        if let [Some(a), Some(b), Some(c)] = [face_uv[0], face_uv[k], face_uv[k + 1]] {
+                            m.obj_surfaces.resize(m.verts.len() - 3, ObjSurface::default());
+                            let roles = [face_role[0], face_role[k], face_role[k + 1]];
+                            m.obj_surfaces.extend(
+                                [(a, roles[0]), (b, roles[1]), (c, roles[2])]
+                                    .map(|(uv, role)| ObjSurface { uv, role: if role == 0 { 4 } else { role } }),
+                            );
+                        }
+                    }
                 }
             }
             _ => {}
         }
+    }
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    if !m.obj_surfaces.is_empty() {
+        m.obj_surfaces.resize(m.verts.len(), ObjSurface::default());
     }
     Ok(m)
 }
@@ -846,6 +1067,99 @@ fn parse_mtl(txt: &str, out: &mut HashMap<String, (Vec3, f32)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::Mat4;
+
+    #[test]
+    fn apply_skin_moves_weighted_verts() {
+        // Foot locked to bone 0; tip fully on bone 1 which translates +1 on X.
+        let mut m = Mesh::default();
+        m.verts.push(Vertex::new(v3(0., 0., 0.), Vec3::UP, Vec3::ONE, 0.0));
+        m.verts.push(Vertex::new(v3(0., 2., 0.), Vec3::UP, Vec3::ONE, 0.0));
+        m.indices.extend_from_slice(&[0, 0, 1]);
+        m.influences.push(SkinInfluence { joints: [0, 0, 0, 0], weights: [1., 0., 0., 0.] });
+        m.influences.push(SkinInfluence { joints: [1, 0, 0, 0], weights: [1., 0., 0., 0.] });
+        let bones = [Mat4::trs(Vec3::ZERO, 0.0, Vec3::ONE), Mat4::trs(v3(1., 0., 0.), 0.0, Vec3::ONE)];
+        m.apply_skin(&bones).unwrap();
+        assert!((m.verts[0].pos() - v3(0., 0., 0.)).len() < 1e-4, "foot stays");
+        let tip = m.verts[1].pos();
+        assert!((tip - v3(1., 2., 0.)).len() < 1e-4, "tip {tip:?}");
+    }
+
+    #[test]
+    fn obj_normals_make_a_face_smooth() {
+        let mesh = parse_obj("v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nvn 1 0 1\nvn 0 0 2\nf 1//1 2//2 3//3\nf 1 2 3\n", |_| None).unwrap();
+        assert_eq!(mesh.tri_count(), 2);
+        let n: Vec<Vec3> = mesh.verts.iter().map(|v| v.normal()).collect();
+        // Each corner keeps its own (normalised) normal...
+        assert!((n[1].x - 0.707).abs() < 0.01 && (n[1].z - 0.707).abs() < 0.01);
+        assert!((n[2].z - 1.0).abs() < 0.01);
+        // ...and a face without them is flat, facing +z.
+        assert!(n[3..].iter().all(|v| (v.z - 1.0).abs() < 0.01 && v.x.abs() < 0.01));
+    }
+
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    #[test]
+    fn car_materials_become_car_and_wheel_roles() {
+        let src = "mtllib x.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nusemtl car_paint\nf 1/1 2/1 3/1\n\
+                   usemtl carwheel_-133_32\nf 1/1 2/1 3/1\nusemtl carwheel_x\nf 1/1 2/1 3/1\n\
+                   usemtl carplate_24_16\nf 1/1 2/1 3/1\n";
+        let mesh = parse_obj(src, |_| None).unwrap();
+        let roles: Vec<u32> = mesh.obj_surfaces.iter().map(|s| s.role).collect();
+        assert_eq!(roles[0], CAR_ROLE);
+        assert_eq!(roles[3], CAR_ROLE | WHEEL | (1024 - 133) << 5 | 32 << 16);
+        assert_eq!(roles[6], 4, "an unreadable wheel name is an ordinary surface");
+        assert_eq!(roles[9], CAR_ROLE | PLATE | 24 << 5 | 16 << 16);
+    }
+
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    #[test]
+    fn prop_materials_read_the_prop_atlas() {
+        let src = "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0.25 0.75\nusemtl prop_sign\nf 1/1 2/1 3/1\nusemtl other_808080\nf 1/1 2/1 3/1\n";
+        let mesh = parse_obj(src, |_| None).unwrap();
+        assert_eq!(mesh.obj_surfaces[0].role, PROP_ROLE);
+        assert_eq!(mesh.obj_surfaces[3].role, 3);
+    }
+
+    #[test]
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    fn obj_skin_lines_become_skinned_surface_roles() {
+        let mesh = parse_obj(
+            "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvs 1 2 3 200 55 0\nvs 22 0 0 255 0 0\nvs 40 0 0 255 0 0\nf 1/1 2/1 3/1\n",
+            |_| None,
+        )
+        .unwrap();
+        let roles: Vec<u32> = mesh.obj_surfaces.iter().map(|s| s.role).collect();
+        assert_eq!(roles[0], SKINNED | 1 | 2 << 5 | 3 << 10 | 200 << 15 | 55 << 23);
+        assert_eq!(roles[1], SKINNED | 22 | 255 << 15);
+        // Bone 40 doesn't fit in 5 bits: that vertex stays an ordinary one.
+        assert_eq!(roles[2], 4);
+    }
+
+    #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+    #[test]
+    fn obj_surface_coordinates_follow_triangulation_and_leave_gaps_for_plain_faces() {
+        let mesh = parse_obj(
+            "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\n\
+             f 1 2 3\n\
+             vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n\
+             usemtl wall_a\nf -4/-4 -3/-3 -2/-2 -1/-1 # quad\n\
+             usemtl roof_b\nf 1/1 2/2 3/3\n\
+             f 1/1 2//7 3/0\n",
+            |_| None,
+        )
+        .unwrap();
+        assert_eq!(mesh.tri_count(), 5);
+        assert_eq!(mesh.obj_surfaces.len(), mesh.verts.len());
+        assert_eq!(mesh.obj_surfaces.iter().map(|surface| surface.role).collect::<Vec<_>>(), [0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 0, 0, 0]);
+        assert_eq!(
+            mesh.obj_surfaces[3..9].iter().map(|surface| surface.uv).collect::<Vec<_>>(),
+            [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        );
+
+        let plain = parse_obj("v 0 0 0\nv 1 0 0\nv 1 1 0\nf 1//1 2//1 3//1", |_| None).unwrap();
+        assert_eq!(plain.tri_count(), 1);
+        assert!(plain.obj_surfaces.is_empty());
+    }
 
     #[test]
     fn text_is_a_box_per_run_of_lit_pixels_centred_on_x() {

@@ -12,8 +12,10 @@ name = "auto"
 path = "../src/main.rs"
 
 [dependencies]
+base64 = "0.22"
 miniquad = "0.4"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
+serde_json = "1"
 
 [patch.crates-io]
 lua-src = { path = "lua-src" }

@@ -20,6 +20,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --release -- -D warnings
+      # The OpenGL-only engine (no wgpu renderer), as the browser builds it.
+      - run: cargo clippy --release --no-default-features -- -D warnings
       - run: cargo test --release
       - run: cargo build --release
       - uses: actions/setup-python@v5

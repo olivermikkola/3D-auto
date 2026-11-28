@@ -82,9 +82,28 @@ pub struct Entity {
     /// the terrain is only in layer 0, rays only see one layer, and only
     /// the camera's layer (`Engine::view_layer`) is drawn.
     pub layer: u8,
+    /// Drawn only from this far from the camera (m, to its bounds' centre):
+    /// a cheap far version of something with a detailed near one. 0: always.
+    pub near: f32,
+    /// Not drawn from this far on (m); 0: no limit. With `near`, the two
+    /// versions of one thing hand over at the same distance.
+    pub far: f32,
+    /// A skinned person's stride: 1 walking, 0 standing (`set_gait`).
+    pub gait: f32,
+    /// How far a car has driven, in metres: its wheels roll with it (`set_driven`).
+    pub driven: f32,
+    /// A car's front wheels' angle, radians, the way its yaw turns (`set_car`).
+    pub steer: f32,
+    /// A car braking or held on the brake: its tail lamps light (`set_car`).
+    pub braking: bool,
 }
 
 impl Entity {
+    /// Whether it's drawn with its bounds' centre `dist` metres from the camera.
+    pub fn drawn_at(&self, dist: f32) -> bool {
+        dist >= self.near && (self.far <= 0.0 || dist < self.far)
+    }
+
     pub fn new(pos: Vec3) -> Entity {
         Entity {
             pos,
@@ -99,6 +118,12 @@ impl Entity {
             glow: 0.0,
             prev: None,
             layer: 0,
+            near: 0.0,
+            far: 0.0,
+            gait: 1.0,
+            driven: 0.0,
+            steer: 0.0,
+            braking: false,
         }
     }
 }
@@ -134,6 +159,8 @@ impl Env {
             shadows: false,
             wet: 0.0,
             snow: 0.0,
+            rain: 0.0,
+            cloud: 0.0,
             fog_start: 40.0,
             fog_end: 160.0,
             ..self.clone()
@@ -164,10 +191,64 @@ pub struct Env {
     pub wet: f32,
     /// 0 bare, 1 snowed over: flat ground goes white (roads less so).
     pub snow: f32,
+    /// 0 dry, 1 pouring: rain falling past the camera (the wgpu renderer
+    /// draws it) and rings on the puddles.
+    pub rain: f32,
+    /// 0 clear, 1 overcast: hides the stars.
+    pub cloud: f32,
     pub fog_start: f32,
     pub fog_end: f32,
     pub sun: Vec3,
     pub gravity: f32,
+}
+
+/// Ground chunks are this many grid cells a side.
+const TERRAIN_CHUNK: usize = 64;
+/// Grounds with more points than this (about 700 m square at 1 m) get a
+/// coarse far version (`set_terrain`).
+const TERRAIN_LOD_POINTS: usize = 500_000;
+/// The coarse ground's grid, in cells of the fine one.
+const TERRAIN_COARSE: usize = 4;
+/// Metres from the camera (to a chunk's centre) within which the fine
+/// ground is drawn; the coarse one from there on.
+const TERRAIN_FINE: f32 = 380.0;
+
+/// A big ground's fine chunk: its mesh and centre, and whether it is built.
+struct FineChunk {
+    ci: usize,
+    cj: usize,
+    mesh: usize,
+    x: f32,
+    z: f32,
+    built: bool,
+}
+
+/// One chunk of the ground from grid cell (ci, cj): every `stride`-th point,
+/// so 1 is full detail. Its colours blend between the points' own.
+fn terrain_chunk(t: &Terrain, colors: Option<&[[f32; 3]]>, ci: usize, cj: usize, stride: usize) -> Mesh {
+    let grass = [0.3, 0.42, 0.24];
+    let col = |i: usize, j: usize| {
+        let c = colors.map_or(grass, |c| c[j * t.w + i]);
+        v3(c[0], c[1], c[2])
+    };
+    let point = |i: usize, j: usize| {
+        let [ox, oz] = t.offsets.as_ref().map_or([0.0; 2], |o| o[j * t.w + i]);
+        v3(t.x0 + i as f32 * t.step + ox, t.at(i, j), t.z0 + j as f32 * t.step + oz)
+    };
+    let (iend, jend) = ((ci + TERRAIN_CHUNK).min(t.w - 1), (cj + TERRAIN_CHUNK).min(t.d - 1));
+    let mut m = Mesh::default();
+    for j in (cj..jend).step_by(stride) {
+        let j1 = (j + stride).min(jend);
+        for i in (ci..iend).step_by(stride) {
+            let i1 = (i + stride).min(iend);
+            // Wound so the faces point up; the same split as Terrain::surface.
+            let (a, b, c, d) = ((i, j), (i, j1), (i1, j), (i1, j1));
+            m.tri_blend(point(a.0, a.1), point(b.0, b.1), point(c.0, c.1), [col(a.0, a.1), col(b.0, b.1), col(c.0, c.1)]);
+            m.tri_blend(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), [col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]);
+        }
+    }
+    m.mark_ground(0, mesh::GROUND_TERRAIN);
+    m
 }
 
 pub struct Engine {
@@ -185,6 +266,9 @@ pub struct Engine {
     /// drawing it.
     pub terrain: Option<Terrain>,
     terrain_chunks: Vec<u32>,
+    /// A big ground's fine chunks, built only near the camera.
+    terrain_fine: Vec<FineChunk>,
+    terrain_colors: Option<Vec<[f32; 3]>>,
     /// The entities drawing the baked trees (`set_forest`).
     forest_chunks: Vec<u32>,
     forest_meshes: Vec<String>,
@@ -193,7 +277,19 @@ pub struct Engine {
     /// The ground's colours at a finer step than the terrain's points.
     pub ground_map: Option<GroundMap>,
     pub meshes: Vec<Mesh>,
+    /// Meshes loaded only near the camera (`engine.stream`).
+    pub streamer: crate::stream::Streamer,
     pub mesh_ids: HashMap<String, usize>,
+    /// Skinned walking people (`engine.load_humans`), drawn by the wgpu renderer.
+    pub humans: Option<crate::humans::Humans>,
+    /// Set by the wgpu renderer's runs: it can skin and animate `humans`.
+    pub skinning: bool,
+    /// The cars' texture atlas (`engine.load_car_atlas`): a mip chain, and a
+    /// revision bumped on every load so the wgpu renderer re-uploads it.
+    pub car_atlas: Option<(u64, Vec<crate::humans::Mip>)>,
+    /// The props' texture atlas (`engine.load_prop_atlas`: shop signs, tram
+    /// livery), like `car_atlas`.
+    pub prop_atlas: Option<(u64, Vec<crate::humans::Mip>)>,
     /// Bumped when a mesh is replaced so the renderer re-uploads it.
     pub mesh_revs: Vec<u32>,
     /// Big meshes whose vertices now live only on the GPU (see `release_uploaded`).
@@ -215,6 +311,9 @@ pub struct Engine {
     pub hud: Vec<f32>,
     /// While set, HUD rects and quads are cut to this rectangle (x0, y0, x1, y1).
     pub hud_clip: Option<[f32; 4]>,
+    /// The radar's colour for each ground class (`hud_radar`); alpha 0 is
+    /// left out (the radar's backing shows through).
+    pub radar_palette: Vec<[f32; 4]>,
     pub time: f64,
     pub tick: u64,
     pub quit: bool,
@@ -294,12 +393,19 @@ impl Engine {
             tagged: HashMap::new(),
             terrain: None,
             terrain_chunks: Vec::new(),
+            terrain_fine: Vec::new(),
+            terrain_colors: None,
             forest_chunks: Vec::new(),
             forest_meshes: Vec::new(),
             forest: None,
             ground_map: None,
             meshes: Vec::new(),
+            streamer: crate::stream::Streamer::new(),
             mesh_ids: HashMap::new(),
+            humans: None,
+            skinning: false,
+            car_atlas: None,
+            prop_atlas: None,
             mesh_revs: Vec::new(),
             gpu_only: HashSet::new(),
             uploader: None,
@@ -315,6 +421,8 @@ impl Engine {
                 shadows: true,
                 wet: 0.0,
                 snow: 0.0,
+                rain: 0.0,
+                cloud: 0.0,
                 fog_start: 80.0,
                 fog_end: 260.0,
                 sun: v3(0.4, 0.8, 0.3).norm(),
@@ -327,6 +435,7 @@ impl Engine {
             screen: (1280.0, 720.0),
             hud: Vec::new(),
             hud_clip: None,
+            radar_palette: Vec::new(),
             time: 0.0,
             tick: 0,
             quit: false,
@@ -368,6 +477,20 @@ impl Engine {
             self.mesh_ids.insert(name.to_string(), self.meshes.len() - 1);
             self.meshes.len() - 1
         };
+        self.after_mesh_change(id, gpu_only);
+        id
+    }
+
+    /// Put a new mesh in place of mesh `id` (streaming: a tile loaded, or
+    /// emptied when dropped).
+    pub fn replace_mesh(&mut self, id: usize, m: Mesh) {
+        self.meshes[id] = m;
+        self.mesh_revs[id] += 1;
+        self.gpu_only.remove(&id);
+        self.after_mesh_change(id, GPU_ONLY_VERTS);
+    }
+
+    fn after_mesh_change(&mut self, id: usize, gpu_only: usize) {
         if let Some(up) = self.uploader.as_mut()
             && self.meshes[id].verts.len() >= gpu_only.max(1)
         {
@@ -375,7 +498,25 @@ impl Engine {
             self.meshes[id] = Mesh::default();
             self.gpu_only.insert(id);
         }
-        id
+    }
+
+    /// After a frame: load the streamed meshes near the camera and drop the
+    /// far ones (see `stream`). `settle` waits for every load in range.
+    pub fn update_stream(&mut self, settle: bool) {
+        if self.headless {
+            return;
+        }
+        self.update_terrain();
+        if self.streamer.len() == 0 {
+            return;
+        }
+        let eye = self.camera.eye;
+        for (id, m) in self.streamer.update(eye.x, eye.z, settle) {
+            self.replace_mesh(id, m);
+        }
+        for e in std::mem::take(&mut self.streamer.errors) {
+            eprintln!("stream: {e}");
+        }
     }
 
     /// Drop the CPU copy of meshes the renderer has uploaded. Only big ones
@@ -468,46 +609,87 @@ impl Engine {
     /// `colors` (one rgb per height, or grass), and collides
     /// through an entity tagged "terrain".
     pub fn set_terrain(&mut self, terrain: Option<Terrain>, colors: Option<Vec<[f32; 3]>>) {
-        const CHUNK: usize = 64;
         if let Some(old) = self.terrain.take() {
             self.despawn(old.id as u32);
         }
         for id in std::mem::take(&mut self.terrain_chunks) {
             self.despawn(id);
         }
+        self.terrain_fine.clear();
+        self.terrain_colors = None;
         let Some(mut t) = terrain else { return };
         let mut holder = Entity::new(v3(0.0, -10_000.0, 0.0));
         holder.tag = "terrain".to_string();
         holder.visible = false;
         holder.body = Some(Body::new(physics::Kind::Static, Vec3::ZERO));
         t.id = self.spawn(holder) as usize;
-        let grass = [0.3, 0.42, 0.24];
-        let col = |i: usize, j: usize| {
-            let c = colors.as_ref().map_or(grass, |c| c[j * t.w + i]);
-            v3(c[0], c[1], c[2])
-        };
-        let point = |i: usize, j: usize| v3(t.x0 + i as f32 * t.step, t.at(i, j), t.z0 + j as f32 * t.step);
-        for cj in (0..t.d - 1).step_by(CHUNK) {
-            for ci in (0..t.w - 1).step_by(CHUNK) {
-                let mut m = Mesh::default();
-                for j in cj..(cj + CHUNK).min(t.d - 1) {
-                    for i in ci..(ci + CHUNK).min(t.w - 1) {
-                        // Wound so the faces point up; the same split as Terrain::surface.
-                        let (a, b, c, d) = ((i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1));
-                        m.tri_blend(point(a.0, a.1), point(b.0, b.1), point(c.0, c.1), [col(a.0, a.1), col(b.0, b.1), col(c.0, c.1)]);
-                        m.tri_blend(point(c.0, c.1), point(b.0, b.1), point(d.0, d.1), [col(c.0, c.1), col(b.0, b.1), col(d.0, d.1)]);
-                    }
-                }
-                m.mark_ground(0, mesh::GROUND_TERRAIN);
-                let mesh = self.add_mesh(&format!("terrain_{ci}_{cj}"), m);
+        // A big ground is drawn in full detail only near the camera: each
+        // chunk also has a coarse version, always there, drawn further out,
+        // and its fine one is built when the camera comes near and dropped
+        // when it leaves (`update_terrain`). A small one is all fine.
+        let lod = t.w * t.d > TERRAIN_LOD_POINTS;
+        for cj in (0..t.d - 1).step_by(TERRAIN_CHUNK) {
+            for ci in (0..t.w - 1).step_by(TERRAIN_CHUNK) {
+                let fine = if lod { Mesh::default() } else { terrain_chunk(&t, colors.as_deref(), ci, cj, 1) };
+                let mesh = self.add_mesh(&format!("terrain_{ci}_{cj}"), fine);
                 let mut chunk = Entity::new(Vec3::ZERO);
                 chunk.mesh = Some(mesh);
                 chunk.tag = "terrain_mesh".to_string();
+                if lod {
+                    chunk.far = TERRAIN_FINE;
+                    let half = (TERRAIN_CHUNK / 2) as f32 * t.step;
+                    let (x, z) = (t.x0 + ci as f32 * t.step + half, t.z0 + cj as f32 * t.step + half);
+                    self.terrain_fine.push(FineChunk { ci, cj, mesh, x, z, built: false });
+                    let coarse =
+                        self.add_mesh(&format!("terrain_{ci}_{cj}_far"), terrain_chunk(&t, colors.as_deref(), ci, cj, TERRAIN_COARSE));
+                    let mut far = Entity::new(Vec3::ZERO);
+                    far.mesh = Some(coarse);
+                    far.tag = "terrain_mesh".to_string();
+                    far.near = TERRAIN_FINE;
+                    let id = self.spawn(far);
+                    self.terrain_chunks.push(id);
+                }
                 let id = self.spawn(chunk);
                 self.terrain_chunks.push(id);
             }
         }
+        if lod {
+            self.terrain_colors = colors;
+        }
         self.terrain = Some(t);
+    }
+
+    /// Build the fine ground chunks near the camera and drop the far ones
+    /// (a big ground's level of detail, see `set_terrain`). Every chunk close
+    /// enough to be drawn fine is built at once; a few more just beyond, a
+    /// frame, so moving on rarely builds many at once.
+    fn update_terrain(&mut self) {
+        if self.terrain_fine.is_empty() {
+            return;
+        }
+        let Some(t) = self.terrain.as_ref() else { return };
+        let eye = self.camera.eye;
+        let half_diagonal = (TERRAIN_CHUNK as f32) * t.step * 0.71;
+        let (mut ahead, mut changes) = (4, Vec::new());
+        let mut order: Vec<(f32, usize)> =
+            self.terrain_fine.iter().enumerate().map(|(k, c)| ((c.x - eye.x).hypot(c.z - eye.z), k)).collect();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (d, k) in order {
+            let c = &mut self.terrain_fine[k];
+            if !c.built && (d < TERRAIN_FINE + half_diagonal || (d < TERRAIN_FINE + half_diagonal + 64.0 && ahead > 0)) {
+                if d >= TERRAIN_FINE + half_diagonal {
+                    ahead -= 1;
+                }
+                c.built = true;
+                changes.push((c.mesh, terrain_chunk(t, self.terrain_colors.as_deref(), c.ci, c.cj, 1)));
+            } else if c.built && d > TERRAIN_FINE + half_diagonal + 160.0 {
+                c.built = false;
+                changes.push((c.mesh, Mesh::default()));
+            }
+        }
+        for (mesh, m) in changes {
+            self.replace_mesh(mesh, m);
+        }
     }
 
     /// Load a ground map: "GRND", w and h (u16), x0, z0 and step (f32),
@@ -746,6 +928,47 @@ impl Engine {
         }
     }
 
+    /// The ground's classes as a map: a `size` px square at (x, y) on
+    /// screen, `across` metres wide, centred on (cx, cz) with the direction
+    /// `yaw` (as the player's: +z turned toward +x) up. `cells` samples a
+    /// side, each coloured by `radar_palette`; a row's run of one colour is
+    /// one rect, so a frame is a few thousand rects at most. Returns how many.
+    #[allow(clippy::too_many_arguments)]
+    pub fn hud_radar(&mut self, x: f32, y: f32, size: f32, cx: f32, cz: f32, yaw: f32, across: f32, cells: usize) -> usize {
+        let Some(terrain) = self.terrain.as_ref() else { return 0 };
+        let cells = cells.clamp(8, 512);
+        let (cell_px, metres) = (size / cells as f32, across / cells as f32);
+        // Up the screen is forward; right is forward turned a quarter clockwise seen from above.
+        let (fx, fz) = (yaw.sin(), yaw.cos());
+        let (rx, rz) = (-fz, fx);
+        let half = cells as f32 / 2.0;
+        let mut rects = Vec::new();
+        for row in 0..cells {
+            let v = (row as f32 + 0.5 - half) * metres;
+            let colour = |col: usize| {
+                let u = (col as f32 + 0.5 - half) * metres;
+                let (wx, wz) = (cx + rx * u - fx * v, cz + rz * u - fz * v);
+                terrain.class_at(wx, wz).and_then(|c| self.radar_palette.get(c as usize)).copied().unwrap_or([0.0; 4])
+            };
+            let mut start = 0;
+            let mut current = colour(0);
+            for col in 1..=cells {
+                let next = if col < cells { colour(col) } else { [f32::NAN; 4] };
+                if next != current {
+                    if current[3] > 0.0 {
+                        rects.push((x + start as f32 * cell_px, y + row as f32 * cell_px, (col - start) as f32 * cell_px, current));
+                    }
+                    start = col;
+                    current = next;
+                }
+            }
+        }
+        for &(rx0, ry0, w, c) in &rects {
+            self.hud_rect(rx0, ry0, w, cell_px, c);
+        }
+        rects.len()
+    }
+
     /// Bitmap text. `size` is the pixel height of a glyph cell (7 font pixels).
     pub fn hud_text(&mut self, s: &str, x: f32, y: f32, size: f32, c: [f32; 4]) {
         let px = size / 7.0;
@@ -774,6 +997,64 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn near_and_far_versions_hand_over_at_one_distance() {
+        let always = Entity::new(Vec3::ZERO);
+        assert!(always.drawn_at(0.0) && always.drawn_at(1e6));
+        let (mut near, mut far) = (Entity::new(Vec3::ZERO), Entity::new(Vec3::ZERO));
+        near.far = 230.0;
+        far.near = 230.0;
+        for d in [0.0, 229.9, 230.0, 500.0] {
+            assert!(near.drawn_at(d) != far.drawn_at(d), "exactly one version at {d} m");
+        }
+    }
+
+    #[test]
+    fn terrain_offsets_move_the_drawn_points() {
+        // A 3 x 3 grid whose middle point is moved 0.4 m along x and -0.2 m along z.
+        let mut t = Terrain::new(0.0, 0.0, 1.0, 3, 3, vec![0.0; 9]);
+        let mut o = vec![[0.0; 2]; 9];
+        o[4] = [0.4, -0.2];
+        t.offsets = Some(o);
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        e.set_terrain(Some(t), None);
+        let mesh = e.get(e.terrain_chunks[0]).and_then(|en| en.mesh).unwrap();
+        let pts: Vec<[f32; 3]> = e.meshes[mesh].verts.iter().map(|v| v.pos).collect();
+        assert!(pts.iter().any(|p| (p[0] - 1.4).abs() < 1e-5 && (p[2] - 0.8).abs() < 1e-5), "moved middle point drawn");
+        assert!(!pts.iter().any(|p| (p[0] - 1.0).abs() < 1e-5 && (p[2] - 1.0).abs() < 1e-5), "not at its grid place");
+        assert!(pts.iter().any(|p| p[0].abs() < 1e-5 && p[2].abs() < 1e-5), "the corner stays");
+    }
+
+    #[test]
+    fn a_big_ground_is_fine_only_near_the_camera() {
+        let n = 1500; // 2.25M points: past TERRAIN_LOD_POINTS
+        let t = Terrain::new(0.0, 0.0, 1.0, n, n, vec![0.0; n * n]);
+        let mut e = Engine::new(PathBuf::from("."), Arc::new(Mutex::new(Mixer::default())));
+        e.set_terrain(Some(t), None);
+        let built = |e: &Engine| e.terrain_fine.iter().filter(|c| c.built).count();
+        let fine_tris = |e: &Engine, x: f32, z: f32| {
+            let c = e.terrain_fine.iter().find(|c| (c.x - x).abs() < 33.0 && (c.z - z).abs() < 33.0).unwrap();
+            e.meshes[c.mesh].tri_count()
+        };
+        assert_eq!(built(&e), 0);
+        e.camera.eye = v3(100.0, 2.0, 100.0);
+        e.update_terrain();
+        assert_eq!(fine_tris(&e, 100.0, 100.0), 64 * 64 * 2, "the chunk under the camera is built in full");
+        assert_eq!(fine_tris(&e, 1400.0, 1400.0), 0, "a far one is not");
+        let near = built(&e);
+        // Every chunk is drawn one way or the other: the coarse ones are all there.
+        let coarse = e.terrain_chunks.iter().filter(|&&id| e.get(id).is_some_and(|en| en.near > 0.0)).count();
+        assert_eq!(coarse, e.terrain_fine.len());
+        e.camera.eye = v3(1400.0, 2.0, 1400.0);
+        e.update_terrain();
+        assert_eq!(fine_tris(&e, 100.0, 100.0), 0, "dropped when the camera left");
+        assert_eq!(fine_tris(&e, 1400.0, 1400.0), 64 * 64 * 2);
+        // Only what is near is in memory.
+        let reach = TERRAIN_FINE + 46.0 + 64.0;
+        assert!(e.terrain_fine.iter().filter(|c| c.built).all(|c| (c.x - 1400.0).hypot(c.z - 1400.0) < reach));
+        assert!(near > 0 && built(&e) < e.terrain_fine.len() / 3);
+    }
 
     #[test]
     fn nearest_by_tag_skips_others_the_ignored_and_the_gone() {
