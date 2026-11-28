@@ -15,7 +15,7 @@ pub const MAX_LIGHTS: usize = 16;
 // 4096 texels over 340 m: twice the reach of the old 2048 over 170 m at the
 // same sharpness (8 cm a texel). Browsers keep 2048 (some WebGL caps it).
 #[cfg(not(target_arch = "wasm32"))]
-const SHADOW_RES: u32 = 4096;
+pub(crate) const SHADOW_RES: u32 = 4096;
 #[cfg(target_arch = "wasm32")]
 const SHADOW_RES: u32 = 2048;
 const SHADOW_SIZE: f32 = if SHADOW_RES >= 4096 { 340.0 } else { 170.0 }; // meters covered by the shadow map
@@ -627,7 +627,7 @@ fn c4(c: [f32; 3], w: f32) -> [f32; 4] {
     [c[0], c[1], c[2], w]
 }
 
-fn mesh_bounds(mesh: &crate::mesh::Mesh) -> (Vec3, f32) {
+pub(crate) fn mesh_bounds(mesh: &crate::mesh::Mesh) -> (Vec3, f32) {
     let Some(first) = mesh.verts.first() else { return (Vec3::ZERO, 0.0) };
     let (mut lo, mut hi) = (first.pos(), first.pos());
     for v in &mesh.verts {
@@ -640,13 +640,13 @@ fn mesh_bounds(mesh: &crate::mesh::Mesh) -> (Vec3, f32) {
     (center, radius)
 }
 
-fn world_bounds(center: Vec3, radius: f32, pos: Vec3, rotation: crate::math::Quat, scale: Vec3) -> (Vec3, f32) {
+pub(crate) fn world_bounds(center: Vec3, radius: f32, pos: Vec3, rotation: crate::math::Quat, scale: Vec3) -> (Vec3, f32) {
     (pos + rotation.rotate(center.mul(scale)), radius * scale.x.abs().max(scale.y.abs()).max(scale.z.abs()))
 }
 
 /// Conservative sphere test against all six OpenGL clip planes. Radius is
 /// world-space; unnormalized plane normals avoid six divisions per entity.
-fn sphere_visible(vp: &Mat4, eye: Vec3, center: Vec3, radius: f32, fog_end: f32) -> bool {
+pub(crate) fn sphere_visible(vp: &Mat4, eye: Vec3, center: Vec3, radius: f32, fog_end: f32) -> bool {
     if (center - eye).len() - radius > fog_end {
         return false;
     }
@@ -933,7 +933,7 @@ impl Renderer {
 
     /// Orthographic sun view covering a box in front of the camera, snapped
     /// to whole shadow texels so edges don't shimmer as the camera moves.
-    fn shadow_matrix(eng: &Engine) -> (Mat4, Vec3) {
+    pub(crate) fn shadow_matrix(eng: &Engine) -> (Mat4, Vec3) {
         let cam = &eng.camera;
         let sun = eng.env.sun;
         let mut fwd = cam.target - cam.eye;
@@ -983,6 +983,9 @@ impl Renderer {
             let (center, r) = world_bounds(g.center, g.radius, e.pos, e.rot, e.scale);
             let to = center - cam.eye;
             let dist = to.len();
+            if !e.drawn_at(dist) {
+                continue;
+            }
             if shadows && e.shadow && e.color[3] >= 1.0 && Some(mi) != plane {
                 let d = center - focus;
                 if (d.x * d.x + d.z * d.z).sqrt() - r < SHADOW_SIZE * 0.75 {

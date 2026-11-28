@@ -145,7 +145,7 @@ function engine.load_mod(dir)
 
   -- engine, with file access rooted in the mod's folder
   local api = setmetatable({}, {__index = engine, __metatable = false})
-  for _, f in ipairs{"load_obj", "load_wav"} do
+  for _, f in ipairs{"load_obj", "load_gltf", "load_wav", "stream"} do
     api[f] = function(n, path, ...) return engine[f](n, dir .. "/" .. path, ...) end
   end
   for _, f in ipairs{"files", "dirs"} do
@@ -348,6 +348,9 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         ent.visible = t.get::<Option<bool>>("visible")?.unwrap_or(true);
         ent.glow = t.get::<Option<f32>>("glow")?.unwrap_or(0.0);
         ent.layer = t.get::<Option<u8>>("layer")?.unwrap_or(0);
+        // Level of detail: drawn only between `near` and `far` metres away.
+        ent.near = t.get::<Option<f32>>("near")?.unwrap_or(0.0);
+        ent.far = t.get::<Option<f32>>("far")?.unwrap_or(0.0);
         if let Some(kind) = t.get::<Option<String>>("body")? {
             let k = match kind.as_str() {
                 "static" => Kind::Static,
@@ -446,6 +449,30 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(())
     });
+    // A skinned person's stride, 0 standing .. 1 walking (blends the poses).
+    f!("set_gait", |e, _lua, (id, w): (u32, f32)| {
+        if let Some(en) = e.get_mut(id) {
+            en.gait = w.clamp(0.0, 1.0);
+        }
+        Ok(())
+    });
+    // How far a car has driven (m): the wgpu renderer rolls its wheels with it.
+    f!("set_driven", |e, _lua, (id, m): (u32, f32)| {
+        if let Some(en) = e.get_mut(id) {
+            en.driven = m;
+        }
+        Ok(())
+    });
+    // A car's front wheels' angle (radians, the way its yaw turns) and
+    // whether it brakes: the wgpu renderer turns the wheels and lights the
+    // tail lamps.
+    f!("set_car", |e, _lua, (id, steer, braking): (u32, f32, bool)| {
+        if let Some(en) = e.get_mut(id) {
+            en.steer = steer.clamp(-0.7, 0.7);
+            en.braking = braking;
+        }
+        Ok(())
+    });
     f!("set_glow", |e, _lua, (id, g): (u32, f32)| {
         if let Some(en) = e.get_mut(id) {
             en.glow = g;
@@ -531,19 +558,39 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             return Err(mlua::Error::runtime("terrain needs w, d >= 2 and step > 0"));
         }
         // Heights as numbers, or a file: w * d little-endian i16 centimeters,
-        // then optionally a byte per point picking its color from `palette`.
-        let (heights, classes): (Vec<f32>, Option<Vec<u8>>) = match t.get::<Value>("heights")? {
+        // then optionally a byte per point picking its color from `palette`,
+        // then optionally a byte per point: its signed distance to a kerb,
+        // then optionally two planes of i8 x and z moves of the drawn
+        // points, in 2 cm steps (the quay line).
+        let mut offsets: Option<Vec<[f32; 2]>> = None;
+        let (heights, classes, _kerbs): (Vec<f32>, Option<Vec<u8>>, Option<Vec<u8>>) = match t.get::<Value>("heights")? {
             Value::String(rel) => {
                 let path = game_path(&e.root, &rel.to_str()?)?;
                 let bytes = crate::vfs::read(&path).map_err(|err| mlua::Error::runtime(format!("{}: {err}", path.display())))?;
                 let n = w * d;
-                if bytes.len() != 2 * n && bytes.len() != 3 * n {
-                    return Err(mlua::Error::runtime(format!("{} is {} bytes, not {} or {}", rel.to_str()?, bytes.len(), 2 * n, 3 * n)));
+                if ![2 * n, 3 * n, 4 * n, 6 * n].contains(&bytes.len()) {
+                    return Err(mlua::Error::runtime(format!(
+                        "{} is {} bytes, not {}, {}, {} or {}",
+                        rel.to_str()?,
+                        bytes.len(),
+                        2 * n,
+                        3 * n,
+                        4 * n,
+                        6 * n
+                    )));
+                }
+                if bytes.len() == 6 * n {
+                    let (xs, zs) = bytes[4 * n..].split_at(n);
+                    offsets = Some(xs.iter().zip(zs).map(|(&x, &z)| [x as i8 as f32 * 0.02, z as i8 as f32 * 0.02]).collect());
                 }
                 let hs = bytes[..2 * n].chunks(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 100.0).collect();
-                (hs, (bytes.len() == 3 * n).then(|| bytes[2 * n..].to_vec()))
+                (
+                    hs,
+                    (bytes.len() >= 3 * n).then(|| bytes[2 * n..3 * n].to_vec()),
+                    (bytes.len() >= 4 * n).then(|| bytes[3 * n..4 * n].to_vec()),
+                )
             }
-            Value::Table(tb) => (tb.sequence_values().collect::<Result<_>>()?, None),
+            Value::Table(tb) => (tb.sequence_values().collect::<Result<_>>()?, None, None),
             _ => return Err(mlua::Error::runtime("terrain heights must be a table of numbers or a file name")),
         };
         if heights.len() != w * d {
@@ -556,7 +603,7 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             ),
         };
         let colors = match t.get::<Option<Table>>("colors")? {
-            None => match (classes, palette) {
+            None => match (classes.as_ref(), palette) {
                 (Some(cl), Some(pal)) if !pal.is_empty() => Some(cl.iter().map(|&k| pal[(k as usize).min(pal.len() - 1)]).collect()),
                 _ => None,
             },
@@ -593,6 +640,13 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             }
         };
         let mut terrain = Terrain::new(t.get("x0")?, t.get("z0")?, step, w, d, heights);
+        terrain.classes = classes.clone();
+        terrain.offsets = offsets;
+        #[cfg(all(feature = "wgpu-postcard", not(target_arch = "wasm32")))]
+        {
+            terrain.material_classes = classes;
+            terrain.material_kerbs = _kerbs;
+        }
         terrain.kerb = t.get::<Option<f32>>("kerb")?.unwrap_or(0.0);
         let terrain = terrain.with_roads(roads);
         e.set_terrain(Some(terrain), colors);
@@ -636,6 +690,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         }
         Ok(t)
     });
+    // The ground's class (the terrain file's class byte) at (x, z); nothing off the heightfield.
+    f!("terrain_class", |e, _lua, (x, z): (f32, f32)| Ok(e.terrain.as_ref().and_then(|t| t.class_at(x, z))));
     // Ground height and normal at (x, z); nothing off the heightfield.
     f!("terrain_height", |e, lua, (x, z): (f32, f32)| {
         multi(lua, e.terrain.as_ref().and_then(|t| t.surface(x, z)).map(|(h, n)| (h, n.x, n.y, n.z)))
@@ -749,10 +805,102 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         Ok(tris)
     });
     f!("load_obj", |e, _lua, (name, path): (String, String)| {
-        let m = mesh::load_obj(&game_path(&e.root, &path)?).map_err(mlua::Error::runtime)?;
+        let m = crate::meshbin::load(&game_path(&e.root, &path)?).map_err(mlua::Error::runtime)?;
         let tris = m.tri_count();
         e.add_mesh(&name, m);
         Ok(tris)
+    });
+    // A mesh loaded from an OBJ (or its packed copy) only while the camera
+    // is within `radius` m of x, z, and emptied again past it (see
+    // stream.rs). It is empty until then; spawn its entity as usual.
+    f!("stream", |e, _lua, (name, path, x, z, radius): (String, String, f32, f32, f32)| {
+        let path = game_path(&e.root, &path)?;
+        if !path.exists() && !crate::meshbin::beside(&path).exists() {
+            return Err(mlua::Error::runtime(format!("{}: not found", path.display())));
+        }
+        let id = e.add_mesh(&name, mesh::Mesh::default());
+        e.streamer.add(id, path, x, z, radius);
+        Ok(())
+    });
+    // Streamed meshes in memory, still loading, and loaded and dropped on
+    // the last frame.
+    f!("stream_stats", |e, lua, _a: ()| {
+        let s = e.streamer.stats;
+        let t = lua.create_table()?;
+        t.set("resident", s.resident)?;
+        t.set("waiting", s.waiting)?;
+        t.set("loaded", s.loaded)?;
+        t.set("dropped", s.dropped)?;
+        t.set("total", e.streamer.len())?;
+        Ok(t)
+    });
+    // Skinned walking people from a humans pack in `dir` (docs/RENDERER.md):
+    // meshes human_<k> and human_<k>_far, their walk and their atlas.
+    // Returns how many people, or 0 where the renderer can't animate them
+    // (the GL window, headless runs) or the files aren't there.
+    f!("load_humans", |e, _lua, dir: String| {
+        let dir = game_path(&e.root, &dir)?;
+        if !e.skinning || !dir.join("humans_poses.bin").exists() {
+            return Ok(0);
+        }
+        let mut h = crate::humans::Humans::load(&dir).map_err(mlua::Error::runtime)?;
+        for k in 0..h.people {
+            for suffix in ["", "_far"] {
+                let name = format!("human_{k}{suffix}");
+                let m = mesh::load_obj(&dir.join(format!("{name}.obj"))).map_err(mlua::Error::runtime)?;
+                h.meshes.insert(e.add_mesh(&name, m), k);
+            }
+        }
+        h.rev = e.humans.as_ref().map_or(1, |old| old.rev + 1);
+        let n = h.people;
+        e.humans = Some(h);
+        Ok(n)
+    });
+    // The cars' texture atlas (docs/RENDERER.md), for meshes whose
+    // materials are named car_ / carwheel_. Returns false where the renderer
+    // can't use it (the GL window, headless runs) or the file isn't there.
+    f!("load_car_atlas", |e, _lua, path: String| {
+        let path = game_path(&e.root, &path)?;
+        if !e.skinning || !path.exists() {
+            return Ok(false);
+        }
+        let mips = crate::humans::read_atlas(&path).map_err(mlua::Error::runtime)?;
+        let rev = e.car_atlas.as_ref().map_or(1, |(rev, _)| rev + 1);
+        e.car_atlas = Some((rev, mips));
+        Ok(true)
+    });
+    // The props' texture atlas (shop signs and the like), for
+    // meshes whose materials are named prop_. Same format and rules as
+    // load_car_atlas.
+    f!("load_prop_atlas", |e, _lua, path: String| {
+        let path = game_path(&e.root, &path)?;
+        if !e.skinning || !path.exists() {
+            return Ok(false);
+        }
+        let mips = crate::humans::read_atlas(&path).map_err(mlua::Error::runtime)?;
+        let rev = e.prop_atlas.as_ref().map_or(1, |(rev, _)| rev + 1);
+        e.prop_atlas = Some((rev, mips));
+        Ok(true)
+    });
+    f!("load_gltf", |e, _lua, (name, path): (String, String)| {
+        let m = mesh::load_gltf(&game_path(&e.root, &path)?).map_err(mlua::Error::runtime)?;
+        let tris = m.tri_count();
+        e.add_mesh(&name, m);
+        Ok(tris)
+    });
+    // glTF animation clip catalogue (names + duration). Sampling/skinning apply
+    // joints in Rust (gltf_anim + Mesh::apply_skin); game scripts list clips here.
+    f!("load_anim_clips", |e, lua, path: String| {
+        let clips = crate::gltf_anim::load_clips(&game_path(&e.root, &path)?).map_err(mlua::Error::runtime)?;
+        let out = lua.create_table()?;
+        for (i, c) in clips.iter().enumerate() {
+            let row = lua.create_table()?;
+            row.set("name", c.name.clone())?;
+            row.set("duration", c.duration)?;
+            row.set("channels", c.channels.len() as i64)?;
+            out.set(i + 1, row)?;
+        }
+        Ok(out)
     });
 
     // ---- audio ----------------------------------------------------------
@@ -785,6 +933,47 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             looped: t.get::<Option<bool>>("loop")?.unwrap_or(false),
         };
         let buf = s.render();
+        let secs = buf.len() as f32 / audio::RATE as f32;
+        e.sounds.insert(name, std::sync::Arc::new(buf));
+        Ok(secs)
+    });
+    // A loop of several parts on one 16th-note grid (audio::compose):
+    // {bpm, steps, tracks = {{wave, notes = {Hz per 16th; 0 rest, -1 hold},
+    // volume, lowpass, attack, decay, gate, slide}, ...}}. Returns its seconds.
+    f!("compose", |e, _lua, (name, t): (String, Table)| {
+        let mut tracks = Vec::new();
+        for track in t.get::<Table>("tracks")?.sequence_values::<Table>() {
+            let track = track?;
+            let num = |k: &str, def: f32| -> Result<f32> { Ok(track.get::<Option<f32>>(k)?.unwrap_or(def)) };
+            let wave = match track.get::<Option<String>>("wave")?.as_deref().unwrap_or("square") {
+                "sine" => Wave::Sine,
+                "square" => Wave::Square,
+                "saw" => Wave::Saw,
+                "triangle" => Wave::Triangle,
+                "noise" => Wave::Noise,
+                o => return Err(mlua::Error::runtime(format!("unknown wave '{o}'"))),
+            };
+            tracks.push(audio::Track {
+                wave,
+                notes: track.get::<Table>("notes")?.sequence_values::<f32>().collect::<Result<Vec<_>>>()?,
+                volume: num("volume", 0.3)?,
+                lowpass: num("lowpass", 1.0)?,
+                attack: num("attack", 0.0)?,
+                decay: num("decay", 0.0)?,
+                gate: num("gate", 0.9)?,
+                slide: num("slide", 1.0)?,
+            });
+        }
+        let steps = t.get::<Option<usize>>("steps")?.unwrap_or_else(|| tracks.iter().map(|x| x.notes.len()).max().unwrap_or(16));
+        let buf = audio::compose(t.get::<Option<f32>>("bpm")?.unwrap_or(120.0), steps, &tracks);
+        // AUDIO_DUMP=dir (set by whoever runs the game, not by scripts):
+        // each composed loop also goes to dir/<name>.wav, to listen to.
+        if let Ok(dir) = std::env::var("AUDIO_DUMP") {
+            let path = std::path::Path::new(&dir).join(format!("{name}.wav"));
+            if let Err(err) = std::fs::write(&path, audio::wav_bytes(&buf)) {
+                eprintln!("AUDIO_DUMP {}: {err}", path.display());
+            }
+        }
         let secs = buf.len() as f32 / audio::RATE as f32;
         e.sounds.insert(name, std::sync::Arc::new(buf));
         Ok(secs)
@@ -904,6 +1093,8 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
         env.shadows = t.get::<Option<bool>>("shadows")?.unwrap_or(env.shadows);
         env.wet = t.get::<Option<f32>>("wet")?.unwrap_or(env.wet).clamp(0.0, 1.0);
         env.snow = t.get::<Option<f32>>("snow")?.unwrap_or(env.snow).clamp(0.0, 1.0);
+        env.rain = t.get::<Option<f32>>("rain")?.unwrap_or(env.rain).clamp(0.0, 1.0);
+        env.cloud = t.get::<Option<f32>>("cloud")?.unwrap_or(env.cloud).clamp(0.0, 1.0);
         Ok(())
     });
 
@@ -979,6 +1170,26 @@ fn bind(lua: &Lua, eng: &Shared) -> Result<Table> {
             Ok(e.hud_text(&s, x, y, size.unwrap_or(14.0), c))
         }
     );
+    // The radar's colours by ground class: {{r, g, b, a}, ...} from class 0.
+    f!("radar_palette", |e, _lua, colours: Vec<Vec<f32>>| {
+        e.radar_palette = colours
+            .iter()
+            .map(|c| {
+                [
+                    c.first().copied().unwrap_or(0.0),
+                    c.get(1).copied().unwrap_or(0.0),
+                    c.get(2).copied().unwrap_or(0.0),
+                    c.get(3).copied().unwrap_or(1.0),
+                ]
+            })
+            .collect();
+        Ok(())
+    });
+    // The ground as a map (Engine::hud_radar): x, y, size px, centre x, z,
+    // yaw up, metres across, samples a side. Returns the rects drawn.
+    f!("radar", |e, _lua, (x, y, size, cx, cz, yaw, across, cells): (f32, f32, f32, f32, f32, f32, f32, Option<usize>)| {
+        Ok(e.hud_radar(x, y, size, cx, cz, yaw, across, cells.unwrap_or(110)))
+    });
     f!("text_width", |_e, _lua, (s, size): (String, Option<f32>)| Ok(Engine::text_width(&s, size.unwrap_or(14.0))));
 
     // ---- misc -----------------------------------------------------------
